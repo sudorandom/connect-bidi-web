@@ -19,13 +19,19 @@ jobs:
           registry-url: https://registry.npmjs.org
       - run: npm ci
       - run: npm run build
+      - run: npm run test
+      - run: npm run lint
       - name: Publish packages
         # Publish order matters: core is a dependency of node and cloudflare.
+        # Auth is npm Trusted Publishing (OIDC, via the id-token permission):
+        # each package on npmjs.com is configured with this repo + workflow
+        # as its trusted publisher. No token secret is involved; provenance
+        # is generated automatically. Note: trusted publishing cannot CREATE
+        # a package — brand-new packages must be published once manually
+        # (see "Releasing" in the README).
         run: |
           for pkg in core web node cloudflare; do
             if [ -d "packages/$pkg/dist" ]; then
-              npm publish --workspace "packages/$pkg" --provenance --access public
+              npm publish --workspace "packages/$pkg" --access public
             fi
           done
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

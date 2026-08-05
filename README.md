@@ -24,6 +24,10 @@ A composite transport keeps unary RPCs on plain HTTP (caching, observability, pr
 > The Go packages build on connect-go **v2**, which is unreleased. This module pins a
 > pseudo-version of the upstream `v2` branch; expect breaking changes until v2 ships.
 
+> [!NOTE]
+> The npm packages are **ESM-only** and require Node.js ≥ 20.19. CJS consumers can
+> still `require()` them — Node 20.19+/22.12+ support `require(esm)` natively.
+
 ## Usage
 
 ### Go server

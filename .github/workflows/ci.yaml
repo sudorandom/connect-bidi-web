@@ -10,7 +10,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: jdx/mise-action@v2
+      - uses: jdx/mise-action@v4
       - run: just generate
       - name: Check generated code is up to date
         run: git diff --exit-code
@@ -21,7 +21,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: jdx/mise-action@v2
+      - uses: jdx/mise-action@v4
       - run: npm ci
         working-directory: ts
       - run: just e2e
@@ -34,7 +34,7 @@ jobs:
         working-directory: ts
     steps:
       - uses: actions/checkout@v4
-      - uses: jdx/mise-action@v2
+      - uses: jdx/mise-action@v4
       - run: npm ci
       - run: npm run build
       - run: npm run test

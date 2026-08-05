@@ -1,0 +1,20 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "connect-bidi-web-demo",
+  "main": "src/worker.ts",
+  "compatibility_date": "2026-07-30",
+  "assets": {
+    // The built demo site; run `npm run build` in demo/web first.
+    "directory": "../web/dist",
+    // Assets normally win for matching GET requests; these paths must always
+    // reach the worker (WebSocket upgrade, RPCs, and the capability probe).
+    "run_worker_first": [
+      "/websocket",
+      "/capabilities.json",
+      "/connectbidi.eliza.v1.ElizaService/*"
+    ]
+  },
+  "observability": {
+    "enabled": true
+  }
+}

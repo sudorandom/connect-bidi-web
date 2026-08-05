@@ -1,0 +1,528 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>connect-bidi-web — full bidirectional streaming for ConnectRPC in the browser</title>
+    <meta
+      name="description"
+      content="Pluggable WebSocket and WebTransport transports that bring full bidirectional streaming to ConnectRPC's Connect protocol in the browser."
+    />
+    <link rel="icon" type="image/svg+xml" href="favicon.svg" />
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <header class="site-header">
+      <div class="site-header-inner">
+        <a class="brand" href="#top">
+          <span class="logo-icon" aria-hidden="true">⇄</span>
+          <span class="brand-name">connect-bidi-web</span>
+        </a>
+        <nav class="site-nav">
+          <a href="#what-it-is">What it is</a>
+          <a href="#code-examples">Code</a>
+          <a href="#live-demo">Live demo</a>
+          <a href="#support-matrix">Support</a>
+          <a
+            class="btn-ghost"
+            href="https://github.com/sudorandom/connect-bidi-web"
+            >GitHub</a
+          >
+        </nav>
+      </div>
+    </header>
+
+    <main>
+      <!-- Hero -->
+      <section id="top" class="hero">
+        <div class="section-inner hero-inner">
+          <p class="eyebrow">connect-bidi-web</p>
+          <h1>
+            Full bidirectional streaming for ConnectRPC in the browser —
+            over WebSockets and WebTransport.
+          </h1>
+          <p class="hero-tagline">
+            Connect's HTTP protocol can't carry full-duplex streams in the
+            browser. connect-bidi-web adds pluggable transports that can, so
+            your existing Connect services gain real bidi streaming without
+            switching protocols or making bespoke WebSocket solutions.
+          </p>
+          <div class="hero-actions">
+            <a
+              class="btn-primary-lg"
+              href="https://github.com/sudorandom/connect-bidi-web"
+              >View on GitHub</a
+            >
+            <a class="btn-secondary-lg" href="#live-demo">Try the live demo</a>
+          </div>
+          <p class="hero-note">
+            Ships as Go packages
+            (<code>github.com/sudorandom/connect-bidi-web</code>) and npm
+            packages under
+            <code>@sudorandom/connect-bidi-web</code>.
+          </p>
+        </div>
+      </section>
+
+      <!-- What it is -->
+      <section id="what-it-is" class="section">
+        <div class="section-inner">
+          <h2>What it is</h2>
+          <p>
+            ConnectRPC's Connect protocol runs over plain HTTP, which makes it
+            simple, cacheable, and proxy-friendly — but browsers won't let
+            <code>fetch</code> stream a request body while also reading the
+            response, so a browser can't drive a truly bidirectional RPC over
+            HTTP alone.
+          </p>
+          <p>
+            connect-bidi-web adds transports, built on connect-go v2's new
+            <code>Transport</code> API and on connect-es, that carry the same
+            Connect envelope protocol over two full-duplex transports
+            instead:
+          </p>
+          <div class="feature-grid">
+            <div class="feature-card">
+              <h3>WebSocket</h3>
+              <p>
+                One WebSocket connection per RPC. Works in every evergreen
+                browser today, including through proxies and edge platforms
+                like Cloudflare Workers.
+              </p>
+            </div>
+            <div class="feature-card">
+              <h3>WebTransport</h3>
+              <p>
+                One HTTP/3 session per client, one QUIC stream per RPC.
+                Multiple concurrent streams share a single session with no
+                head-of-line blocking between them.
+              </p>
+            </div>
+            <div class="feature-card">
+              <h3>Composite transport</h3>
+              <p>
+                Keeps unary RPCs on plain HTTP for caching, observability, and
+                proxy support, and routes only streaming RPCs over the bidi
+                transport — you don't have to choose one transport for
+                everything.
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Code examples: TypeScript / connect-es -->
+      <section id="code-examples" class="section section-alt">
+        <div class="section-inner">
+          <h2>In the browser &mdash; connect-es</h2>
+          <p class="section-lede">
+            Client transports for the browser, used by the live demo below
+            with the same <code>ElizaService</code>.
+          </p>
+
+          <div class="install-row">
+            <div class="install-chip">
+              <span class="install-label">npm</span>
+              <code>npm install @sudorandom/connect-bidi-web</code>
+            </div>
+          </div>
+
+          <div class="code-list">
+            <article class="code-card">
+              <header class="code-card-header">
+                <span class="code-lang">TypeScript</span>
+                <span class="code-title">Browser client — WebSocket</span>
+              </header>
+              <pre><code class="language-typescript">import { createClient } from &quot;@connectrpc/connect&quot;;
+import { createConnectTransport } from &quot;@connectrpc/connect-web&quot;;
+import {
+  createCompositeTransport,
+  createConnectWebSocketTransport,
+} from &quot;@sudorandom/connect-bidi-web&quot;;
+import { ElizaService } from &quot;./gen/connectbidi/eliza/v1/eliza_pb.js&quot;;
+
+const transport = createCompositeTransport(
+  // Unary RPCs: plain Connect over HTTP.
+  createConnectTransport({ baseUrl: &quot;https://localhost:4433&quot; }),
+  // Streaming RPCs: one WebSocket connection per RPC.
+  createConnectWebSocketTransport({
+    baseUrl: &quot;https://localhost:4433&quot;,
+  }),
+);
+
+const client = createClient(ElizaService, transport);
+
+for await (const res of client.converse(requests())) {
+  console.log(res.sentence); // full bidi streaming!
+}</code></pre>
+            </article>
+
+            <article class="code-card">
+              <header class="code-card-header">
+                <span class="code-lang">TypeScript</span>
+                <span class="code-title">Browser client — WebTransport</span>
+              </header>
+              <pre><code class="language-typescript">import { createConnectWebTransportTransport } from &quot;@sudorandom/connect-bidi-web&quot;;
+
+// One HTTP/3 session, reused for every streaming RPC.
+const session = new WebTransport(&quot;https://localhost:4433/webtransport&quot;);
+
+const transport = createCompositeTransport(
+  createConnectTransport({ baseUrl: &quot;https://localhost:4433&quot; }),
+  createConnectWebTransportTransport({
+    baseUrl: &quot;https://localhost:4433&quot;,
+    session,
+  }),
+);</code></pre>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <!-- Code examples: Go / connect-go -->
+      <section id="code-examples-go" class="section">
+        <div class="section-inner">
+          <h2>On the backend &mdash; connect-go</h2>
+          <p class="section-lede">
+            Server handlers for both transports, plus a Go client transport,
+            built on connect-go v2's <code>Transport</code> API.
+          </p>
+
+          <div class="install-row">
+            <div class="install-chip">
+              <span class="install-label">Go</span>
+              <code>go get github.com/sudorandom/connect-bidi-web</code>
+            </div>
+          </div>
+
+          <div class="code-list">
+            <article class="code-card">
+              <header class="code-card-header">
+                <span class="code-lang">Go</span>
+                <span class="code-title">Server</span>
+              </header>
+              <pre><code class="language-go">server := connect.NewServer()
+elizav1connect.RegisterElizaServiceHandler(server, elizaServer{})
+
+// One connection per RPC, over a plain net/http handler.
+http.Handle(&quot;/websocket&quot;, connectwebsocket.NewHandler(server))
+
+// WebTransport: one HTTP/3 session, one stream per RPC.
+webtransportHandler := connectwebtransport.NewHandler(server)
+// ...on every accepted session:
+webtransportHandler.HandleSession(ctx, session)</code></pre>
+            </article>
+
+            <article class="code-card">
+              <header class="code-card-header">
+                <span class="code-lang">Go</span>
+                <span class="code-title">Client</span>
+              </header>
+              <pre><code class="language-go">transport := connectwebsocket.NewTransport(&quot;wss://api.example.com/websocket&quot;)
+client := elizav1connect.NewElizaServiceClient(connect.NewClient(transport))
+
+stream := client.Converse(ctx)
+// stream.Send(...), stream.Receive(), full duplex.</code></pre>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <!-- Live demo -->
+      <section id="live-demo" class="section section-alt">
+        <div class="section-inner">
+          <h2>Live demo</h2>
+          <p class="section-lede">
+            Talk to Eliza over the transport of your choice. Unary RPCs
+            always use plain HTTP; the dropdown below only changes which
+            transport carries the streaming RPCs.
+          </p>
+
+          <div class="demo-card">
+            <div class="demo-toolbar">
+              <div class="demo-toolbar-row">
+                <label for="server-url-input">Server</label>
+                <input
+                  id="server-url-input"
+                  class="demo-toolbar-input"
+                  type="text"
+                  autocomplete="off"
+                  spellcheck="false"
+                  placeholder="https://localhost:4433"
+                  aria-invalid="false"
+                  aria-describedby="server-url-error"
+                />
+              </div>
+              <p id="server-url-error" class="input-error hidden">
+                Enter a valid http(s) URL, e.g. https://localhost:4433
+              </p>
+              <div class="demo-toolbar-row">
+                <label for="transport-select">Streaming transport</label>
+                <select id="transport-select">
+                  <option value="webtransport">
+                    WebTransport (HTTP/3 session)
+                  </option>
+                  <option value="websocket">
+                    WebSocket (connection per RPC)
+                  </option>
+                </select>
+                <a
+                  id="transport-unsupported-badge"
+                  class="badge hidden"
+                  href="#webtransport-reality"
+                  title="WebTransport is not supported in this browser or host — see why"
+                  >Not supported here</a
+                >
+              </div>
+            </div>
+
+            <nav class="tab-switcher">
+              <button id="tab-btn-unary" class="tab-btn active" type="button">
+                💬 Eliza Chat (Unary)
+              </button>
+              <button id="tab-btn-chat" class="tab-btn" type="button">
+                🌊 Streaming Chat
+              </button>
+              <button id="tab-btn-streams" class="tab-btn" type="button">
+                ⚡ Concurrent Streams
+              </button>
+            </nav>
+
+            <div class="demo-viewport">
+              <section id="view-unary" class="view-panel active">
+                <div id="unary-messages" class="messages-list"></div>
+                <div class="input-container">
+                  <input
+                    id="unary-input"
+                    class="chat-input"
+                    placeholder="Type your message to Eliza..."
+                    autocomplete="off"
+                    autocorrect="off"
+                    autocapitalize="off"
+                    spellcheck="false"
+                  />
+                </div>
+              </section>
+
+              <section id="view-chat" class="view-panel">
+                <p class="view-description">
+                  Stateful bidi streaming — one long-lived
+                  <code>Converse</code> RPC carries every message in both
+                  directions over the transport selected above.
+                </p>
+                <div id="chat-messages" class="messages-list"></div>
+                <div id="chat-input-container" class="input-container"></div>
+              </section>
+
+              <section id="view-streams" class="view-panel">
+                <div class="streams-header">
+                  <div class="streams-info">
+                    <h3>Concurrent RPC streams</h3>
+                    <p id="lane-transport-description">
+                      Each lane below opens an independent stream.
+                    </p>
+                  </div>
+                  <button id="toggle-streams-btn" class="btn-primary" type="button">
+                    ▶ Start all streams
+                  </button>
+                </div>
+                <div id="lanes-container" class="lanes-container"></div>
+              </section>
+            </div>
+          </div>
+
+          <div class="run-local">
+            <h3>Run it yourself</h3>
+            <p class="run-local-lede">
+              The whole demo &mdash; site, Go server, and Cloudflare Workers
+              variant &mdash; lives in the repo.
+            </p>
+            <article class="code-card">
+              <header class="code-card-header">
+                <span class="code-lang">Shell</span>
+                <span class="code-title">Local demo</span>
+              </header>
+              <pre><code class="language-bash">git clone https://github.com/sudorandom/connect-bidi-web
+cd connect-bidi-web
+mise install       # dev tools: go, node, buf, just, mkcert, wrangler, ...
+
+just demo          # Go server: https://localhost:4433
+                   #   Connect HTTP + WebSocket + WebTransport
+just demo-worker   # Cloudflare workerd: http://localhost:8787
+                   #   Connect HTTP + WebSocket (no WebTransport on Workers)</code></pre>
+            </article>
+            <div class="run-local-note">
+              <p>
+                The first run of <code>just demo</code> creates a
+                locally-trusted TLS certificate with
+                <a href="https://github.com/FiloSottile/mkcert">mkcert</a>.
+                Browsers hold WebTransport certificates to stricter rules
+                than HTTPS, so local WebTransport needs one tweak on top:
+              </p>
+              <ul>
+                <li>
+                  <strong>Chrome</strong> &mdash; enable
+                  <code>chrome://flags/#webtransport-developer-mode</code>.
+                  By default, WebTransport ignores locally-installed roots
+                  like mkcert's.
+                </li>
+                <li>
+                  <strong>Firefox</strong> &mdash; in
+                  <code>about:config</code>, set
+                  <code>network.http.http3.disable_when_third_party_roots_found</code>
+                  to <code>false</code>.
+                </li>
+              </ul>
+              <p>
+                To point the live demo at your local server, use the server
+                box above or a <code>?server=</code> query parameter.
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Support matrix -->
+      <section id="support-matrix" class="section">
+        <div class="section-inner">
+          <h2>Support matrix</h2>
+          <div class="table-scroll">
+            <table class="support-table">
+              <thead>
+                <tr>
+                  <th scope="col">Transport</th>
+                  <th scope="col">Browsers</th>
+                  <th scope="col">Infrastructure</th>
+                  <th scope="col">Connection model</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <th scope="row">WebSocket</th>
+                  <td>
+                    <a href="https://caniuse.com/websockets"
+                      >All evergreen browsers</a
+                    >
+                  </td>
+                  <td>
+                    <span class="support-yes">Nearly universal</span>
+                    <span class="support-footnote"
+                      >Passes through proxies, load balancers, and edge
+                      platforms (Cloudflare Workers, Vercel, &hellip;)</span
+                    >
+                  </td>
+                  <td>One connection per RPC.</td>
+                </tr>
+                <tr>
+                  <th scope="row">WebTransport</th>
+                  <td>
+                    <a href="https://caniuse.com/webtransport"
+                      >Chrome 97+, Edge 98+, Firefox 114+, Safari 26.4+</a
+                    >
+                    <span class="support-footnote"
+                      >(Baseline across major browsers since March
+                      2026)</span
+                    >
+                  </td>
+                  <td>
+                    <span class="support-no">Patchy</span>
+                    <span class="support-footnote"
+                      >Needs an end-to-end HTTP/3 (UDP) path; most load
+                      balancers, gateways, and edge platforms can't carry
+                      it yet</span
+                    >
+                  </td>
+                  <td>One HTTP/3 session, one QUIC stream per RPC.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <p class="table-note">
+            The live demo above feature-detects WebTransport in the browser
+            (<code>"WebTransport" in globalThis</code>) and asks the selected
+            server whether it terminates HTTP/3, disabling that dropdown
+            option wherever either end doesn't support it.
+          </p>
+        </div>
+      </section>
+
+      <!-- WebTransport reality check -->
+      <section id="webtransport-reality" class="section section-alt hidden">
+        <div class="section-inner">
+          <h2>Why &ldquo;not supported here&rdquo;?</h2>
+          <p class="section-lede">
+            When the WebTransport option is greyed out, it's rarely the
+            protocol's fault.
+          </p>
+          <p>
+            The endpoints are ready. WebTransport is Baseline in evergreen
+            browsers, most HTTP/3 stacks implement it, and server-side
+            support is mature in Go
+            (<a href="https://github.com/quic-go/webtransport-go"
+              >quic-go/webtransport-go</a
+            >, which this project builds on), Rust
+            (<a href="https://github.com/BiagioFesta/wtransport"
+              >wtransport</a
+            >), and others.
+          </p>
+          <p>
+            The gap is everything in between. WebTransport rides HTTP/3 over
+            QUIC &mdash; UDP, not TCP &mdash; and needs an
+            <em>end-to-end</em> HTTP/3 path:
+          </p>
+          <ul class="reality-list">
+            <li>
+              <strong>Load balancers and CDNs</strong> often terminate HTTP/3
+              at the edge for ordinary requests, but don't accept Extended
+              CONNECT sessions or forward them upstream.
+            </li>
+            <li>
+              <strong>API gateways and reverse proxies</strong> commonly
+              speak HTTP/1.1 or HTTP/2 to the backend, a hop the
+              WebTransport session can't cross.
+            </li>
+            <li>
+              <strong>Serverless and edge platforms</strong> (Cloudflare
+              Workers, Vercel, &hellip;) expose no UDP or QUIC path to your
+              code at all.
+            </li>
+            <li>
+              <strong>Firewalls and restrictive networks</strong> silently
+              drop UDP on port 443. Ordinary HTTP falls back to TCP;
+              a WebTransport connection just fails.
+            </li>
+            <li>
+              <strong>Browsers themselves</strong> hold WebTransport to
+              stricter certificate rules than HTTPS: Firefox disables HTTP/3
+              entirely for any certificate chaining to a third-party root
+              (<code>network.http.http3.disable_when_third_party_roots_found</code>)
+              &mdash; common under corporate proxies and antivirus &mdash;
+              and Chrome only accepts WebTransport certificates from
+              <em>well-known</em> roots unless
+              <code>chrome://flags/#webtransport-developer-mode</code> is
+              enabled. Locally-installed CAs like mkcert's hit both rules.
+            </li>
+          </ul>
+          <p>
+            That's exactly why these transports are pluggable and composite:
+            unary RPCs stay on plain HTTP everywhere, streaming RPCs use
+            WebTransport when the whole path supports it and fall back to
+            WebSocket &mdash; which traverses all of the above &mdash; when
+            it doesn't. A greyed-out option means either this browser lacks
+            the WebTransport API, or the selected server reported (via
+            <code>/capabilities.json</code>) that it can't terminate HTTP/3.
+          </p>
+        </div>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <div class="section-inner footer-inner">
+        <p>Apache-2.0.</p>
+        <a href="https://github.com/sudorandom/connect-bidi-web">GitHub</a>
+      </div>
+    </footer>
+
+    <script type="module" src="bundle.js"></script>
+  </body>
+</html>

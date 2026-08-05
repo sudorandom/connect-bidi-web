@@ -1,0 +1,9 @@
+{
+  "include": ["src/**/*.ts"],
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "skipLibCheck": true,
+    "lib": ["ES2022"],
+    "types": ["node", "@cloudflare/workers-types"]
+  }
+}

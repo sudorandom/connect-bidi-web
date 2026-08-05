@@ -1,0 +1,48 @@
+name: ci
+on:
+  push:
+    branches: [main]
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  go:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: jdx/mise-action@v2
+      - run: just generate
+      - name: Check generated code is up to date
+        run: git diff --exit-code
+      - run: just build
+      - run: just test
+      - run: just lint
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: jdx/mise-action@v2
+      - run: npm ci
+        working-directory: ts
+      - run: just e2e
+        env:
+          E2E_REQUIRE_INTEROP: "1"
+  typescript:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ts
+    steps:
+      - uses: actions/checkout@v4
+      - uses: jdx/mise-action@v2
+      - run: npm ci
+      - run: npm run build
+      - run: npm run test
+      - run: npm run lint
+      - name: Check package types
+        run: |
+          for pkg in packages/*/; do
+            if [ -f "$pkg/package.json" ] && [ -d "$pkg/dist" ]; then
+              npx --yes @arethetypeswrong/cli --pack "$pkg"
+            fi
+          done

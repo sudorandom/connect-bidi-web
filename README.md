@@ -1,0 +1,132 @@
+# connect-bidi-web
+
+Full bidirectional streaming for [ConnectRPC](https://connectrpc.com) in the browser, over WebSockets and WebTransport.
+
+Browsers can't do full bidi streaming with the plain Connect protocol because fetch can't stream request bodies in every browser and network path. This project adds pluggable transports that carry the Connect envelope protocol over:
+
+- **WebSocket** — one connection per RPC. Works everywhere, including through Cloudflare Workers.
+- **WebTransport** — one HTTP/3 session, one bidirectional stream per RPC. Lower overhead; Baseline in evergreen browsers (Chrome 97+, Firefox 114+, Safari 26.4+), but not available on Cloudflare Workers.
+
+A composite transport keeps unary RPCs on plain HTTP (caching, observability, proxies) and routes streaming RPCs over the bidi transport.
+
+## Packages
+
+| Package | What it is |
+|---|---|
+| `github.com/sudorandom/connect-bidi-web/connectwebsocket` | Go client transport + `http.Handler` server |
+| `github.com/sudorandom/connect-bidi-web/connectwebtransport` | Go client transport + WebTransport session handler |
+| [`@sudorandom/connect-bidi-web`](https://www.npmjs.com/package/@sudorandom/connect-bidi-web) | Browser client transports (WebSocket, WebTransport, composite) |
+| [`@sudorandom/connect-bidi-core`](https://www.npmjs.com/package/@sudorandom/connect-bidi-core) | Runtime-neutral server bridge to `@connectrpc/connect` handlers |
+| [`@sudorandom/connect-bidi-node`](https://www.npmjs.com/package/@sudorandom/connect-bidi-node) | Node.js WebSocket server adapter |
+| [`@sudorandom/connect-bidi-cloudflare`](https://www.npmjs.com/package/@sudorandom/connect-bidi-cloudflare) | Cloudflare Workers WebSocket server adapter |
+
+> [!NOTE]
+> The Go packages build on connect-go **v2**, which is unreleased. This module pins a
+> pseudo-version of the upstream `v2` branch; expect breaking changes until v2 ships.
+
+## Usage
+
+### Go server
+
+```go
+server := connect.NewServer()
+elizav1connect.RegisterElizaServiceHandler(server, &elizaServer{})
+
+// Serve Connect RPCs over WebSocket alongside regular HTTP handlers:
+http.Handle("/websocket", connectwebsocket.NewHandler(server))
+```
+
+### Go client
+
+```go
+transport := connectwebsocket.NewTransport("wss://api.example.com/websocket")
+client := elizav1connect.NewElizaServiceClient(connect.NewClient(transport))
+```
+
+### Browser client (TypeScript)
+
+```ts
+import { createClient } from "@connectrpc/connect";
+import { createConnectTransport } from "@connectrpc/connect-web";
+import {
+  createCompositeTransport,
+  createConnectWebSocketTransport,
+} from "@sudorandom/connect-bidi-web";
+
+const transport = createCompositeTransport(
+  createConnectTransport({ baseUrl: "https://api.example.com" }), // unary
+  createConnectWebSocketTransport({ baseUrl: "https://api.example.com" }), // streams
+);
+const client = createClient(ElizaService, transport);
+```
+
+## Wire protocol
+
+Frames are Connect-style envelopes: a flag byte and a big-endian u32 payload length.
+`0x00` data, `0x01` compressed data, `0x02` end-stream (Connect `EndStreamResponse` JSON), `0x04` headers (JSON metadata, includes `:path`). Compression is negotiated with `connect-content-encoding`/`connect-accept-encoding` metadata. See the per-package READMEs for details.
+
+## Demo
+
+`demo/` contains an Eliza chat demo that doubles as the project site. The Go server serves the same service three ways at once — plain Connect HTTP, WebSocket, and WebTransport — and a Cloudflare Workers variant serves it from workerd with WebSocket only (Workers can't terminate WebTransport).
+
+### Go server (all three transports)
+
+```sh
+mise install       # dev tools: go, node, buf, just, mkcert, wrangler, ...
+just demo          # builds demo/web, then serves https://localhost:4433
+```
+
+The first run creates a locally-trusted TLS certificate with mkcert;
+`mkcert -install` prompts for your password once so browsers trust it.
+Then open <https://localhost:4433> and pick a transport in the live demo.
+
+> [!TIP]
+> Local WebTransport needs one browser tweak even after `mkcert -install`,
+> because browsers treat WebTransport certificates more strictly than HTTPS:
+>
+> - **Chrome** only accepts WebTransport certificates that chain to a
+>   *well-known* root — locally-installed CAs like mkcert's don't count.
+>   Enable `chrome://flags/#webtransport-developer-mode`, which relaxes the
+>   requirement to any trusted root, including locally-installed ones.
+> - **Firefox** disables HTTP/3 — and with it WebTransport — whenever the
+>   certificate chains to a third-party root. Set
+>   `network.http.http3.disable_when_third_party_roots_found` to `false` in
+>   `about:config`.
+
+### Cloudflare Workers (WebSocket only)
+
+```sh
+just demo-worker   # wrangler dev at http://localhost:8787
+```
+
+`npm run deploy` in `demo/worker` deploys it to your Cloudflare account; see
+[demo/worker/README.md](demo/worker/README.md).
+
+### Pointing the UI at another server
+
+The demo page talks to its own origin by default. Use the server URL box in
+the live demo — or a `?server=https://host:4433` query parameter — to point
+any deployment of the page at any server, e.g. the hosted site at your local
+`just demo` server.
+
+## Development
+
+Dev tooling is managed with [mise](https://mise.jdx.dev) and [just](https://just.systems):
+
+```sh
+mise install
+just          # generate + build + test + lint
+```
+
+End-to-end tests cover Go client ↔ Go server over both transports, plus
+cross-language interop (Go client ↔ TypeScript server and TypeScript client ↔
+Go server) over WebSocket:
+
+```sh
+cd ts && npm ci && cd ..
+just e2e
+```
+
+## Legal
+
+Apache-2.0. Derived from [connectrpc/connect-go](https://github.com/connectrpc/connect-go) and [connectrpc/connect-es](https://github.com/connectrpc/connect-es) (see `NOTICE`). Not an official ConnectRPC project.

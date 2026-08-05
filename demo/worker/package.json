@@ -1,0 +1,31 @@
+{
+  "name": "connect-bidi-web-demo-worker",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "generate": "buf generate ../.. --template buf.gen.yaml --path ../../proto/connectbidi/eliza/v1/eliza.proto",
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@bufbuild/protobuf": "^2.13.0",
+    "@connectrpc/connect": "^2.1.2",
+    "@sudorandom/connect-bidi-cloudflare": "file:../../ts/packages/cloudflare",
+    "@sudorandom/connect-bidi-core": "file:../../ts/packages/core"
+  },
+  "devDependencies": {
+    "@bufbuild/buf": "^1.72.0",
+    "@bufbuild/protoc-gen-es": "^2.13.0",
+    "@cloudflare/workers-types": "^5.20260804.1",
+    "typescript": "^6.0.3",
+    "wrangler": "^4.118.0"
+  },
+  "allowScripts": {
+    "@bufbuild/buf@1.72.0": true,
+    "esbuild@0.28.1": true,
+    "fsevents@2.3.3": true,
+    "workerd@1.20260801.1": true
+  }
+}

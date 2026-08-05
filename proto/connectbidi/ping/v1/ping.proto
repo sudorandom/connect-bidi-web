@@ -1,0 +1,87 @@
+// Copyright 2021-2026 The Connect Authors
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//      http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+// Derived from
+// https://github.com/connectrpc/connect-go/blob/main/internal/proto/connect/ping/v1/ping.proto.
+syntax = "proto3";
+
+// The connectbidi.ping.v1 package contains an echo service designed to test
+// the connect-bidi-web transports across every RPC shape.
+package connectbidi.ping.v1;
+
+message PingRequest {
+  // The number to echo back in the response.
+  int64 number = 1;
+  // The text to echo back in the response.
+  string text = 2;
+}
+
+message PingResponse {
+  // The number sent in the request.
+  int64 number = 1;
+  // The text sent in the request.
+  string text = 2;
+}
+
+message FailRequest {
+  // The Connect error code the server responds with.
+  int32 code = 1;
+}
+
+message FailResponse {}
+
+message SumRequest {
+  // A number to add to the running sum.
+  int64 number = 1;
+}
+
+message SumResponse {
+  // The sum of all numbers sent on the request stream.
+  int64 sum = 1;
+}
+
+message CountUpRequest {
+  // The number to count up to, inclusive.
+  int64 number = 1;
+}
+
+message CountUpResponse {
+  // The next number in the count.
+  int64 number = 1;
+}
+
+message CumSumRequest {
+  // A number to add to the cumulative sum.
+  int64 number = 1;
+}
+
+message CumSumResponse {
+  // The cumulative sum of all numbers received so far.
+  int64 sum = 1;
+}
+
+service PingService {
+  // Ping sends a ping to the server to determine if it's reachable.
+  rpc Ping(PingRequest) returns (PingResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+  }
+  // Fail always fails.
+  rpc Fail(FailRequest) returns (FailResponse) {}
+  // Sum calculates the sum of the numbers sent on the stream.
+  rpc Sum(stream SumRequest) returns (SumResponse) {}
+  // CountUp returns a stream of the numbers up to the given request.
+  rpc CountUp(CountUpRequest) returns (stream CountUpResponse) {}
+  // CumSum determines the cumulative sum of all the numbers sent on the stream.
+  rpc CumSum(stream CumSumRequest) returns (stream CumSumResponse) {}
+}

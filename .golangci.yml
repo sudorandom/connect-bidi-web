@@ -1,0 +1,23 @@
+version: "2"
+linters:
+  default: standard
+  enable:
+    - bodyclose
+    - errorlint
+    - gosec
+    - misspell
+    - nolintlint
+    - revive
+    - unconvert
+    - wastedassign
+  exclusions:
+    rules:
+      # Benchmarks and tests are allowed to ignore returned errors for brevity.
+      - path: _test\.go
+        linters:
+          - errcheck
+          - gosec
+formatters:
+  enable:
+    - gofmt
+    - goimports

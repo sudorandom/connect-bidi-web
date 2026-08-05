@@ -1,0 +1,27 @@
+{
+  "name": "@sudorandom/connect-bidi-e2e",
+  "private": true,
+  "version": "0.1.0",
+  "description": "End-to-end tests for the connect-bidi-web TypeScript client transports",
+  "license": "Apache-2.0",
+  "type": "module",
+  "scripts": {
+    "generate": "buf generate ../../../proto",
+    "e2e": "tsc --noEmit && node --import tsx --test $(find src -name '*.e2e.spec.ts')",
+    "format": "biome format --write .",
+    "lint": "biome lint --error-on-warnings ."
+  },
+  "dependencies": {
+    "@bufbuild/protobuf": "^2.7.0",
+    "@connectrpc/connect": "^2.1.0",
+    "@connectrpc/connect-web": "^2.1.0",
+    "@sudorandom/connect-bidi-node": "^0.1.0",
+    "@sudorandom/connect-bidi-web": "^0.1.0"
+  },
+  "devDependencies": {
+    "@bufbuild/buf": "^1.72.0",
+    "@bufbuild/protoc-gen-es": "^2.13.0",
+    "@types/node": "^24.10.1",
+    "tsx": "^4.20.6"
+  }
+}

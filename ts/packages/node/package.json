@@ -1,0 +1,62 @@
+{
+  "name": "@sudorandom/connect-bidi-node",
+  "version": "0.1.0",
+  "description": "Node.js WebSocket adapter for ConnectRPC bidirectional streaming (see @sudorandom/connect-bidi-core)",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/sudorandom/connect-bidi-web.git",
+    "directory": "ts/packages/node"
+  },
+  "scripts": {
+    "generate": "buf generate ../../../proto",
+    "prebuild": "rm -rf ./dist/*",
+    "build": "npm run build:cjs && npm run build:esm",
+    "build:cjs": "tsc --project tsconfig.build.json --module commonjs --verbatimModuleSyntax false --moduleResolution node10 --outDir ./dist/cjs && echo >./dist/cjs/package.json '{\"type\":\"commonjs\"}'",
+    "build:esm": "tsc --project tsconfig.build.json --outDir ./dist/esm",
+    "test": "tsc --noEmit && node --import tsx --test $(find src -name '*.spec.ts')",
+    "interop:eliza": "tsx interop/server.ts",
+    "format": "biome format --write .",
+    "lint": "biome lint --error-on-warnings .",
+    "attw": "attw --pack"
+  },
+  "type": "module",
+  "sideEffects": false,
+  "main": "./dist/cjs/index.js",
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./dist/esm/index.d.ts",
+        "default": "./dist/esm/index.js"
+      },
+      "require": {
+        "types": "./dist/cjs/index.d.ts",
+        "default": "./dist/cjs/index.js"
+      }
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "@sudorandom/connect-bidi-core": "^0.1.0",
+    "ws": "^8.21.2"
+  },
+  "peerDependencies": {
+    "@bufbuild/protobuf": "^2.7.0",
+    "@connectrpc/connect": "^2.1.0"
+  },
+  "devDependencies": {
+    "@bufbuild/buf": "^1.72.0",
+    "@bufbuild/protoc-gen-es": "^2.13.0",
+    "@types/node": "^24.10.1",
+    "@types/ws": "^8.18.1",
+    "tsx": "^4.20.6"
+  }
+}

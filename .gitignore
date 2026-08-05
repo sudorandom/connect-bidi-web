@@ -1,0 +1,7 @@
+.tmp/
+node_modules/
+dist/
+*.pem
+.wrangler/
+.DS_Store
+coverage/

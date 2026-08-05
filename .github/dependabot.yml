@@ -1,0 +1,18 @@
+version: 2
+updates:
+  - package-ecosystem: gomod
+    directory: /
+    schedule:
+      interval: weekly
+    ignore:
+      # The connect-go v2 pseudo-version is pinned deliberately; v2 is
+      # unreleased and bumps must be done manually and tested.
+      - dependency-name: connectrpc.com/connect/v2
+  - package-ecosystem: npm
+    directory: /ts
+    schedule:
+      interval: weekly
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly

@@ -1,0 +1,32 @@
+{
+  "name": "connect-bidi-web-demo",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "generate": "buf generate ../.. --template buf.gen.yaml --path ../../proto/connectbidi/eliza/v1/eliza.proto",
+    "build": "node scripts/build.mjs",
+    "dev": "node scripts/dev.mjs",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@bufbuild/protobuf": "^2.13.0",
+    "@connectrpc/connect": "^2.1.2",
+    "@connectrpc/connect-web": "^2.1.2",
+    "@sudorandom/connect-bidi-web": "file:../../ts/packages/web",
+    "highlight.js": "^11.11.1"
+  },
+  "devDependencies": {
+    "@bufbuild/buf": "^1.72.0",
+    "@bufbuild/protoc-gen-es": "^2.13.0",
+    "esbuild": "^0.28.1",
+    "typescript": "^6.0.3"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "allowScripts": {
+    "@bufbuild/buf@1.72.0": true,
+    "esbuild@0.28.1": true
+  }
+}

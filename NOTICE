@@ -1,0 +1,8 @@
+connect-bidi-web
+Copyright 2026 Kevin McDonald
+
+This product includes software derived from Connect
+(https://github.com/connectrpc/connect-go and
+https://github.com/connectrpc/connect-es),
+Copyright 2021-2026 The Connect Authors,
+licensed under the Apache License, Version 2.0.

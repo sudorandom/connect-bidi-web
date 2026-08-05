@@ -1,0 +1,6 @@
+/src
+/interop
+/*.json
+/buf.gen.yaml
+/dist/*/**/*.spec.js
+/dist/*/**/*.spec.d.ts

@@ -1,0 +1,26 @@
+{
+  "name": "connect-bidi-web-workspace",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "npm run build --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present",
+    "e2e": "npm run e2e --workspaces --if-present",
+    "lint": "biome lint --error-on-warnings .",
+    "format": "biome format --write ."
+  },
+  "devDependencies": {
+    "@arethetypeswrong/cli": "^0.18.5",
+    "@biomejs/biome": "^2.3.8",
+    "typescript": "^6.0.3"
+  },
+  "allowScripts": {
+    "@bufbuild/buf@1.72.0": true,
+    "esbuild@0.28.1": true,
+    "fsevents@2.3.3": true,
+    "workerd@1.20260730.1": true
+  }
+}

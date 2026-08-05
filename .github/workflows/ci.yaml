@@ -9,7 +9,7 @@ jobs:
   go:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: jdx/mise-action@v2
       - run: just generate
       - name: Check generated code is up to date
@@ -20,7 +20,7 @@ jobs:
   e2e:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: jdx/mise-action@v2
       - run: npm ci
         working-directory: ts
@@ -33,7 +33,7 @@ jobs:
       run:
         working-directory: ts
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: jdx/mise-action@v2
       - run: npm ci
       - run: npm run build

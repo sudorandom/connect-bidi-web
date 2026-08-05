@@ -29,9 +29,17 @@ jobs:
         # is generated automatically. Note: trusted publishing cannot CREATE
         # a package — brand-new packages must be published once manually
         # (see "Releasing" in the README).
+        # Skipping already-published versions makes releases idempotent: a
+        # re-run tag or a partially failed release resumes where it left
+        # off instead of dying on "cannot publish over previously published
+        # versions".
         run: |
           for pkg in core web node cloudflare; do
-            if [ -d "packages/$pkg/dist" ]; then
+            name=$(node -p "require('./packages/$pkg/package.json').name")
+            version=$(node -p "require('./packages/$pkg/package.json').version")
+            if npm view "$name@$version" version >/dev/null 2>&1; then
+              echo "$name@$version already published; skipping"
+            else
               npm publish --workspace "packages/$pkg" --access public
             fi
           done

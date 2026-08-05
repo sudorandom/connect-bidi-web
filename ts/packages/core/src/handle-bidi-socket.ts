@@ -140,9 +140,11 @@ export async function handleBidiSocket(
 
     const handler = handlers.find((h) => h.requestPath === path);
     if (!handler) {
-      await writeErrorResponse(
-        writer,
-        new ConnectError(`unknown procedure: ${path}`, Code.Unimplemented),
+      await ignoringPeerDisconnect(
+        writeErrorResponse(
+          writer,
+          new ConnectError(`unknown procedure: ${path}`, Code.Unimplemented),
+        ),
       );
       return;
     }
@@ -185,11 +187,13 @@ export async function handleBidiSocket(
       // return a structured response; reaching here indicates a bug in the
       // handler implementation or an unexpected failure. Surface it rather
       // than leaving the client waiting forever.
-      await writeErrorResponse(writer, ConnectError.from(e, Code.Internal));
+      await ignoringPeerDisconnect(
+        writeErrorResponse(writer, ConnectError.from(e, Code.Internal)),
+      );
       return;
     }
 
-    await writeResponse(writer, methodKind, response);
+    await ignoringPeerDisconnect(writeResponse(writer, methodKind, response));
   } finally {
     controller.abort();
     await envReader.cancel().catch(() => {
@@ -199,6 +203,23 @@ export async function handleBidiSocket(
       // Ignore: the stream may already be closed or errored.
     });
     socket.close?.();
+  }
+}
+
+/**
+ * Awaits a response-writing operation, swallowing its failure. A write can
+ * only fail when the underlying connection is gone (the peer canceled the
+ * RPC, closed the tab, or the socket broke) -- e.g. Cloudflare Workers
+ * throws "Can't call WebSocket send() after close()". A peer disconnecting
+ * mid-response is a normal way for an RPC to end, not a server error: there
+ * is no one left to deliver the rest of the response to, and the caller's
+ * cleanup tears the socket down either way.
+ */
+async function ignoringPeerDisconnect(write: Promise<void>): Promise<void> {
+  try {
+    await write;
+  } catch {
+    // Peer is gone; nothing left to deliver.
   }
 }
 

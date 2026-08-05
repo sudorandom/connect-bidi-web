@@ -48,6 +48,13 @@ export function createDemoTransport(
         "WebTransport is not supported in this browser or host",
       );
     }
+    // The WebTransport constructor throws a DOMException for non-https
+    // URLs; fail with a clearer message instead.
+    if (new URL(serverUrl).protocol !== "https:") {
+      throw new Error(
+        `WebTransport requires an https:// server URL, got ${serverUrl}`,
+      );
+    }
     const session = new WebTransport(new URL("/webtransport", serverUrl));
     // A rejected connection rejects `ready` and `closed` too. RPC attempts
     // surface the failure as ConnectErrors through the transport, so handle

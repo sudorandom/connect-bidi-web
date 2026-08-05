@@ -266,13 +266,6 @@ stream := client.Converse(ctx)
                     WebSocket (connection per RPC)
                   </option>
                 </select>
-                <a
-                  id="transport-unsupported-badge"
-                  class="badge hidden"
-                  href="#webtransport-reality"
-                  title="WebTransport is not supported in this browser or host — see why"
-                  >Not supported here</a
-                >
               </div>
             </div>
 
@@ -330,6 +323,16 @@ stream := client.Converse(ctx)
               </section>
             </div>
           </div>
+
+          <p class="transport-unsupported-row">
+            <a
+              id="transport-unsupported-badge"
+              class="badge hidden"
+              href="#webtransport-reality"
+              title="WebTransport is not supported in this browser or host — see why"
+              >No WebTransport here &mdash; why?</a
+            >
+          </p>
 
           <div class="run-local">
             <h3>Run it yourself</h3>
@@ -450,9 +453,16 @@ just demo-worker   # Cloudflare workerd: http://localhost:8787
       <section id="webtransport-reality" class="section section-alt hidden">
         <div class="section-inner">
           <h2>Why &ldquo;not supported here&rdquo;?</h2>
-          <p class="section-lede">
-            When the WebTransport option is greyed out, it's rarely the
-            protocol's fault.
+          <p>
+            Case in point: the hosted version of this very site runs on
+            <a href="https://workers.cloudflare.com/">Cloudflare Workers</a>,
+            which
+            <a href="https://github.com/cloudflare/workerd/issues/6451"
+              >don't yet support WebTransport</a
+            >
+            &mdash; Workers expose no QUIC or UDP path to your code. Served
+            from the Worker, the live demo above offers WebSocket only;
+            served from the Go demo server, both transports light up.
           </p>
           <p>
             The endpoints are ready. WebTransport is Baseline in evergreen
@@ -510,7 +520,8 @@ just demo-worker   # Cloudflare workerd: http://localhost:8787
             WebSocket &mdash; which traverses all of the above &mdash; when
             it doesn't. A greyed-out option means either this browser lacks
             the WebTransport API, or the selected server reported (via
-            <code>/capabilities.json</code>) that it can't terminate HTTP/3.
+            <a href="/capabilities.json"><code>/capabilities.json</code></a>)
+            that it can't terminate HTTP/3.
           </p>
         </div>
       </section>

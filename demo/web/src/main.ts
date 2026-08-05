@@ -78,27 +78,43 @@ function main(): void {
   }
 
   /**
+   * Whether WebTransport can possibly work with the current browser and
+   * server URL, without asking the server. The constructor itself throws
+   * synchronously on non-https URLs (e.g. `wrangler dev` on
+   * http://localhost:8787), so this must be checked before ever building
+   * a WebTransport-backed transport.
+   */
+  function webTransportPossible(): boolean {
+    return isWebTransportSupported() && serverUrl.startsWith("https:");
+  }
+
+  /**
    * WebTransport needs support on both ends: the API in this browser, and
    * an HTTP/3 endpoint on the selected server (a Cloudflare Workers
    * deployment, for example, only offers WebSocket).
    */
   async function refreshWebTransportAvailability(): Promise<void> {
-    if (!isWebTransportSupported()) {
+    if (!webTransportPossible()) {
       setWebTransportAvailable(false);
       return;
     }
     setWebTransportAvailable(await probeServerWebTransport(serverUrl));
   }
 
-  if (!isWebTransportSupported()) {
-    setWebTransportAvailable(false);
-    transportSelect.value = "websocket";
-  }
-
   function currentChoice(): StreamingTransportChoice {
     return transportSelect.value === "webtransport"
       ? "webtransport"
       : "websocket";
+  }
+
+  // Pick a safe initial choice before building any transport: the select
+  // may default to WebTransport, and constructing an impossible transport
+  // throws synchronously, which would take the whole demo down with it.
+  // The badge and dropdown state are reconciled by the
+  // refreshWebTransportAvailability() call further down, once the swap
+  // machinery it pokes actually exists.
+  if (!webTransportPossible()) {
+    transportSelect.value = "websocket";
   }
 
   const initial = createDemoTransport(currentChoice(), serverUrl);

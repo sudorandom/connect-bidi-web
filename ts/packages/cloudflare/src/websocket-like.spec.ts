@@ -117,6 +117,13 @@ class MockWebSocket {
   // Workers WebSockets follow the spec default of "blob"; wrapWebSocket
   // must flip this to "arraybuffer".
   binaryType = "blob";
+  // Workers WebSockets throw from send() once the socket is closed; opt in
+  // to that behavior to model a peer that disconnects mid-RPC.
+  private readonly failSendAfterClose: boolean;
+
+  constructor(opts: { failSendAfterClose?: boolean } = {}) {
+    this.failSendAfterClose = opts.failSendAfterClose === true;
+  }
 
   addEventListener(
     type: "message",
@@ -146,6 +153,9 @@ class MockWebSocket {
   }
 
   send(message: ArrayBuffer | ArrayBufferView | string): void {
+    if (this.closed && this.failSendAfterClose) {
+      throw new TypeError("Can't call WebSocket send() after close().");
+    }
     this.sentFrames.push(toBytes(message));
   }
 
@@ -371,6 +381,42 @@ describe("wrapWebSocket() + handleBidiSocket()", () => {
     const socket = new MockWebSocket();
     wrapWebSocket(socket);
     assert.strictEqual(socket.binaryType, "arraybuffer");
+  });
+
+  it("resolves when the peer closes before the response is written", async () => {
+    // Regression: Workers throw from send() after the socket closes. A peer
+    // disconnecting mid-response is a normal way for an RPC to end, so
+    // handleBidiSocket must resolve rather than reject (rejections are
+    // surfaced through onError and logged as server errors).
+    const handlers = createTestHandlers();
+    const handler = findHandler(handlers, "Ping");
+    const socket = new MockWebSocket({ failSendAfterClose: true });
+    const duplex = wrapWebSocket(socket);
+
+    socket.emit(
+      encodeHeadersEnvelope(handler.requestPath, contentTypeUnaryProto),
+    );
+    socket.emit(
+      encodeEnvelope(
+        flagEnvelopeData,
+        toBinary(
+          PingRequestSchema,
+          create(PingRequestSchema, { number: BigInt(1), text: "bye" }),
+        ),
+      ),
+    );
+    socket.emit(encodeEndStream());
+    // The peer disconnects before the handler has produced its response;
+    // every subsequent send() throws, like on real workerd.
+    socket.close();
+
+    await handleBidiSocket(duplex, handlers);
+
+    assert.strictEqual(
+      socket.sentFrames.length,
+      0,
+      "no frames can be delivered after the peer closed",
+    );
   });
 
   it("ignores socket events after the stream is canceled", async () => {

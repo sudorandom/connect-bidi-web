@@ -452,6 +452,13 @@ h3 {
   color: #abb2bf;
 }
 
+/* WebTransport-unavailable badge, shown below the demo card */
+.transport-unsupported-row {
+  max-width: 720px;
+  margin: 0.9rem auto 0;
+  text-align: center;
+}
+
 /* "Run it yourself" block under the live demo */
 .run-local {
   max-width: 720px;

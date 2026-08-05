@@ -127,6 +127,34 @@ cd ts && npm ci && cd ..
 just e2e
 ```
 
+## Future work
+
+- **WebTransport over HTTP/2**
+  ([draft-ietf-webtrans-http2](https://datatracker.ietf.org/doc/draft-ietf-webtrans-http2/)):
+  maps the same WebTransport API onto HTTP/2 streams over TCP, which could
+  eventually cover the middleboxes and UDP-blocked networks that an
+  end-to-end HTTP/3 path can't cross. Worth tracking, but a long way out:
+  - No browser implements it — browser WebTransport is HTTP/3-only. When
+    Chromium engineers discussed the HTTP/2 binding, the stated motivation
+    was proxy-to-backend communication, with use in Chrome "further away."
+    On a UDP-blocked network a browser WebTransport handshake simply fails
+    today, so the WebSocket fallback stays necessary regardless.
+  - Browsers haven't even converged on the HTTP/3 binding: as of April 2026
+    Safari and the IETF are on draft-15 while Chrome and Firefox still
+    speak draft-02. HTTP/2 support is realistically well behind that.
+  - Server-side it barely exists:
+    [erlang-webtransport](https://github.com/benoitc/erlang-webtransport)
+    implements both bindings (HTTP/3 draft-15, and HTTP/2 draft-14 via
+    RFC 9297 capsules), and the draft's authors are from Meta and Apple,
+    whose stacks track it — but webtransport-go, which this project builds
+    on, is HTTP/3-only, as are most other libraries.
+  - Even once shipped, it's a weaker transport by design: no unreliable
+    delivery (datagrams are retransmitted regardless of the application's
+    preference) and no stream independence (HTTP/2 head-of-line blocking).
+    Session pooling does work — each session is its own HTTP/2 stream. The
+    web API's `requireUnreliable` option exists precisely so an application
+    can refuse this fallback when real datagrams matter.
+
 ## Legal
 
 Apache-2.0. Derived from [connectrpc/connect-go](https://github.com/connectrpc/connect-go) and [connectrpc/connect-es](https://github.com/connectrpc/connect-es) (see `NOTICE`). Not an official ConnectRPC project.

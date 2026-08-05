@@ -21,12 +21,29 @@ just demo-worker               # local: http://localhost:8787 (builds the site f
 Or manually:
 
 ```sh
-cd demo/web && npm install && npm run build   # build the site bundle first
+cd ts && npm ci && npm run build              # build the workspace packages
+cd ../demo/web && npm install && npm run build # build the site bundle
 cd ../worker
 npm install
 npm run dev                    # local: http://localhost:8787
 npm run deploy                 # deploy to your Cloudflare account
 ```
+
+### Workers Builds (Git integration)
+
+The worker depends on `file:` links into `ts/packages/`, and every `dist/`
+is gitignored, so this package's `build` script builds the sibling packages
+(the ts/ workspace and the demo/web site bundle) before wrangler bundles
+the worker:
+
+| Setting        | Value |
+|----------------|-------|
+| Root directory | `demo/worker` |
+| Build command  | `npm run build` |
+| Deploy command | `npx wrangler deploy` (default) |
+
+The static assets need no dashboard configuration; `wrangler.jsonc` already
+points at `../web/dist`.
 
 ## Deferred: native gRPC on Workers (private beta)
 

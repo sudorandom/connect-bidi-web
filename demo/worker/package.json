@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "generate": "buf generate ../.. --template buf.gen.yaml --path ../../proto/connectbidi/eliza/v1/eliza.proto",
+    "build": "npm --prefix ../../ts ci && npm --prefix ../../ts run build && npm --prefix ../web ci && npm --prefix ../web run build",
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
     "typecheck": "tsc --noEmit"

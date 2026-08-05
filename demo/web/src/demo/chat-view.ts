@@ -46,8 +46,22 @@ export function createChatView(
     input.setAttribute("autocorrect", "off");
     input.setAttribute("autocapitalize", "off");
     input.setAttribute("spellcheck", "false");
-    input.placeholder = "Type your message and press Enter...";
-    inputContainer.replaceChildren(input);
+    input.placeholder = "Type your message...";
+
+    const sendButton = document.createElement("button");
+    sendButton.type = "button";
+    sendButton.className = "chat-send-btn";
+    sendButton.setAttribute("aria-label", "Send message");
+    sendButton.innerHTML =
+      '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" ' +
+      'stroke="currentColor" stroke-width="2.5" stroke-linecap="round" ' +
+      'stroke-linejoin="round" aria-hidden="true">' +
+      '<path d="M12 19V5" /><path d="m5 12 7-7 7 7" /></svg>';
+
+    const row = document.createElement("div");
+    row.className = "chat-input-row";
+    row.append(input, sendButton);
+    inputContainer.replaceChildren(row);
     input.focus();
 
     return new Promise<string>((resolve, reject) => {
@@ -56,17 +70,20 @@ export function createChatView(
         reject(new Error("aborted"));
       };
       signal?.addEventListener("abort", onAbort, { once: true });
-      input.addEventListener("keyup", (event) => {
-        if (event.key !== "Enter") {
-          return;
-        }
+      const submit = (): void => {
         const value = input.value.trim();
         if (value.length === 0) {
           return;
         }
         signal?.removeEventListener("abort", onAbort);
         resolve(value);
+      };
+      input.addEventListener("keyup", (event) => {
+        if (event.key === "Enter") {
+          submit();
+        }
       });
+      sendButton.addEventListener("click", submit);
     });
   }
 

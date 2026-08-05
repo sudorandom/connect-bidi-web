@@ -728,6 +728,45 @@ a.badge:hover {
   box-shadow: 0 0 0 3px var(--accent-glow);
 }
 
+.chat-input-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.chat-input-row .chat-input {
+  flex: 1;
+  min-width: 0;
+}
+
+.chat-send-btn {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.6rem;
+  height: 2.6rem;
+  border: none;
+  border-radius: 50%;
+  background: var(--accent-secondary);
+  color: #fff;
+  cursor: pointer;
+  transition: filter 0.15s ease;
+}
+
+.chat-send-btn:hover {
+  filter: brightness(1.1);
+}
+
+.chat-send-btn:active {
+  filter: brightness(0.95);
+}
+
+.chat-send-btn:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--accent-glow);
+}
+
 /* Streams visualizer */
 .streams-header {
   display: flex;

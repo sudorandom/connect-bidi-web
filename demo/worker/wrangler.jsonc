@@ -3,6 +3,13 @@
   "name": "connect-bidi-web-demo",
   "main": "src/worker.ts",
   "compatibility_date": "2026-07-30",
+  // Custom domain: Cloudflare creates the DNS record and certificate on
+  // deploy (the kmcd.dev zone must be in the same Cloudflare account).
+  "routes": [
+    { "pattern": "connect-bidi-web.kmcd.dev", "custom_domain": true }
+  ],
+  // The custom domain is canonical; don't also serve from *.workers.dev.
+  "workers_dev": false,
   "assets": {
     // The built demo site; run `npm run build` in demo/web first.
     "directory": "../web/dist",

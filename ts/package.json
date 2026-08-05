@@ -6,7 +6,7 @@
     "packages/*"
   ],
   "scripts": {
-    "build": "npm run build --workspaces --if-present",
+    "build": "npm run build -w @sudorandom/connect-bidi-core && npm run build -w @sudorandom/connect-bidi-web && npm run build -w @sudorandom/connect-bidi-node && npm run build -w @sudorandom/connect-bidi-cloudflare",
     "test": "npm run test --workspaces --if-present",
     "e2e": "npm run e2e --workspaces --if-present",
     "lint": "biome lint --error-on-warnings .",

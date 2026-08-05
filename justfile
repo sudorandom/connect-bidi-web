@@ -16,8 +16,8 @@ test: build
 # WebTransport, plus cross-language interop (Go <-> TypeScript) in both
 # directions. Requires `npm ci` in ts/ first.
 e2e: build
-    go test -race -count=1 ./internal/e2e/...
     npm --prefix ts run build
+    go test -race -count=1 ./internal/e2e/...
     npm --prefix ts run e2e
 
 # Run benchmarks

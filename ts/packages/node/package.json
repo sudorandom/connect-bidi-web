@@ -55,7 +55,7 @@
   "devDependencies": {
     "@bufbuild/buf": "^1.72.0",
     "@bufbuild/protoc-gen-es": "^2.13.0",
-    "@types/node": "^24.10.1",
+    "@types/node": "^26.1.2",
     "@types/ws": "^8.18.1",
     "tsx": "^4.20.6"
   }

@@ -35,7 +35,7 @@
     "node": ">=20.19.0"
   },
   "dependencies": {
-    "@sudorandom/connect-bidi-core": "^0.1.0"
+    "@sudorandom/connect-bidi-core": "0.1.0"
   },
   "peerDependencies": {
     "@bufbuild/protobuf": "^2.7.0",

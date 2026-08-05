@@ -1,13 +1,31 @@
 name: release
 on:
   push:
-    tags: ["v*"]
-permissions:
-  contents: read
-  id-token: write # npm provenance
+    branches: [main]
 jobs:
-  npm-publish:
+  # Release Please maintains a release PR that bumps versions (root
+  # manifest + every ts package via release-please-config.json), updates
+  # the changelog, and — when the PR is merged — creates the vX.Y.Z tag
+  # and GitHub release. The plain vX.Y.Z tag also versions the Go module.
+  release-please:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    outputs:
+      releases_created: ${{ steps.release.outputs.releases_created }}
+    steps:
+      - uses: googleapis/release-please-action@v4
+        id: release
+  # Publishing runs in this same workflow because tags created with the
+  # default GITHUB_TOKEN do not trigger other workflows.
+  npm-publish:
+    needs: release-please
+    if: needs.release-please.outputs.releases_created == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write # npm provenance / trusted publishing
     defaults:
       run:
         working-directory: ts
@@ -26,13 +44,10 @@ jobs:
         # Auth is npm Trusted Publishing (OIDC, via the id-token permission):
         # each package on npmjs.com is configured with this repo + workflow
         # as its trusted publisher. No token secret is involved; provenance
-        # is generated automatically. Note: trusted publishing cannot CREATE
-        # a package — brand-new packages must be published once manually
-        # (see "Releasing" in the README).
+        # is generated automatically.
         # Skipping already-published versions makes releases idempotent: a
-        # re-run tag or a partially failed release resumes where it left
-        # off instead of dying on "cannot publish over previously published
-        # versions".
+        # re-run resumes where it left off instead of dying on "cannot
+        # publish over previously published versions".
         run: |
           for pkg in core web node cloudflare; do
             name=$(node -p "require('./packages/$pkg/package.json').name")

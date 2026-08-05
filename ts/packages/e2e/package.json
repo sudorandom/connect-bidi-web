@@ -15,8 +15,8 @@
     "@bufbuild/protobuf": "^2.7.0",
     "@connectrpc/connect": "^2.1.0",
     "@connectrpc/connect-web": "^2.1.0",
-    "@sudorandom/connect-bidi-node": "^0.1.0",
-    "@sudorandom/connect-bidi-web": "^0.1.0"
+    "@sudorandom/connect-bidi-node": "*",
+    "@sudorandom/connect-bidi-web": "*"
   },
   "devDependencies": {
     "@bufbuild/buf": "^1.72.0",

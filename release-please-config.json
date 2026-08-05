@@ -1,0 +1,41 @@
+{
+  "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+  "include-component-in-tag": false,
+  "packages": {
+    ".": {
+      "release-type": "go",
+      "extra-files": [
+        {
+          "type": "json",
+          "path": "ts/packages/core/package.json",
+          "jsonpath": "$.version"
+        },
+        {
+          "type": "json",
+          "path": "ts/packages/web/package.json",
+          "jsonpath": "$.version"
+        },
+        {
+          "type": "json",
+          "path": "ts/packages/node/package.json",
+          "jsonpath": "$.version"
+        },
+        {
+          "type": "json",
+          "path": "ts/packages/node/package.json",
+          "jsonpath": "$.dependencies['@sudorandom/connect-bidi-core']"
+        },
+        {
+          "type": "json",
+          "path": "ts/packages/cloudflare/package.json",
+          "jsonpath": "$.version"
+        },
+        {
+          "type": "json",
+          "path": "ts/packages/cloudflare/package.json",
+          "jsonpath": "$.dependencies['@sudorandom/connect-bidi-core']"
+        }
+      ]
+    }
+  }
+}

@@ -36,7 +36,7 @@
     "node": ">=20.19.0"
   },
   "dependencies": {
-    "@sudorandom/connect-bidi-core": "^0.1.0",
+    "@sudorandom/connect-bidi-core": "0.1.0",
     "ws": "^8.21.2"
   },
   "peerDependencies": {

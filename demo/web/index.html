@@ -36,11 +36,11 @@
         </a>
         <nav class="site-nav">
           <a href="#what-it-is">What it is</a>
-          <a href="#protocol">Protocol</a>
           <a href="#code-examples">TypeScript</a>
           <a href="#code-examples-go">Go</a>
           <a href="#live-demo">Live demo</a>
           <a href="#support-matrix">Support</a>
+          <a href="#protocol">Protocol</a>
           <a
             class="btn-ghost"
             href="https://github.com/sudorandom/connect-bidi-web"
@@ -136,145 +136,8 @@
         </div>
       </section>
 
-      <!-- Protocol theory -->
-      <section id="protocol" class="section section-alt">
-        <div class="section-inner">
-          <h2>How the protocol works</h2>
-          <p class="section-lede">
-            One rule: stay as close to the
-            <a href="https://connectrpc.com/docs/protocol/">Connect
-            protocol</a> as possible, and add only what a raw socket cannot
-            provide itself.
-          </p>
-          <p>
-            On the wire, a streaming Connect RPC is a sequence of envelopes —
-            a flag byte, a big-endian length, and a payload. connect-bidi-web
-            keeps all of it, byte for byte: the same codecs, the same
-            per-message compression, the same error codes and details, the
-            same <code>EndStreamResponse</code> JSON that ends every stream.
-            A Connect server could almost be fooled.
-          </p>
-          <p>
-            What it can't keep is everything Connect quietly inherits from
-            HTTP. Once a WebSocket finishes its upgrade, HTTP leaves the
-            room: there are no more per-request headers, no way to tell
-            concurrent RPCs apart, no half-close, and no
-            <code>RST_STREAM</code> to cancel one call without killing the
-            rest. Each of those gaps becomes one small, explicit piece of
-            protocol:
-          </p>
-          <div class="feature-grid">
-            <div class="feature-card">
-              <h3>Headers frame (<code>0x07</code>)</h3>
-              <p>
-                A new envelope type opens every stream, carrying what would
-                have been the HTTP headers as JSON metadata — the
-                <code>:path</code> of the procedure, the content type,
-                compression negotiation, deadlines. Its flag value is chosen
-                so no combination of Connect's own flag bits can ever
-                collide with it.
-              </p>
-            </div>
-            <div class="feature-card">
-              <h3>Stream ID</h3>
-              <p>
-                Every WebSocket frame is prefixed with a 4-byte stream ID so
-                many RPCs can share one connection — the receiver uses it to
-                match each message to the appropriate caller. Clients assign
-                IDs starting at 1 and never reuse them, exactly the job
-                HTTP/2 stream IDs do for Connect over HTTP.
-              </p>
-            </div>
-            <div class="feature-card">
-              <h3>End-stream envelope (<code>0x02</code>)</h3>
-              <p>
-                Straight from Connect: the response stream ends with the
-                standard <code>EndStreamResponse</code> JSON. Requests reuse
-                it with an empty payload as an explicit half-close
-                (&ldquo;done sending, still listening&rdquo;), since neither
-                the stream nor the WebSocket has one of its own.
-              </p>
-            </div>
-            <div class="feature-card">
-              <h3>Reset frame (<code>0x0F</code>)</h3>
-              <p>
-                Cancellation. Closing a shared connection would kill every
-                RPC on it, and a client that already half-closed has no
-                other frame left to send — so, like HTTP/2's
-                <code>RST_STREAM</code>, a reset aborts exactly one stream
-                and the server cancels that handler's context.
-              </p>
-            </div>
-          </div>
-          <article class="code-card wire-format-card">
-            <header class="code-card-header">
-              <span class="code-lang">Wire format</span>
-              <span class="code-title">One WebSocket message = one frame</span>
-            </header>
-            <div class="wire-format">
-              <pre><code class="nohighlight">&#9484;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9488;&#9484;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9488;&#9484;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9488;&#9484;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9488;
-&#9474; stream ID &#9474;&#9474; flag &#9474;&#9474; length     &#9474;&#9474; payload &#8230;      &#9474;
-&#9474; (4 bytes) &#9474;&#9474; (1)  &#9474;&#9474; (4 bytes)  &#9474;&#9474;                &#9474;
-&#9492;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9496;&#9492;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9496;&#9492;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9496;&#9492;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9496;
-             &#9492;&#9472;&#9472;&#9472;&#9472; a standard Connect envelope &#9472;&#9472;&#9472;&#9472;&#9472;&#9496;</code></pre>
-              <table class="flag-table">
-                <thead>
-                  <tr>
-                    <th scope="col">Flag</th>
-                    <th scope="col">Frame</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr>
-                    <td><code>0x00</code></td>
-                    <td>data</td>
-                  </tr>
-                  <tr>
-                    <td><code>0x01</code></td>
-                    <td>compressed data</td>
-                  </tr>
-                  <tr>
-                    <td><code>0x02</code></td>
-                    <td>end-stream</td>
-                  </tr>
-                  <tr>
-                    <td><code>0x07</code></td>
-                    <td>headers</td>
-                  </tr>
-                  <tr>
-                    <td><code>0x0F</code></td>
-                    <td>reset</td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-          </article>
-          <p>
-            WebTransport needs almost none of this. QUIC already gives every
-            RPC its own independently flow-controlled stream, with native
-            half-close and cancellation — so there the protocol is exactly
-            Connect envelopes plus the headers frame, and nothing else. The
-            stream ID and reset frame exist only where the transport can't
-            do that job itself.
-          </p>
-          <p>
-            Sharing one ordered TCP connection has a real cost, though:
-            <strong>head-of-line blocking</strong>. A huge message — or a
-            stalled consumer — on one stream delays every frame queued
-            behind it, and unlike HTTP/2 there is no per-stream flow
-            control. For RPCs that can't tolerate that, both clients take an
-            option (<code>connectionPerStream</code> in TypeScript,
-            <code>WithConnectionPerStream()</code> in Go) that dials a
-            dedicated WebSocket connection per streaming RPC instead. It's
-            purely a client-side choice: the protocol is identical either
-            way, and a dedicated connection is just a multiplexed connection
-            that happens to carry one stream.
-          </p>
-        </div>
-      </section>
-
       <!-- Code examples: TypeScript / connect-es -->
-      <section id="code-examples" class="section">
+      <section id="code-examples" class="section section-alt">
         <div class="section-inner">
           <h2>In the browser &mdash; connect-es</h2>
           <p class="section-lede">
@@ -370,7 +233,7 @@ const transport = createCompositeTransport(
       </section>
 
       <!-- Code examples: Go / connect-go -->
-      <section id="code-examples-go" class="section section-alt">
+      <section id="code-examples-go" class="section">
         <div class="section-inner">
           <h2>On the backend &mdash; connect-go</h2>
           <p class="section-lede">
@@ -477,7 +340,7 @@ client := elizav1connect.NewElizaServiceClient(connect.NewClient(transport))</co
       </section>
 
       <!-- Live demo -->
-      <section id="live-demo" class="section">
+      <section id="live-demo" class="section section-alt">
         <div class="section-inner">
           <h2>Live demo</h2>
           <p class="section-lede">
@@ -649,7 +512,7 @@ just demo-worker   # Cloudflare workerd: http://localhost:8787
       </section>
 
       <!-- Support matrix -->
-      <section id="support-matrix" class="section section-alt">
+      <section id="support-matrix" class="section">
         <div class="section-inner">
           <h2>Support matrix</h2>
           <div class="table-scroll">
@@ -712,6 +575,143 @@ just demo-worker   # Cloudflare workerd: http://localhost:8787
             (<code>"WebTransport" in globalThis</code>) and asks the selected
             server whether it terminates HTTP/3, disabling that dropdown
             option wherever either end doesn't support it.
+          </p>
+        </div>
+      </section>
+
+      <!-- Protocol theory -->
+      <section id="protocol" class="section section-alt">
+        <div class="section-inner">
+          <h2>How the protocol works</h2>
+          <p class="section-lede">
+            One rule: stay as close to the
+            <a href="https://connectrpc.com/docs/protocol/">Connect
+            protocol</a> as possible, and add only what a raw socket cannot
+            provide itself.
+          </p>
+          <p>
+            On the wire, a streaming Connect RPC is a sequence of envelopes —
+            a flag byte, a big-endian length, and a payload. connect-bidi-web
+            keeps all of it, byte for byte: the same codecs, the same
+            per-message compression, the same error codes and details, the
+            same <code>EndStreamResponse</code> JSON that ends every stream.
+            A Connect server could almost be fooled.
+          </p>
+          <p>
+            What it can't keep is everything Connect quietly inherits from
+            HTTP. Once a WebSocket finishes its upgrade, HTTP leaves the
+            room: there are no more per-request headers, no way to tell
+            concurrent RPCs apart, no half-close, and no
+            <code>RST_STREAM</code> to cancel one call without killing the
+            rest. Each of those gaps becomes one small, explicit piece of
+            protocol:
+          </p>
+          <div class="feature-grid">
+            <div class="feature-card">
+              <h3>Headers frame (<code>0x07</code>)</h3>
+              <p>
+                A new envelope type opens every stream, carrying what would
+                have been the HTTP headers as JSON metadata — the
+                <code>:path</code> of the procedure, the content type,
+                compression negotiation, deadlines. Its flag value is chosen
+                so no combination of Connect's own flag bits can ever
+                collide with it.
+              </p>
+            </div>
+            <div class="feature-card">
+              <h3>Stream ID</h3>
+              <p>
+                Every WebSocket frame is prefixed with a 4-byte stream ID so
+                many RPCs can share one connection — the receiver uses it to
+                match each message to the appropriate caller. Clients assign
+                IDs starting at 1 and never reuse them, exactly the job
+                HTTP/2 stream IDs do for Connect over HTTP.
+              </p>
+            </div>
+            <div class="feature-card">
+              <h3>End-stream envelope (<code>0x02</code>)</h3>
+              <p>
+                Straight from Connect: the response stream ends with the
+                standard <code>EndStreamResponse</code> JSON. Requests reuse
+                it with an empty payload as an explicit half-close
+                (&ldquo;done sending, still listening&rdquo;), since neither
+                the stream nor the WebSocket has one of its own.
+              </p>
+            </div>
+            <div class="feature-card">
+              <h3>Reset frame (<code>0x0F</code>)</h3>
+              <p>
+                Cancellation. Closing a shared connection would kill every
+                RPC on it, and a client that already half-closed has no
+                other frame left to send — so, like HTTP/2's
+                <code>RST_STREAM</code>, a reset aborts exactly one stream
+                and the server cancels that handler's context.
+              </p>
+            </div>
+          </div>
+          <article class="code-card wire-format-card">
+            <header class="code-card-header">
+              <span class="code-lang">Wire format</span>
+              <span class="code-title">One WebSocket message = one frame</span>
+            </header>
+            <div class="wire-format">
+              <pre><code class="nohighlight">&#9484;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9488;&#9484;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9488;&#9484;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9488;&#9484;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9488;
+&#9474; stream ID &#9474;&#9474; flag &#9474;&#9474; length     &#9474;&#9474; payload &#8230;      &#9474;
+&#9474; (4 bytes) &#9474;&#9474; (1)  &#9474;&#9474; (4 bytes)  &#9474;&#9474;                &#9474;
+&#9492;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9496;&#9492;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9496;&#9492;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9496;&#9492;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9496;
+             &#9492;&#9472;&#9472;&#9472;&#9472; a standard Connect envelope &#9472;&#9472;&#9472;&#9472;&#9472;&#9496;</code></pre>
+              <table class="flag-table">
+                <thead>
+                  <tr>
+                    <th scope="col">Flag</th>
+                    <th scope="col">Frame</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td><code>0x00</code></td>
+                    <td>data</td>
+                  </tr>
+                  <tr>
+                    <td><code>0x01</code></td>
+                    <td>compressed data</td>
+                  </tr>
+                  <tr>
+                    <td><code>0x02</code></td>
+                    <td>end-stream</td>
+                  </tr>
+                  <tr>
+                    <td><code>0x07</code></td>
+                    <td>headers</td>
+                  </tr>
+                  <tr>
+                    <td><code>0x0F</code></td>
+                    <td>reset</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </article>
+          <p>
+            WebTransport needs almost none of this. QUIC already gives every
+            RPC its own independently flow-controlled stream, with native
+            half-close and cancellation — so there the protocol is exactly
+            Connect envelopes plus the headers frame, and nothing else. The
+            stream ID and reset frame exist only where the transport can't
+            do that job itself.
+          </p>
+          <p>
+            Sharing one ordered TCP connection has a real cost, though:
+            <strong>head-of-line blocking</strong>. A huge message — or a
+            stalled consumer — on one stream delays every frame queued
+            behind it, and unlike HTTP/2 there is no per-stream flow
+            control. For RPCs that can't tolerate that, both clients take an
+            option (<code>connectionPerStream</code> in TypeScript,
+            <code>WithConnectionPerStream()</code> in Go) that dials a
+            dedicated WebSocket connection per streaming RPC instead. It's
+            purely a client-side choice: the protocol is identical either
+            way, and a dedicated connection is just a multiplexed connection
+            that happens to carry one stream.
           </p>
         </div>
       </section>

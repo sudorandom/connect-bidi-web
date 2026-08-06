@@ -929,37 +929,30 @@ a.badge:hover {
 .lanes-container {
   display: flex;
   flex-direction: column;
-  gap: 0.85rem;
+  gap: 0.5rem;
 }
 
-.lane-card {
+/* One slim row per lane: label, a shared bidirectional track, counters,
+   and a status badge. */
+.lane-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
   background: var(--bg-elevated);
   border: 1px solid var(--border-color);
-  border-radius: 14px;
-  padding: 0.9rem;
-  display: flex;
-  flex-direction: column;
-  gap: 0.65rem;
+  border-radius: 10px;
+  padding: 0.5rem 0.75rem;
 }
 
-.lane-card.running {
+.lane-row.running {
   border-color: rgba(99, 102, 241, 0.5);
 }
 
-.lane-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 0.4rem;
-}
-
-.lane-title {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
+.lane-label {
   font-weight: 600;
-  font-size: 0.85rem;
+  font-size: 0.78rem;
+  white-space: nowrap;
+  min-width: 3.2rem;
 }
 
 .status-badge {
@@ -993,122 +986,91 @@ a.badge:hover {
   display: none;
 }
 
-.lane-stats {
-  display: flex;
-  gap: 0.85rem;
-  font-size: 0.76rem;
+.lane-counts {
+  font-size: 0.74rem;
   color: var(--text-muted);
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  white-space: nowrap;
 }
 
-.stat-tag {
-  background: rgba(15, 23, 42, 0.04);
-  padding: 0.3rem 0.6rem;
-  border-radius: 8px;
-  border: 1px solid var(--border-color);
+.lane-counts strong {
+  color: var(--text-main);
 }
 
-.lane-tracks-wrapper {
-  display: flex;
-  flex-direction: column;
-  gap: 0.45rem;
-}
-
-.track-row {
-  display: flex;
-  align-items: center;
-  gap: 0.55rem;
-}
-
-.row-label {
-  width: 44px;
-  font-size: 0.68rem;
-  font-weight: 700;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  text-align: right;
-  flex-shrink: 0;
-}
-
-.label-tx {
-  color: #6366f1;
-}
-
-.label-rx {
-  color: #10b981;
-}
-
+/* A single shared track: TX dots fly left-to-right along the upper half,
+   RX dots fly back right-to-left along the lower half. */
 .lane-track {
   flex: 1;
   position: relative;
-  height: 34px;
-  background: rgba(15, 23, 42, 0.05);
-  border-radius: 9px;
-  border: 1px solid var(--border-color);
+  height: 20px;
+  min-width: 80px;
+  background: rgba(148, 163, 184, 0.12);
+  border-radius: 6px;
   overflow: hidden;
-  display: flex;
-  align-items: center;
 }
 
-.pulse-node {
+.lane-dot {
   position: absolute;
-  top: 50%;
-  transform: translateY(-50%);
-  padding: 0.3rem 0.65rem;
-  border-radius: 7px;
-  font-size: 0.72rem;
-  font-weight: 600;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  white-space: nowrap;
-  color: #fff;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
 }
 
-.pulse-tx {
-  background: linear-gradient(135deg, #3b82f6 0%, #6366f1 100%);
-  animation: pulseMoveTx 1.6s cubic-bezier(0.25, 1, 0.5, 1) forwards;
+.lane-dot-tx {
+  top: 3px;
+  background: #6366f1;
+  animation: laneDotTx 1.4s linear forwards;
 }
 
-.pulse-rx {
-  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
-  animation: pulseMoveRx 1.6s cubic-bezier(0.25, 1, 0.5, 1) forwards;
+.lane-dot-rx {
+  bottom: 3px;
+  background: #10b981;
+  animation: laneDotRx 1.4s linear forwards;
 }
 
-@keyframes pulseMoveTx {
+@keyframes laneDotTx {
   0% {
-    left: 2%;
-    opacity: 0.2;
-    transform: translateY(-50%) scale(0.85);
+    left: 0;
+    opacity: 0;
   }
-  20% {
+  15% {
     opacity: 1;
-    transform: translateY(-50%) scale(1);
   }
-  80% {
+  85% {
     opacity: 1;
   }
   100% {
-    left: 80%;
+    left: calc(100% - 8px);
     opacity: 0;
-    transform: translateY(-50%) scale(0.85);
   }
 }
 
-@keyframes pulseMoveRx {
+@keyframes laneDotRx {
   0% {
-    right: 2%;
-    opacity: 0.2;
-    transform: translateY(-50%) scale(0.85);
+    right: 0;
+    opacity: 0;
   }
-  20% {
+  15% {
     opacity: 1;
-    transform: translateY(-50%) scale(1);
   }
-  80% {
+  85% {
     opacity: 1;
   }
   100% {
-    right: 80%;
+    right: calc(100% - 8px);
     opacity: 0;
-    transform: translateY(-50%) scale(0.85);
+  }
+}
+
+@media (max-width: 560px) {
+  .lane-row {
+    flex-wrap: wrap;
+  }
+
+  /* The track drops to its own full-width line under the label/counters. */
+  .lane-track {
+    order: 4;
+    flex-basis: 100%;
   }
 }
 

@@ -17,10 +17,10 @@ import type { ElizaService } from "../gen/connectbidi/eliza/v1/eliza_pb.js";
 import { isWebTransportConnectionError, requireElement } from "./dom.js";
 
 const LANE_LABELS: readonly string[] = [
-  "Stream Lane #1 ⚡",
-  "Stream Lane #2 🌊",
-  "Stream Lane #3 🚀",
-  "Stream Lane #4 🔮",
+  "Lane 1",
+  "Lane 2",
+  "Lane 3",
+  "Lane 4",
 ];
 
 const MESSAGES_PER_LANE = 20;
@@ -64,6 +64,7 @@ export function createStreamsView(
   }));
 
   let running = false;
+  let activeLanes = 0;
   renderLanes();
 
   toggleButton.addEventListener("click", () => {
@@ -84,28 +85,15 @@ export function createStreamsView(
   function renderLaneCard(lane: Lane): HTMLElement {
     const card = document.createElement("div");
     card.id = `lane-card-${lane.id}`;
-    card.className = "lane-card";
+    card.className = "lane-row";
+    // One slim row per lane, with a single shared track: sent messages
+    // fly left-to-right in indigo, their echoes fly back right-to-left in
+    // green.
     card.innerHTML = `
-      <div class="lane-header">
-        <div class="lane-title">
-          <span>${lane.label}</span>
-          <span id="lane-status-${lane.id}" class="status-badge">IDLE</span>
-        </div>
-        <div class="lane-stats">
-          <span class="stat-tag">TX sent: <strong id="lane-tx-${lane.id}">0</strong></span>
-          <span class="stat-tag">RX echo: <strong id="lane-rx-${lane.id}">0</strong></span>
-        </div>
-      </div>
-      <div class="lane-tracks-wrapper">
-        <div class="track-row">
-          <span class="row-label label-tx">TX &#8594;</span>
-          <div id="lane-track-tx-${lane.id}" class="lane-track"></div>
-        </div>
-        <div class="track-row">
-          <span class="row-label label-rx">&#8592; RX</span>
-          <div id="lane-track-rx-${lane.id}" class="lane-track"></div>
-        </div>
-      </div>
+      <span class="lane-label">${lane.label}</span>
+      <div id="lane-track-${lane.id}" class="lane-track"></div>
+      <span class="lane-counts">TX <strong id="lane-tx-${lane.id}">0</strong> &#183; RX <strong id="lane-rx-${lane.id}">0</strong></span>
+      <span id="lane-status-${lane.id}" class="status-badge">IDLE</span>
     `;
     return card;
   }
@@ -134,46 +122,51 @@ export function createStreamsView(
   }
 
   function updateLaneStat(lane: Lane, kind: "tx" | "rx"): void {
-    const el = document.querySelector<HTMLElement>(
+    const counter = document.querySelector<HTMLElement>(
       `#lane-${kind}-${lane.id}`,
     );
-    if (el !== null) {
-      el.innerText = String(kind === "tx" ? lane.txCount : lane.rxCount);
+    if (counter !== null) {
+      counter.innerText = String(kind === "tx" ? lane.txCount : lane.rxCount);
     }
   }
 
-  function pulse(lane: Lane, kind: "tx" | "rx", value: number): void {
+  /** Sends a dot flying along the lane's track: TX rightwards, RX back. */
+  function pulse(lane: Lane, kind: "tx" | "rx"): void {
     const track = document.querySelector<HTMLElement>(
-      `#lane-track-${kind}-${lane.id}`,
+      `#lane-track-${lane.id}`,
     );
     if (track === null) {
       return;
     }
-    const node = document.createElement("div");
-    node.className = `pulse-node pulse-${kind}`;
-    node.innerText = `#${value}`;
-    track.append(node);
-    setTimeout(() => node.remove(), 1450);
+    const dot = document.createElement("div");
+    dot.className = `lane-dot lane-dot-${kind}`;
+    track.append(dot);
+    setTimeout(() => dot.remove(), 1450);
   }
 
   function delay(ms: number): Promise<void> {
     return new Promise((resolve) => setTimeout(resolve, ms));
   }
 
+  function setToggleRunning(isRunning: boolean): void {
+    running = isRunning;
+    toggleButton.classList.toggle("active", isRunning);
+    toggleButton.innerText = isRunning
+      ? "Stop all streams"
+      : "▶ Start all streams";
+  }
+
   function startAll(): void {
-    running = true;
-    toggleButton.classList.add("active");
-    toggleButton.innerText = "Stop all streams";
+    setToggleRunning(true);
     errorHint.classList.add("hidden");
+    activeLanes = lanes.length;
     for (const lane of lanes) {
       void runLane(lane);
     }
   }
 
   function stopAll(): void {
-    running = false;
-    toggleButton.classList.remove("active");
-    toggleButton.innerText = "Start all streams";
+    setToggleRunning(false);
     for (const lane of lanes) {
       lane.abortController?.abort();
     }
@@ -182,6 +175,8 @@ export function createStreamsView(
   async function runLane(lane: Lane): Promise<void> {
     lane.txCount = 0;
     lane.rxCount = 0;
+    updateLaneStat(lane, "tx");
+    updateLaneStat(lane, "rx");
     lane.abortController = new AbortController();
     const signal = lane.abortController.signal;
     let failed = false;
@@ -191,7 +186,7 @@ export function createStreamsView(
       for (let i = 1; i <= MESSAGES_PER_LANE && !signal.aborted; i++) {
         lane.txCount++;
         updateLaneStat(lane, "tx");
-        pulse(lane, "tx", i);
+        pulse(lane, "tx");
         yield { sentence: `Message #${i} from ${lane.label}` };
         await delay(800 + Math.random() * 400);
       }
@@ -204,7 +199,7 @@ export function createStreamsView(
         void res;
         lane.rxCount++;
         updateLaneStat(lane, "rx");
-        pulse(lane, "rx", lane.rxCount);
+        pulse(lane, "rx");
       }
     } catch (err) {
       if (!signal.aborted) {
@@ -219,6 +214,12 @@ export function createStreamsView(
       }
     } finally {
       setLaneState(lane, failed ? "error" : "done");
+      activeLanes--;
+      // All lanes ran to completion (or failed) on their own: flip the
+      // toggle back, since there is nothing left to stop.
+      if (activeLanes === 0 && running) {
+        setToggleRunning(false);
+      }
     }
   }
 

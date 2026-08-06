@@ -356,6 +356,53 @@ h3 {
   margin: 0 auto;
 }
 
+/* Transport tabs (WebSocket / WebTransport) inside a code section. */
+.code-tabs {
+  max-width: 860px;
+  margin: 0 auto;
+}
+
+.code-tab-switcher {
+  display: inline-flex;
+  gap: 0.25rem;
+  padding: 0.3rem;
+  margin-bottom: 1.1rem;
+  background: rgba(15, 23, 42, 0.06);
+  border-radius: 11px;
+}
+
+.code-tab-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  font-family: inherit;
+  font-size: 0.82rem;
+  font-weight: 600;
+  padding: 0.45rem 1rem;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.code-tab-btn:hover {
+  color: var(--text-main);
+}
+
+.code-tab-btn.active {
+  background: var(--bubble-user-bg);
+  color: #fff;
+  box-shadow: 0 3px 12px var(--accent-glow);
+}
+
+.code-tab-panel {
+  display: none;
+}
+
+.code-tab-panel.active {
+  display: flex;
+  flex-direction: column;
+  gap: 1.75rem;
+}
+
 .code-card {
   background: var(--bg-code);
   border-radius: 14px;

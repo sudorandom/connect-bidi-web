@@ -41,6 +41,28 @@ function transportLabel(choice: StreamingTransportChoice): string {
 function main(): void {
   highlightCodeExamples();
 
+  // Transport tabs on the code example sections (WebSocket is the default).
+  initTabs([
+    {
+      buttonId: "code-tab-btn-ts-websocket",
+      panelId: "code-panel-ts-websocket",
+    },
+    {
+      buttonId: "code-tab-btn-ts-webtransport",
+      panelId: "code-panel-ts-webtransport",
+    },
+  ]);
+  initTabs([
+    {
+      buttonId: "code-tab-btn-go-websocket",
+      panelId: "code-panel-go-websocket",
+    },
+    {
+      buttonId: "code-tab-btn-go-webtransport",
+      panelId: "code-panel-go-webtransport",
+    },
+  ]);
+
   const serverInput = requireElement<HTMLInputElement>("#server-url-input");
   const serverError = requireElement<HTMLElement>("#server-url-error");
   const transportSelect = requireElement<HTMLSelectElement>(

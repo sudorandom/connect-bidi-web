@@ -168,13 +168,7 @@ func TestWebTransportRoundTrip(t *testing.T) {
 	webtransportHandler := connectwebtransport.NewHandler(connectServer)
 
 	mux := http.NewServeMux()
-	mux.HandleFunc("/webtransport", func(w http.ResponseWriter, r *http.Request) {
-		session, err := wtServer.Upgrade(w, r)
-		if err != nil {
-			return
-		}
-		webtransportHandler.HandleSession(r.Context(), session)
-	})
+	mux.Handle("/webtransport", webtransportHandler.UpgradeHandler(wtServer))
 	wtServer.H3.Handler = mux
 
 	var listenConfig net.ListenConfig

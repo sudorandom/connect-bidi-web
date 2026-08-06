@@ -16,6 +16,7 @@ package connectwebtransport
 
 import (
 	"context"
+	"net/http"
 
 	"connectrpc.com/connect/v2"
 	"github.com/quic-go/webtransport-go"
@@ -41,6 +42,29 @@ func NewHandler(server *connect.Server, opts ...Option) *Handler {
 		server: server,
 		opts:   sOpts,
 	}
+}
+
+// UpgradeHandler returns an http.Handler that upgrades WebTransport CONNECT
+// requests via wtServer and serves Connect RPCs on the accepted session.
+// Mount it on the path clients dial, on the mux served by wtServer.H3:
+//
+//	mux.Handle("/webtransport", handler.UpgradeHandler(wtServer))
+//
+// Unlike a WebSocket upgrade, a WebTransport upgrade cannot be done by an
+// arbitrary http.Handler alone: the CONNECT request must be correlated with
+// QUIC connection state that only the webtransport.Server owns, which is why
+// it is a required argument. On upgrade failure the response has already
+// been written by wtServer and the handler simply returns.
+//
+// Use HandleSession directly instead when sessions are accepted elsewhere.
+func (h *Handler) UpgradeHandler(wtServer *webtransport.Server) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		session, err := wtServer.Upgrade(w, r)
+		if err != nil {
+			return
+		}
+		h.HandleSession(r.Context(), session)
+	})
 }
 
 // HandleSession accepts bidirectional streams on the session until the

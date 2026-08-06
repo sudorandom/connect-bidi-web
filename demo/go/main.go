@@ -149,14 +149,7 @@ func main() {
 	}
 	webtransport.ConfigureHTTP3Server(wtServer.H3)
 
-	mux.HandleFunc("/webtransport", func(w http.ResponseWriter, r *http.Request) {
-		session, err := wtServer.Upgrade(w, r)
-		if err != nil {
-			log.Printf("WebTransport upgrade failed: %v", err)
-			return
-		}
-		webtransportHandler.HandleSession(r.Context(), session)
-	})
+	mux.Handle("/webtransport", webtransportHandler.UpgradeHandler(wtServer))
 
 	go func() {
 		log.Printf("UDP WebTransport/H3 server listening on https://localhost%s/webtransport", *addr)

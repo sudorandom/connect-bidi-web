@@ -187,13 +187,7 @@ func startGoServer(t *testing.T) (wsURL, wtURL string) {
 		},
 	}
 	t.Cleanup(func() { wtServer.Close() })
-	mux.HandleFunc("/webtransport", func(w http.ResponseWriter, r *http.Request) {
-		session, err := wtServer.Upgrade(w, r)
-		if err != nil {
-			return
-		}
-		webtransportHandler.HandleSession(r.Context(), session)
-	})
+	mux.Handle("/webtransport", webtransportHandler.UpgradeHandler(wtServer))
 
 	var listenConfig net.ListenConfig
 	packetConn, err := listenConfig.ListenPacket(t.Context(), "udp", "127.0.0.1:0")

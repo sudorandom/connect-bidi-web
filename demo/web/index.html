@@ -127,11 +127,28 @@
             </div>
           </div>
 
-          <div class="code-list">
+          <div class="code-tabs">
+            <nav class="code-tab-switcher" aria-label="Transport">
+              <button
+                id="code-tab-btn-ts-websocket"
+                class="code-tab-btn active"
+                type="button"
+              >
+                WebSocket
+              </button>
+              <button
+                id="code-tab-btn-ts-webtransport"
+                class="code-tab-btn"
+                type="button"
+              >
+                WebTransport
+              </button>
+            </nav>
+            <div id="code-panel-ts-websocket" class="code-tab-panel active">
             <article class="code-card">
               <header class="code-card-header">
                 <span class="code-lang">TypeScript</span>
-                <span class="code-title">Browser client — WebSocket</span>
+                <span class="code-title">Browser client</span>
               </header>
               <pre><code class="language-typescript">import { createClient } from &quot;@connectrpc/connect&quot;;
 import { createConnectTransport } from &quot;@connectrpc/connect-web&quot;;
@@ -156,11 +173,13 @@ for await (const res of client.converse(requests())) {
   console.log(res.sentence); // full bidi streaming!
 }</code></pre>
             </article>
+            </div>
 
+            <div id="code-panel-ts-webtransport" class="code-tab-panel">
             <article class="code-card">
               <header class="code-card-header">
                 <span class="code-lang">TypeScript</span>
-                <span class="code-title">Browser client — WebTransport</span>
+                <span class="code-title">Browser client</span>
               </header>
               <pre><code class="language-typescript">import { createConnectWebTransportTransport } from &quot;@sudorandom/connect-bidi-web&quot;;
 
@@ -175,6 +194,7 @@ const transport = createCompositeTransport(
   }),
 );</code></pre>
             </article>
+            </div>
           </div>
         </div>
       </section>
@@ -195,7 +215,24 @@ const transport = createCompositeTransport(
             </div>
           </div>
 
-          <div class="code-list">
+          <div class="code-tabs">
+            <nav class="code-tab-switcher" aria-label="Transport">
+              <button
+                id="code-tab-btn-go-websocket"
+                class="code-tab-btn active"
+                type="button"
+              >
+                WebSocket
+              </button>
+              <button
+                id="code-tab-btn-go-webtransport"
+                class="code-tab-btn"
+                type="button"
+              >
+                WebTransport
+              </button>
+            </nav>
+            <div id="code-panel-go-websocket" class="code-tab-panel active">
             <article class="code-card">
               <header class="code-card-header">
                 <span class="code-lang">Go</span>
@@ -204,13 +241,8 @@ const transport = createCompositeTransport(
               <pre><code class="language-go">server := connect.NewServer()
 elizav1connect.RegisterElizaServiceHandler(server, elizaServer{})
 
-// One connection per RPC, over a plain net/http handler.
-http.Handle(&quot;/websocket&quot;, connectwebsocket.NewHandler(server))
-
-// WebTransport: one HTTP/3 session, one stream per RPC.
-webtransportHandler := connectwebtransport.NewHandler(server)
-// ...on every accepted session:
-webtransportHandler.HandleSession(ctx, session)</code></pre>
+// One WebSocket connection per RPC, over a plain net/http handler.
+http.Handle(&quot;/websocket&quot;, connectwebsocket.NewHandler(server))</code></pre>
             </article>
 
             <article class="code-card">
@@ -224,6 +256,43 @@ client := elizav1connect.NewElizaServiceClient(connect.NewClient(transport))
 stream := client.Converse(ctx)
 // stream.Send(...), stream.Receive(), full duplex.</code></pre>
             </article>
+            </div>
+
+            <div id="code-panel-go-webtransport" class="code-tab-panel">
+            <article class="code-card">
+              <header class="code-card-header">
+                <span class="code-lang">Go</span>
+                <span class="code-title">Server</span>
+              </header>
+              <pre><code class="language-go">server := connect.NewServer()
+elizav1connect.RegisterElizaServiceHandler(server, elizaServer{})
+handler := connectwebtransport.NewHandler(server)
+
+// WebTransport rides HTTP/3: sessions arrive over UDP + TLS.
+mux := http.NewServeMux()
+wtServer := &amp;webtransport.Server{
+	H3: &amp;http3.Server{Addr: &quot;:443&quot;, Handler: mux, TLSConfig: tlsConfig},
+}
+// One HTTP/3 session per client, one QUIC stream per RPC.
+mux.Handle(&quot;/webtransport&quot;, handler.UpgradeHandler(wtServer))
+
+log.Fatal(wtServer.ListenAndServe())</code></pre>
+            </article>
+
+            <article class="code-card">
+              <header class="code-card-header">
+                <span class="code-lang">Go</span>
+                <span class="code-title">Client</span>
+              </header>
+              <pre><code class="language-go">dialer := &amp;webtransport.Transport{
+	TLSClientConfig: &amp;tls.Config{NextProtos: []string{http3.NextProtoH3}},
+}
+_, session, err := dialer.Dial(ctx, &quot;https://api.example.com/webtransport&quot;, nil)
+
+transport := connectwebtransport.NewTransport(session)
+client := elizav1connect.NewElizaServiceClient(connect.NewClient(transport))</code></pre>
+            </article>
+            </div>
           </div>
         </div>
       </section>

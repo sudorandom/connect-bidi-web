@@ -31,13 +31,15 @@ wtServer := &webtransport.Server{
     },
 }
 
-http.HandleFunc("/webtransport", func(w http.ResponseWriter, r *http.Request) {
-    session, err := wtServer.Upgrade(w, r)
-    if err != nil {
-        return
-    }
-    handler.HandleSession(r.Context(), session)
-})
+http.Handle("/webtransport", handler.UpgradeHandler(wtServer))
+```
+
+`UpgradeHandler` upgrades the CONNECT request via `wtServer` and serves RPCs
+on the accepted session. When sessions are accepted elsewhere, use
+`HandleSession` directly:
+
+```go
+handler.HandleSession(ctx, session)
 ```
 
 Client:

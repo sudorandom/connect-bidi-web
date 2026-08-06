@@ -13,16 +13,18 @@ A composite transport keeps unary RPCs on plain HTTP (caching, observability, pr
 
 | Package | What it is |
 |---|---|
-| `github.com/sudorandom/connect-bidi-web/connectwebsocket` | Go client transport + `http.Handler` server |
-| `github.com/sudorandom/connect-bidi-web/connectwebtransport` | Go client transport + WebTransport session handler |
+| [`github.com/sudorandom/connect-bidi-web/connectwebsocket`](https://pkg.go.dev/github.com/sudorandom/connect-bidi-web/connectwebsocket) | Go client transport + `http.Handler` server |
+| [`github.com/sudorandom/connect-bidi-web/connectwebtransport`](https://pkg.go.dev/github.com/sudorandom/connect-bidi-web/connectwebtransport) | Go client transport + WebTransport session handler |
 | [`@sudorandom/connect-bidi-web`](https://www.npmjs.com/package/@sudorandom/connect-bidi-web) | Browser client transports (WebSocket, WebTransport, composite) |
 | [`@sudorandom/connect-bidi-core`](https://www.npmjs.com/package/@sudorandom/connect-bidi-core) | Runtime-neutral server bridge to `@connectrpc/connect` handlers |
 | [`@sudorandom/connect-bidi-node`](https://www.npmjs.com/package/@sudorandom/connect-bidi-node) | Node.js WebSocket server adapter |
 | [`@sudorandom/connect-bidi-cloudflare`](https://www.npmjs.com/package/@sudorandom/connect-bidi-cloudflare) | Cloudflare Workers WebSocket server adapter |
 
 > [!NOTE]
-> The Go packages build on connect-go **v2**, which is unreleased. This module pins a
-> pseudo-version of the upstream `v2` branch; expect breaking changes until v2 ships.
+> The Go packages build on connect-go **v2** and its new `Transport` API
+> ([connectrpc/connect-go#951](https://github.com/connectrpc/connect-go/pull/951)),
+> which is unreleased. This module pins a pseudo-version of the upstream `v2`
+> branch; expect breaking changes until v2 ships.
 
 > [!NOTE]
 > The npm packages are **ESM-only** and require Node.js ≥ 20.19. CJS consumers can

@@ -346,6 +346,12 @@ h3 {
   color: inherit;
 }
 
+.install-docs {
+  align-self: center;
+  font-size: 0.85rem;
+  white-space: nowrap;
+}
+
 /* Code examples: stacked full-width cards — the snippets' lines are too
    long for side-by-side columns. */
 .code-list {

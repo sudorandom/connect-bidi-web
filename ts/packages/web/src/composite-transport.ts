@@ -49,3 +49,14 @@ export function createCompositeTransport(
     },
   };
 }
+
+/**
+ * createAutoTransport creates a composite transport combining a primary
+ * HTTP transport for Unary RPCs and a secondary streaming transport (WebSocket / WebTransport).
+ */
+export function createAutoTransport(
+  unaryTransport: Transport,
+  streamingTransport: Transport,
+): Transport {
+  return createCompositeTransport(unaryTransport, streamingTransport);
+}

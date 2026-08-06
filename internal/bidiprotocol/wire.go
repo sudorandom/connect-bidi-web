@@ -30,7 +30,7 @@ func ErrorForWire(err error) *connect.Error {
 	var cerr *connect.Error
 	if errors.As(err, &cerr) {
 		if cerr.IsRemote() {
-			return connect.Errorf(connect.CodeInternal, "").WithCause(err)
+			return connect.Errorf(cerr.Code(), "").WithCause(err)
 		}
 		return cerr
 	}

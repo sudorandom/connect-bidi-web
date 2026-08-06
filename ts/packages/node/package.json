@@ -1,6 +1,6 @@
 {
   "name": "@sudorandom/connect-bidi-node",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Node.js WebSocket adapter for ConnectRPC bidirectional streaming (see @sudorandom/connect-bidi-core)",
   "license": "Apache-2.0",
   "repository": {
@@ -36,7 +36,7 @@
     "node": ">=20.19.0"
   },
   "dependencies": {
-    "@sudorandom/connect-bidi-core": "0.1.1",
+    "@sudorandom/connect-bidi-core": "0.1.2",
     "ws": "^8.21.2"
   },
   "peerDependencies": {

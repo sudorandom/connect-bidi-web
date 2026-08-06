@@ -72,10 +72,6 @@ function main(): void {
   const unsupportedBadge = requireElement<HTMLElement>(
     "#transport-unsupported-badge",
   );
-  const muxToggleRow = requireElement<HTMLElement>("#mux-toggle-row");
-  const muxToggleInput = requireElement<HTMLInputElement>(
-    "#mux-toggle-input",
-  );
 
   // The demo always talks to its own origin; the server address is not
   // user-configurable.
@@ -135,14 +131,10 @@ function main(): void {
       : "websocket";
   }
 
+  // The third dropdown option is still the WebSocket transport, just with
+  // a dedicated connection per streaming RPC instead of multiplexing.
   function connectionPerStream(): boolean {
-    return !muxToggleInput.checked;
-  }
-
-  // The multiplexing toggle only means something on WebSocket; QUIC
-  // streams make the question moot on WebTransport.
-  function syncMuxToggleVisibility(): void {
-    muxToggleRow.classList.toggle("hidden", currentChoice() !== "websocket");
+    return transportSelect.value === "websocket-per-rpc";
   }
 
   // Pick a safe initial choice before building any transport: the select
@@ -158,7 +150,6 @@ function main(): void {
   const initial = createDemoTransport(currentChoice(), serverUrl, {
     connectionPerStream: connectionPerStream(),
   });
-  syncMuxToggleVisibility();
   const swappable = new SwappableTransport(initial.transport);
   const client = createClient(ElizaService, swappable);
 
@@ -182,7 +173,6 @@ function main(): void {
 
   function applyTransportChange(): void {
     const choice = currentChoice();
-    syncMuxToggleVisibility();
     try {
       const next = createDemoTransport(choice, serverUrl, {
         connectionPerStream: connectionPerStream(),
@@ -198,7 +188,6 @@ function main(): void {
   }
 
   transportSelect.addEventListener("change", applyTransportChange);
-  muxToggleInput.addEventListener("change", applyTransportChange);
 
   // The only request the page makes on load. It never invokes the deployed
   // Worker: /capabilities.json is served from static assets (it isn't in

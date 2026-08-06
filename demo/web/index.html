@@ -360,22 +360,10 @@ client := elizav1connect.NewElizaServiceClient(connect.NewClient(transport))</co
                   <option value="websocket">
                     WebSocket (multiplexed connection)
                   </option>
+                  <option value="websocket-per-rpc">
+                    WebSocket (connection per RPC)
+                  </option>
                 </select>
-              </div>
-              <div id="mux-toggle-row" class="demo-toolbar-row hidden">
-                <label
-                  class="mux-toggle"
-                  for="mux-toggle-input"
-                  title="On: all streaming RPCs share one WebSocket connection, demultiplexed by stream ID. Off: each streaming RPC dials its own connection (the connectionPerStream option), trading a handshake per RPC for freedom from head-of-line blocking."
-                >
-                  <input type="checkbox" id="mux-toggle-input" checked />
-                  <span
-                    >Multiplex RPCs on one connection
-                    <span class="mux-toggle-hint"
-                      >(off = one connection per RPC)</span
-                    ></span
-                  >
-                </label>
               </div>
             </div>
 
@@ -425,9 +413,6 @@ client := elizav1connect.NewElizaServiceClient(connect.NewClient(transport))</co
                       Each lane below opens an independent stream.
                     </p>
                   </div>
-                  <button id="toggle-streams-btn" class="btn-primary" type="button">
-                    ▶ Start all streams
-                  </button>
                 </div>
                 <div id="lanes-container" class="lanes-container"></div>
                 <p id="lane-error-hint" class="lane-error-hint hidden">
@@ -437,6 +422,11 @@ client := elizav1connect.NewElizaServiceClient(connect.NewClient(transport))</co
                   <a href="#run-it-yourself">Run it yourself</a> below for
                   the one-line browser tweak.
                 </p>
+                <div class="streams-footer">
+                  <button id="toggle-streams-btn" class="btn-primary" type="button">
+                    ▶ Start all streams
+                  </button>
+                </div>
               </section>
             </div>
           </div>

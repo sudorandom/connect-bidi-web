@@ -213,6 +213,11 @@ function main(): void {
   transportSelect.addEventListener("change", applyTransportChange);
   muxToggleInput.addEventListener("change", applyTransportChange);
 
+  // The only request the page makes on load. It never invokes the deployed
+  // Worker: /capabilities.json is served from static assets (it isn't in
+  // wrangler's run_worker_first list). Everything else — the WebSocket
+  // connection, the WebTransport session, and every RPC — is dialed lazily,
+  // on the visitor's first interaction with the demo.
   void refreshWebTransportAvailability();
 
   serverInput.addEventListener("change", () => {

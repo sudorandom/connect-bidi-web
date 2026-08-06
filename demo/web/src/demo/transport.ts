@@ -66,16 +66,27 @@ export function createDemoTransport(
         `WebTransport requires an https:// server URL, got ${serverUrl}`,
       );
     }
-    const session = new WebTransport(new URL("/webtransport", serverUrl));
-    // A rejected connection rejects `ready` and `closed` too. RPC attempts
-    // surface the failure as ConnectErrors through the transport, so handle
-    // the bare promises here to keep the rejection from also reaching the
-    // console as an uncaught error.
-    session.ready.catch(() => {});
-    session.closed.catch(() => {});
+    // Dial lazily, on the first streaming RPC: merely loading the page (or
+    // having WebTransport preselected in the dropdown) must not open a
+    // session — no demo-server traffic happens until the visitor actually
+    // interacts with the demo.
+    let session: WebTransport | undefined;
+    function dialSession(): WebTransport {
+      if (session === undefined) {
+        session = new WebTransport(new URL("/webtransport", serverUrl));
+        // A rejected connection rejects `ready` and `closed` too. RPC
+        // attempts surface the failure as ConnectErrors through the
+        // transport, so handle the bare promises here to keep the rejection
+        // from also reaching the console as an uncaught error.
+        session.ready.catch(() => {});
+        session.closed.catch(() => {});
+      }
+      return session;
+    }
     const streaming = createConnectWebTransportTransport({
       baseUrl: serverUrl,
-      session,
+      // The session option accepts a factory, resolved per RPC.
+      session: dialSession,
     });
     return {
       transport: createCompositeTransport(unary, streaming),

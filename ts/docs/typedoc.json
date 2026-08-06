@@ -1,0 +1,21 @@
+{
+  "$schema": "https://typedoc.org/schema.json",
+  "name": "connect-bidi-web",
+  "entryPointStrategy": "packages",
+  "entryPoints": [
+    "../packages/core",
+    "../packages/web",
+    "../packages/node",
+    "../packages/cloudflare"
+  ],
+  "out": "../../demo/web/dist/docs",
+  "customCss": "./custom.css",
+  "customFooterHtml": "Part of <a href=\"/\">connect-bidi-web</a> — full bidirectional streaming for ConnectRPC in the browser.",
+  "readme": "none",
+  "includeVersion": true,
+  "navigationLinks": {
+    "connect-bidi-web home": "/",
+    "GitHub": "https://github.com/sudorandom/connect-bidi-web"
+  },
+  "hostedBaseUrl": "https://connect-bidi-web.kmcd.dev/docs/"
+}

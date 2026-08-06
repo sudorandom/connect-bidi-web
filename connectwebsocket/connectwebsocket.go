@@ -14,13 +14,16 @@
 
 // Package connectwebsocket provides a connect.Transport and an http.Handler
 // that carry Connect RPCs over WebSocket connections, enabling full
-// bidirectional streaming from environments such as web browsers. Each RPC
-// uses a dedicated WebSocket connection.
+// bidirectional streaming from environments such as web browsers. Every
+// frame carries a stream ID, so any number of concurrent RPCs are
+// multiplexed onto one shared WebSocket connection; WithConnectionPerStream
+// gives each streaming RPC a dedicated connection instead.
 package connectwebsocket
 
 import (
 	"context"
 	"errors"
+	"sync"
 
 	"connectrpc.com/connect/v2"
 	"github.com/coder/websocket"
@@ -36,7 +39,8 @@ type Option interface {
 type transportOptions struct {
 	bidiprotocol.Options
 
-	dialOptions *websocket.DialOptions
+	dialOptions         *websocket.DialOptions
+	connectionPerStream bool
 }
 
 type serverOptions struct {
@@ -133,6 +137,21 @@ func WithDialOptions(dialOpts *websocket.DialOptions) Option {
 	})
 }
 
+// WithConnectionPerStream configures the transport to dial a dedicated
+// WebSocket connection for each streaming RPC instead of multiplexing all
+// RPCs onto one shared connection. A shared connection is subject to
+// head-of-line blocking: one stream with a large message or a slow consumer
+// delays every other stream behind it. Dedicated connections trade a
+// WebSocket handshake per streaming RPC for full isolation. Unary RPCs
+// always use the shared multiplexed connection.
+func WithConnectionPerStream() Option {
+	return optionFunc(func(topts *transportOptions, _ *serverOptions) {
+		if topts != nil {
+			topts.connectionPerStream = true
+		}
+	})
+}
+
 // WithAcceptOptions sets custom websocket.AcceptOptions.
 func WithAcceptOptions(acceptOpts *websocket.AcceptOptions) Option {
 	return optionFunc(func(_ *transportOptions, sopts *serverOptions) {
@@ -145,10 +164,20 @@ func WithAcceptOptions(acceptOpts *websocket.AcceptOptions) Option {
 type transport struct {
 	url  string
 	opts transportOptions
+
+	mu     sync.Mutex
+	shared *muxConn
 }
 
 // NewTransport returns a connect.Transport that dispatches RPCs over
-// WebSocket. It opens a dedicated WebSocket connection for each RPC.
+// WebSocket. RPCs are multiplexed onto one shared WebSocket connection,
+// dialed lazily on first use and re-dialed if it fails; every frame carries
+// the stream ID of the RPC it belongs to. With WithConnectionPerStream, each
+// streaming RPC dials a dedicated connection instead.
+//
+// The returned Transport also implements io.Closer: Close closes the shared
+// connection, terminating any RPCs still running on it. The transport
+// remains usable afterwards.
 func NewTransport(url string, opts ...Option) connect.Transport {
 	tOpts := transportOptions{Options: bidiprotocol.NewClientOptions()}
 	for _, opt := range opts {
@@ -166,23 +195,85 @@ func (t *transport) NewClientStream(ctx context.Context, spec connect.Spec) (con
 	if t.url == "" {
 		return nil, errors.New("connectwebsocket: empty URL")
 	}
-	conn, _, err := websocket.Dial(ctx, t.url, t.opts.dialOptions) //nolint:bodyclose // coder/websocket closes the handshake response body itself
-	if err != nil {
-		return nil, connect.Errorf(connect.CodeUnavailable, "failed to dial WebSocket: %v", err)
-	}
-	conn.SetReadLimit(-1)
 
 	callInfo, _ := connect.CallInfoForClientContext(ctx)
 	if callInfo != nil {
 		callInfo.Protocol = "websocket"
 	}
 
-	rwc := websocket.NetConn(ctx, conn, websocket.MessageBinary)
+	var stream *muxStream
+	if t.opts.connectionPerStream && spec.StreamType != connect.StreamTypeUnary {
+		mc, err := t.dial(ctx)
+		if err != nil {
+			return nil, err
+		}
+		stream, err = mc.newStream(ctx, true)
+		if err != nil {
+			_ = mc.shutdown()
+			return nil, err
+		}
+	} else {
+		var err error
+		stream, err = t.sharedStream(ctx)
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	return bidiprotocol.NewClientStream(
 		ctx,
 		spec,
-		bidiprotocol.NewNetConn(rwc),
+		stream,
 		callInfo,
 		t.opts.Options,
 	), nil
+}
+
+// Close closes the shared multiplexed connection, if one is open,
+// terminating any RPCs still running on it. The next RPC dials a new
+// connection.
+func (t *transport) Close() error {
+	t.mu.Lock()
+	shared := t.shared
+	t.shared = nil
+	t.mu.Unlock()
+	if shared == nil {
+		return nil
+	}
+	return shared.shutdown()
+}
+
+func (t *transport) dial(ctx context.Context) (*muxConn, error) {
+	conn, _, err := websocket.Dial(ctx, t.url, t.opts.dialOptions) //nolint:bodyclose // coder/websocket closes the handshake response body itself
+	if err != nil {
+		return nil, connect.Errorf(connect.CodeUnavailable, "failed to dial WebSocket: %v", err)
+	}
+	conn.SetReadLimit(-1)
+	// The connection outlives any single RPC, so neither the read loop nor
+	// writes use an RPC context; closing the connection ends them.
+	mc := newMuxConn(context.Background(), conn)
+	go mc.readLoopClient(context.Background()) //nolint:contextcheck,gosec // G118: the shared connection deliberately outlives the RPC that dialed it
+	return mc, nil
+}
+
+// sharedStream opens a stream on the shared multiplexed connection, dialing
+// it on first use and replacing it if it has failed. Dialing holds the
+// transport lock, so concurrent RPCs wait for one shared connection instead
+// of racing to dial several.
+func (t *transport) sharedStream(ctx context.Context) (*muxStream, error) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if t.shared != nil {
+		stream, err := t.shared.newStream(ctx, false)
+		if err == nil {
+			return stream, nil
+		}
+		// The shared connection failed; dial a replacement.
+	}
+	mc, err := t.dial(ctx)
+	if err != nil {
+		return nil, err
+	}
+	t.shared = mc
+	return mc.newStream(ctx, false)
 }

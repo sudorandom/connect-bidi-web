@@ -12,9 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// These tests exercise `wrapWebSocket()` bridged to `handleBidiSocket()`
+// These tests exercise `wrapWebSocket()` bridged to `handleMuxedBidiSocket()`
 // end-to-end against a mock WebSocket-like object, proving the
-// DuplexByteStream adapter itself is correct. `createBidiWebSocketHandler()`
+// DuplexMessageStream adapter itself is correct. `createBidiWebSocketHandler()`
 // additionally relies on the real Workers `WebSocketPair`/`Response.webSocket`
 // globals, which don't exist under plain Node -- that integration is
 // verified against `wrangler dev` instead (see the worker demo).
@@ -36,10 +36,11 @@ import {
   endStreamFromJson,
   type EndStreamResponse,
 } from "@connectrpc/connect/protocol-connect";
-import { handleBidiSocket } from "@sudorandom/connect-bidi-core";
+import { handleMuxedBidiSocket } from "@sudorandom/connect-bidi-core";
 import {
   CountUpRequestSchema,
   CountUpResponseSchema,
+  CumSumRequestSchema,
   FailRequestSchema,
   PingRequestSchema,
   PingResponseSchema,
@@ -47,14 +48,17 @@ import {
 } from "./gen/connectbidi/ping/v1/ping_pb.js";
 import { wrapWebSocket } from "./websocket-like.js";
 
-// Wire-level constants for the bidi-web envelope protocol's leading
-// metadata frame. These must match @sudorandom/connect-bidi-core's
-// wire.ts (and @sudorandom/connect-bidi-web's client transports) -- they
-// are not part of connect-es's own protocol-connect flags, so they are
-// redefined here rather than imported, the same way each implementation of
-// the wire protocol keeps its own copy in sync by hand.
-const flagEnvelopeHeaders = 0x04;
+// Wire-level constants for the bidi-web envelope protocol. These must match
+// @sudorandom/connect-bidi-core's wire.ts (and
+// @sudorandom/connect-bidi-web's client transports) -- they are not part of
+// connect-es's own protocol-connect flags, so they are redefined here rather
+// than imported, the same way each implementation of the wire protocol keeps
+// its own copy in sync by hand. Every WebSocket message is a 4-byte
+// big-endian stream ID followed by one Connect envelope.
+const flagEnvelopeHeaders = 0x07;
+const flagEnvelopeReset = 0x0f;
 const flagEnvelopeData = 0x00;
+const streamIdLength = 4;
 
 // -- Test service implementation ---------------------------------------------
 
@@ -192,38 +196,98 @@ function toBytes(message: ArrayBuffer | ArrayBufferView | string): Uint8Array {
 
 // -- Wire-level test helpers --------------------------------------------------
 
-function encodeHeadersEnvelope(path: string, contentType: string): Uint8Array {
-  const metadata = { ":path": [path], "content-type": [contentType] };
-  const payload = new TextEncoder().encode(JSON.stringify({ metadata }));
-  return encodeEnvelope(flagEnvelopeHeaders, payload);
+function prefixStreamId(streamId: number, envelope: Uint8Array): Uint8Array {
+  const frame = new Uint8Array(streamIdLength + envelope.byteLength);
+  new DataView(frame.buffer).setUint32(0, streamId);
+  frame.set(envelope, streamIdLength);
+  return frame;
 }
 
-function encodeEndStream(): Uint8Array {
-  return encodeEnvelope(endStreamFlag, new Uint8Array());
+function encodeHeadersFrame(
+  streamId: number,
+  path: string,
+  contentType: string,
+): Uint8Array {
+  const metadata = { ":path": [path], "content-type": [contentType] };
+  const payload = new TextEncoder().encode(JSON.stringify({ metadata }));
+  return prefixStreamId(streamId, encodeEnvelope(flagEnvelopeHeaders, payload));
+}
+
+function encodeDataFrame(streamId: number, payload: Uint8Array): Uint8Array {
+  return prefixStreamId(streamId, encodeEnvelope(flagEnvelopeData, payload));
+}
+
+function encodeEndStreamFrame(streamId: number): Uint8Array {
+  return prefixStreamId(streamId, encodeEnvelope(endStreamFlag, new Uint8Array()));
+}
+
+function encodeResetFrame(streamId: number): Uint8Array {
+  return prefixStreamId(
+    streamId,
+    encodeEnvelope(flagEnvelopeReset, new Uint8Array()),
+  );
 }
 
 /**
- * Splits a `MockWebSocket`'s captured, already envelope-framed `send()`
- * calls back into individual envelopes. Each `send()` call here always
- * carries exactly one complete envelope -- `wrapWebSocket`'s writable
- * forwards `handleBidiSocket`'s writes verbatim, and `handleBidiSocket`
- * itself only ever writes one complete envelope per `write()` call.
+ * Splits a `MockWebSocket`'s captured `send()` calls back into the
+ * envelopes belonging to one stream. Each `send()` call here always carries
+ * exactly one stream ID plus one complete envelope -- `wrapWebSocket`'s
+ * writable forwards `handleMuxedBidiSocket`'s writes verbatim, and the
+ * muxed handler only ever writes one complete frame per `write()` call.
  */
-function parseSentEnvelopes(frames: readonly Uint8Array[]): EnvelopedMessage[] {
-  return frames.map((frame) => {
-    const flags = frame[0];
+function parseSentEnvelopes(
+  frames: readonly Uint8Array[],
+  streamId: number,
+): EnvelopedMessage[] {
+  const envelopes: EnvelopedMessage[] = [];
+  for (const frame of frames) {
+    assert.ok(
+      frame.byteLength >= streamIdLength + 5,
+      `frame too short: ${frame.byteLength} bytes`,
+    );
     const view = new DataView(frame.buffer, frame.byteOffset, frame.byteLength);
-    const length = view.getUint32(1, false);
-    return { flags, data: frame.subarray(5, 5 + length) };
-  });
+    if (view.getUint32(0) !== streamId) {
+      continue;
+    }
+    const flags = view.getUint8(streamIdLength);
+    const length = view.getUint32(streamIdLength + 1, false);
+    envelopes.push({
+      flags,
+      data: frame.subarray(streamIdLength + 5, streamIdLength + 5 + length),
+    });
+  }
+  return envelopes;
 }
 
-function parseResponse(frames: readonly Uint8Array[]): {
+/**
+ * Waits until a stream's response is complete (its end-stream envelope has
+ * been sent). Closing the mock socket terminates the connection and aborts
+ * in-flight RPCs -- like the Go server -- so tests must wait for the
+ * response before closing.
+ */
+async function waitForEndStream(
+  socket: MockWebSocket,
+  streamId: number,
+): Promise<void> {
+  const hasEndStream = (): boolean =>
+    parseSentEnvelopes(socket.sentFrames, streamId).some(
+      (env) => env.flags === endStreamFlag,
+    );
+  for (let i = 0; i < 1000 && !hasEndStream(); i++) {
+    await new Promise((resolve) => setTimeout(resolve, 1));
+  }
+  assert.ok(hasEndStream(), `stream ${streamId} never finished`);
+}
+
+function parseResponse(
+  frames: readonly Uint8Array[],
+  streamId: number,
+): {
   headers: EnvelopedMessage;
   dataEnvelopes: EnvelopedMessage[];
   end: EndStreamResponse;
 } {
-  const envelopes = parseSentEnvelopes(frames);
+  const envelopes = parseSentEnvelopes(frames, streamId);
   assert.ok(envelopes.length >= 2, "expected at least headers + end-stream");
   const [headers, ...rest] = envelopes;
   assert.strictEqual(headers.flags, flagEnvelopeHeaders);
@@ -238,28 +302,33 @@ function parseResponse(frames: readonly Uint8Array[]): {
 
 // -- Tests ---------------------------------------------------------------------
 
-describe("wrapWebSocket() + handleBidiSocket()", () => {
+describe("wrapWebSocket() + handleMuxedBidiSocket()", () => {
   it("unary success", async () => {
     const handlers = createTestHandlers();
     const handler = findHandler(handlers, "Ping");
     const socket = new MockWebSocket();
     const duplex = wrapWebSocket(socket);
 
-    socket.emit(encodeHeadersEnvelope(handler.requestPath, contentTypeUnaryProto));
     socket.emit(
-      encodeEnvelope(
-        flagEnvelopeData,
+      encodeHeadersFrame(1, handler.requestPath, contentTypeUnaryProto),
+    );
+    socket.emit(
+      encodeDataFrame(
+        1,
         toBinary(
           PingRequestSchema,
           create(PingRequestSchema, { number: BigInt(42), text: "hi" }),
         ),
       ),
     );
-    socket.emit(encodeEndStream());
+    socket.emit(encodeEndStreamFrame(1));
 
-    await handleBidiSocket(duplex, handlers);
+    const done = handleMuxedBidiSocket(duplex, handlers);
+    await waitForEndStream(socket, 1);
+    socket.close();
+    await done;
 
-    const response = parseResponse(socket.sentFrames);
+    const response = parseResponse(socket.sentFrames, 1);
     assert.strictEqual(response.dataEnvelopes.length, 1);
     const body = fromBinary(PingResponseSchema, response.dataEnvelopes[0].data);
     assert.strictEqual(body.number, BigInt(42));
@@ -274,21 +343,26 @@ describe("wrapWebSocket() + handleBidiSocket()", () => {
     const socket = new MockWebSocket();
     const duplex = wrapWebSocket(socket);
 
-    socket.emit(encodeHeadersEnvelope(handler.requestPath, contentTypeUnaryProto));
     socket.emit(
-      encodeEnvelope(
-        flagEnvelopeData,
+      encodeHeadersFrame(1, handler.requestPath, contentTypeUnaryProto),
+    );
+    socket.emit(
+      encodeDataFrame(
+        1,
         toBinary(
           FailRequestSchema,
           create(FailRequestSchema, { code: Code.InvalidArgument }),
         ),
       ),
     );
-    socket.emit(encodeEndStream());
+    socket.emit(encodeEndStreamFrame(1));
 
-    await handleBidiSocket(duplex, handlers);
+    const done = handleMuxedBidiSocket(duplex, handlers);
+    await waitForEndStream(socket, 1);
+    socket.close();
+    await done;
 
-    const response = parseResponse(socket.sentFrames);
+    const response = parseResponse(socket.sentFrames, 1);
     assert.strictEqual(response.dataEnvelopes.length, 0);
     assert.ok(response.end.error, "expected an error in the end-stream envelope");
     assert.strictEqual(response.end.error?.code, Code.InvalidArgument);
@@ -300,21 +374,26 @@ describe("wrapWebSocket() + handleBidiSocket()", () => {
     const socket = new MockWebSocket();
     const duplex = wrapWebSocket(socket);
 
-    socket.emit(encodeHeadersEnvelope(handler.requestPath, contentTypeStreamProto));
     socket.emit(
-      encodeEnvelope(
-        flagEnvelopeData,
+      encodeHeadersFrame(1, handler.requestPath, contentTypeStreamProto),
+    );
+    socket.emit(
+      encodeDataFrame(
+        1,
         toBinary(
           CountUpRequestSchema,
           create(CountUpRequestSchema, { number: BigInt(3) }),
         ),
       ),
     );
-    socket.emit(encodeEndStream());
+    socket.emit(encodeEndStreamFrame(1));
 
-    await handleBidiSocket(duplex, handlers);
+    const done = handleMuxedBidiSocket(duplex, handlers);
+    await waitForEndStream(socket, 1);
+    socket.close();
+    await done;
 
-    const response = parseResponse(socket.sentFrames);
+    const response = parseResponse(socket.sentFrames, 1);
     const numbers = response.dataEnvelopes.map(
       (env) => fromBinary(CountUpResponseSchema, env.data).number,
     );
@@ -322,35 +401,130 @@ describe("wrapWebSocket() + handleBidiSocket()", () => {
     assert.strictEqual(response.end.error, undefined);
   });
 
-  it("a WebSocket close event ends the request stream, like a half-close", async () => {
+  it("multiplexes concurrent RPCs on one connection", async () => {
     const handlers = createTestHandlers();
-    const handler = findHandler(handlers, "CountUp");
+    const countUp = findHandler(handlers, "CountUp");
+    const ping = findHandler(handlers, "Ping");
     const socket = new MockWebSocket();
     const duplex = wrapWebSocket(socket);
 
-    // No explicit end-stream envelope this time -- only the WebSocket
-    // "close" event marks the end of the request, exercising the
-    // controller.close() wiring in wrapWebSocket's readable source.
-    socket.emit(encodeHeadersEnvelope(handler.requestPath, contentTypeStreamProto));
+    // Interleave two streams' frames on the same connection.
     socket.emit(
-      encodeEnvelope(
-        flagEnvelopeData,
+      encodeHeadersFrame(1, countUp.requestPath, contentTypeStreamProto),
+    );
+    socket.emit(
+      encodeHeadersFrame(2, ping.requestPath, contentTypeUnaryProto),
+    );
+    socket.emit(
+      encodeDataFrame(
+        2,
+        toBinary(
+          PingRequestSchema,
+          create(PingRequestSchema, { number: BigInt(9), text: "hi" }),
+        ),
+      ),
+    );
+    socket.emit(
+      encodeDataFrame(
+        1,
         toBinary(
           CountUpRequestSchema,
           create(CountUpRequestSchema, { number: BigInt(2) }),
         ),
       ),
     );
+    socket.emit(encodeEndStreamFrame(2));
+    socket.emit(encodeEndStreamFrame(1));
+
+    const done = handleMuxedBidiSocket(duplex, handlers);
+    await waitForEndStream(socket, 1);
+    await waitForEndStream(socket, 2);
     socket.close();
+    await done;
 
-    await handleBidiSocket(duplex, handlers);
-
-    const response = parseResponse(socket.sentFrames);
-    const numbers = response.dataEnvelopes.map(
+    const countUpResponse = parseResponse(socket.sentFrames, 1);
+    const numbers = countUpResponse.dataEnvelopes.map(
       (env) => fromBinary(CountUpResponseSchema, env.data).number,
     );
     assert.deepStrictEqual(numbers, [BigInt(1), BigInt(2)]);
-    assert.strictEqual(response.end.error, undefined);
+    assert.strictEqual(countUpResponse.end.error, undefined);
+
+    const pingResponse = parseResponse(socket.sentFrames, 2);
+    assert.strictEqual(pingResponse.dataEnvelopes.length, 1);
+    assert.strictEqual(
+      fromBinary(PingResponseSchema, pingResponse.dataEnvelopes[0].data).number,
+      BigInt(9),
+    );
+  });
+
+  it("a reset frame cancels an in-flight RPC without ending the connection", async () => {
+    const handlers = createTestHandlers();
+    const cumSum = findHandler(handlers, "CumSum");
+    const ping = findHandler(handlers, "Ping");
+    const socket = new MockWebSocket();
+    const duplex = wrapWebSocket(socket);
+
+    // Stream 1 never half-closes; the client abandons it with a reset
+    // frame instead. Stream 2 then runs to completion on the same
+    // connection, proving the reset didn't take the connection down.
+    socket.emit(
+      encodeHeadersFrame(1, cumSum.requestPath, contentTypeStreamProto),
+    );
+    socket.emit(
+      encodeDataFrame(
+        1,
+        toBinary(
+          CumSumRequestSchema,
+          create(CumSumRequestSchema, { number: BigInt(5) }),
+        ),
+      ),
+    );
+    socket.emit(encodeResetFrame(1));
+    socket.emit(
+      encodeHeadersFrame(2, ping.requestPath, contentTypeUnaryProto),
+    );
+    socket.emit(
+      encodeDataFrame(
+        2,
+        toBinary(
+          PingRequestSchema,
+          create(PingRequestSchema, { number: BigInt(3), text: "after" }),
+        ),
+      ),
+    );
+    socket.emit(encodeEndStreamFrame(2));
+
+    const done = handleMuxedBidiSocket(duplex, handlers);
+    await waitForEndStream(socket, 2);
+    socket.close();
+    await done;
+
+    const pingResponse = parseResponse(socket.sentFrames, 2);
+    assert.strictEqual(pingResponse.dataEnvelopes.length, 1);
+    assert.strictEqual(
+      fromBinary(PingResponseSchema, pingResponse.dataEnvelopes[0].data).number,
+      BigInt(3),
+    );
+    assert.strictEqual(pingResponse.end.error, undefined);
+  });
+
+  it("a WebSocket close event aborts in-flight streams", async () => {
+    const handlers = createTestHandlers();
+    const handler = findHandler(handlers, "CumSum");
+    const socket = new MockWebSocket();
+    const duplex = wrapWebSocket(socket);
+
+    // No explicit end-stream envelope and no reset: only the WebSocket
+    // "close" event. On a multiplexed connection that is not a half-close
+    // of the stream -- it terminates the connection, aborting the RPC.
+    socket.emit(
+      encodeHeadersFrame(1, handler.requestPath, contentTypeStreamProto),
+    );
+    socket.close();
+
+    // Must resolve promptly (the aborted handler ends) rather than waiting
+    // forever for request messages that can never arrive.
+    await handleMuxedBidiSocket(duplex, handlers);
   });
 
   it("unknown :path yields an unimplemented error", async () => {
@@ -359,16 +533,20 @@ describe("wrapWebSocket() + handleBidiSocket()", () => {
     const duplex = wrapWebSocket(socket);
 
     socket.emit(
-      encodeHeadersEnvelope(
+      encodeHeadersFrame(
+        1,
         "/connectbidi.ping.v1.PingService/DoesNotExist",
         contentTypeUnaryProto,
       ),
     );
-    socket.emit(encodeEndStream());
+    socket.emit(encodeEndStreamFrame(1));
 
-    await handleBidiSocket(duplex, handlers);
+    const done = handleMuxedBidiSocket(duplex, handlers);
+    await waitForEndStream(socket, 1);
+    socket.close();
+    await done;
 
-    const response = parseResponse(socket.sentFrames);
+    const response = parseResponse(socket.sentFrames, 1);
     assert.strictEqual(response.dataEnvelopes.length, 0);
     assert.ok(response.end.error, "expected an error in the end-stream envelope");
     assert.strictEqual(response.end.error?.code, Code.Unimplemented);
@@ -386,31 +564,31 @@ describe("wrapWebSocket() + handleBidiSocket()", () => {
   it("resolves when the peer closes before the response is written", async () => {
     // Regression: Workers throw from send() after the socket closes. A peer
     // disconnecting mid-response is a normal way for an RPC to end, so
-    // handleBidiSocket must resolve rather than reject (rejections are
-    // surfaced through onError and logged as server errors).
+    // the handler must resolve rather than reject (rejections are surfaced
+    // through onError and logged as server errors).
     const handlers = createTestHandlers();
     const handler = findHandler(handlers, "Ping");
     const socket = new MockWebSocket({ failSendAfterClose: true });
     const duplex = wrapWebSocket(socket);
 
     socket.emit(
-      encodeHeadersEnvelope(handler.requestPath, contentTypeUnaryProto),
+      encodeHeadersFrame(1, handler.requestPath, contentTypeUnaryProto),
     );
     socket.emit(
-      encodeEnvelope(
-        flagEnvelopeData,
+      encodeDataFrame(
+        1,
         toBinary(
           PingRequestSchema,
           create(PingRequestSchema, { number: BigInt(1), text: "bye" }),
         ),
       ),
     );
-    socket.emit(encodeEndStream());
+    socket.emit(encodeEndStreamFrame(1));
     // The peer disconnects before the handler has produced its response;
     // every subsequent send() throws, like on real workerd.
     socket.close();
 
-    await handleBidiSocket(duplex, handlers);
+    await handleMuxedBidiSocket(duplex, handlers);
 
     assert.strictEqual(
       socket.sentFrames.length,
@@ -433,7 +611,7 @@ describe("wrapWebSocket() + handleBidiSocket()", () => {
 
     // Late events (a frame already in flight, a duplicate close) must be
     // no-ops rather than throwing at the dead stream's controller.
-    socket.emit(encodeEndStream());
+    socket.emit(encodeEndStreamFrame(1));
     socket.close();
   });
 });

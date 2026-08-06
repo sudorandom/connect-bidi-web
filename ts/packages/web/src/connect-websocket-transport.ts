@@ -46,7 +46,23 @@ import {
 import { runWebTransportCall } from "./webtransport-helper.js";
 
 const flagEnvelopeData = 0x00;
-const flagEnvelopeHeaders = 0x04;
+const flagEnvelopeHeaders = 0x07;
+const flagEnvelopeReset = 0x0f;
+const streamIdLength = 4;
+
+/**
+ * A connect-es Transport carrying streaming RPCs over WebSocket, plus
+ * control over the shared multiplexed connection.
+ */
+export interface ConnectWebSocketTransport extends Transport {
+  /**
+   * Closes the shared multiplexed connection, if one is open, terminating
+   * any RPCs still running on it. The transport remains usable: the next
+   * RPC dials a new connection. Useful outside the browser (tests, CLI
+   * tools), where an open WebSocket keeps the process alive.
+   */
+  close(): void;
+}
 
 export interface ConnectWebSocketTransportOptions {
   baseUrl: string;
@@ -55,14 +71,246 @@ export interface ConnectWebSocketTransportOptions {
   jsonOptions?: Partial<JsonReadOptions & JsonWriteOptions>;
   binaryOptions?: Partial<BinaryReadOptions & BinaryWriteOptions>;
   defaultTimeoutMs?: number;
+  /**
+   * Dial a dedicated WebSocket connection for each streaming RPC instead of
+   * multiplexing all RPCs onto one shared connection. A shared connection
+   * is subject to head-of-line blocking: one stream with a large message or
+   * a slow consumer delays every other stream behind it. Dedicated
+   * connections trade a WebSocket handshake per RPC for full isolation.
+   * Frames carry a stream ID either way.
+   */
+  connectionPerStream?: boolean;
+}
+
+interface MuxStreamEntry {
+  controller: ReadableStreamDefaultController<Uint8Array>;
+  /** The server finished this stream with an end-stream envelope. */
+  endSeen: boolean;
+}
+
+/**
+ * One WebSocket connection carrying any number of concurrent RPC streams.
+ * Every message is a 4-byte big-endian stream ID followed by one Connect
+ * envelope; a single onmessage handler routes envelopes to the stream they
+ * belong to. The socket is opened lazily and re-opened if it failed.
+ */
+class WebSocketMux {
+  private readonly url: string;
+  private readonly closeWhenIdle: boolean;
+  private socket: WebSocket | undefined;
+  private opening: Promise<WebSocket> | undefined;
+  private nextStreamId = 1;
+  private readonly entries = new Map<number, MuxStreamEntry>();
+
+  constructor(url: string, closeWhenIdle: boolean) {
+    this.url = url;
+    this.closeWhenIdle = closeWhenIdle;
+  }
+
+  /**
+   * Open a new stream on the connection, dialing it if necessary. The
+   * returned readable yields the stream's incoming envelopes; each chunk
+   * written to the writable must be exactly one envelope. Call
+   * `closeStream` once the RPC is finished or abandoned.
+   */
+  async openStream(): Promise<{
+    streamId: number;
+    readable: ReadableStream<Uint8Array>;
+    writable: WritableStream<Uint8Array>;
+  }> {
+    const socket = await this.open();
+    const streamId = this.nextStreamId++;
+    // start() runs synchronously in the ReadableStream constructor, so the
+    // controller is assigned before it is first used.
+    let controller!: ReadableStreamDefaultController<Uint8Array>;
+    const readable = new ReadableStream<Uint8Array>({
+      start(readableController) {
+        controller = readableController;
+      },
+    });
+    this.entries.set(streamId, { controller, endSeen: false });
+    const writable = new WritableStream<Uint8Array>({
+      write: (chunk) => {
+        socket.send(prefixStreamId(streamId, chunk));
+      },
+      close: () => {
+        // Half-close: an explicit end-stream envelope, since neither the
+        // stream nor the WebSocket has a send-direction close of its own.
+        socket.send(
+          prefixStreamId(
+            streamId,
+            encodeEnvelope(endStreamFlag, new Uint8Array()),
+          ),
+        );
+      },
+      abort: () => {
+        this.closeStream(streamId);
+      },
+    });
+    return { streamId, readable, writable };
+  }
+
+  /**
+   * Close the connection, terminating every stream on it. The mux remains
+   * usable: the next `openStream` dials a new connection.
+   */
+  close(): void {
+    const socket = this.socket;
+    this.socket = undefined;
+    this.failAll(new ConnectError("WebSocket closed", Code.Unavailable));
+    socket?.close(1000);
+  }
+
+  /**
+   * Release a stream. If the server hasn't finished it, a reset frame tells
+   * it to stop work. With `closeWhenIdle`, the connection is closed once no
+   * streams remain.
+   */
+  closeStream(streamId: number): void {
+    const entry = this.entries.get(streamId);
+    if (entry === undefined) {
+      return;
+    }
+    this.entries.delete(streamId);
+    if (
+      !entry.endSeen &&
+      this.socket !== undefined &&
+      this.socket.readyState === WebSocket.OPEN
+    ) {
+      this.socket.send(
+        prefixStreamId(
+          streamId,
+          encodeEnvelope(flagEnvelopeReset, new Uint8Array()),
+        ),
+      );
+    }
+    try {
+      entry.controller.close();
+    } catch {
+      // The stream may already be closed or errored.
+    }
+    if (
+      this.closeWhenIdle &&
+      this.entries.size === 0 &&
+      this.socket !== undefined
+    ) {
+      this.socket.close(1000);
+      this.socket = undefined;
+    }
+  }
+
+  private async open(): Promise<WebSocket> {
+    if (
+      this.socket !== undefined &&
+      this.socket.readyState === WebSocket.OPEN
+    ) {
+      return this.socket;
+    }
+    this.opening ??= new Promise<WebSocket>((resolve, reject) => {
+      const socket = new WebSocket(this.url);
+      socket.binaryType = "arraybuffer";
+      socket.onopen = () => {
+        this.opening = undefined;
+        this.socket = socket;
+        resolve(socket);
+      };
+      socket.onerror = () => {
+        this.opening = undefined;
+        reject(
+          new ConnectError("WebSocket connection failed", Code.Unavailable),
+        );
+      };
+      socket.onclose = () => {
+        this.opening = undefined;
+        if (this.socket === socket) {
+          this.socket = undefined;
+        }
+        this.failAll(
+          new ConnectError("WebSocket closed", Code.Unavailable),
+        );
+      };
+      socket.onmessage = (event) => {
+        this.route(new Uint8Array(event.data as ArrayBuffer));
+      };
+    });
+    return this.opening;
+  }
+
+  /** Route one incoming message to the stream it belongs to. */
+  private route(message: Uint8Array): void {
+    if (message.byteLength < streamIdLength + 1) {
+      return;
+    }
+    const view = new DataView(
+      message.buffer,
+      message.byteOffset,
+      message.byteLength,
+    );
+    const streamId = view.getUint32(0);
+    const flag = view.getUint8(streamIdLength);
+    const entry = this.entries.get(streamId);
+    if (entry === undefined) {
+      // A late frame for a stream already closed on this side; drop it.
+      return;
+    }
+    if (flag === flagEnvelopeReset) {
+      this.entries.delete(streamId);
+      try {
+        entry.controller.error(
+          new ConnectError("stream reset by server", Code.Canceled),
+        );
+      } catch {
+        // The stream may already be closed or errored.
+      }
+      return;
+    }
+    if (flag === endStreamFlag) {
+      entry.endSeen = true;
+    }
+    entry.controller.enqueue(message.subarray(streamIdLength));
+  }
+
+  /** Terminate every stream after the connection failed or closed. */
+  private failAll(reason: ConnectError): void {
+    for (const entry of this.entries.values()) {
+      try {
+        entry.controller.error(reason);
+      } catch {
+        // The stream may already be closed or errored.
+      }
+    }
+    this.entries.clear();
+  }
+}
+
+function prefixStreamId(
+  streamId: number,
+  envelope: Uint8Array,
+): Uint8Array<ArrayBuffer> {
+  const frame = new Uint8Array(streamIdLength + envelope.byteLength);
+  new DataView(frame.buffer).setUint32(0, streamId);
+  frame.set(envelope, streamIdLength);
+  return frame;
 }
 
 export function createConnectWebSocketTransport(
   options: ConnectWebSocketTransportOptions,
-): Transport {
+): ConnectWebSocketTransport {
   const useBinaryFormat = options.useBinaryFormat ?? false;
+  const url = new URL("/websocket", options.baseUrl);
+  url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
+  const wsUrl = url.toString();
+  const connectionPerStream = options.connectionPerStream ?? false;
+  // All RPCs share one multiplexed connection unless connectionPerStream is
+  // set, in which case each RPC gets a mux of its own that closes when the
+  // RPC finishes.
+  const sharedMux = new WebSocketMux(wsUrl, false);
 
   return {
+    close(): void {
+      sharedMux.close();
+    },
+
     async unary<I extends DescMessage, O extends DescMessage>(
       _method: DescMethodUnary<I, O>,
       _signal: AbortSignal | undefined,
@@ -121,54 +369,10 @@ export function createConnectWebSocketTransport(
         next: async (
           req: StreamRequest<I, O>,
         ): Promise<StreamResponse<I, O>> => {
-          const url = new URL("/websocket", options.baseUrl);
-          url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
-
-          const socket = new WebSocket(url.toString());
-          socket.binaryType = "arraybuffer";
-
-          await new Promise<void>((resolve, reject) => {
-            socket.onopen = () => resolve();
-            socket.onerror = () =>
-              reject(
-                new ConnectError(
-                  "WebSocket connection failed",
-                  Code.Unavailable,
-                ),
-              );
-          });
-
-          // Adapt WebSocket to ReadableStream/WritableStream pair
-          const readable = new ReadableStream<Uint8Array>({
-            start(controller) {
-              socket.onmessage = (event) => {
-                controller.enqueue(new Uint8Array(event.data));
-              };
-              socket.onclose = () => {
-                controller.close();
-              };
-              socket.onerror = () => {
-                controller.error(
-                  new ConnectError(
-                    "WebSocket closed with error",
-                    Code.Unavailable,
-                  ),
-                );
-              };
-            },
-          });
-
-          const writable = new WritableStream<Uint8Array>({
-            write(chunk) {
-              socket.send(new Uint8Array(chunk));
-            },
-            close() {
-              socket.send(encodeEnvelope(endStreamFlag, new Uint8Array()));
-            },
-            abort() {
-              socket.close();
-            },
-          });
+          const mux = connectionPerStream
+            ? new WebSocketMux(wsUrl, true)
+            : sharedMux;
+          const { streamId, readable, writable } = await mux.openStream();
 
           const path = new URL(req.url).pathname;
 
@@ -182,7 +386,10 @@ export function createConnectWebSocketTransport(
             await runWebTransportCall(
               {
                 ready: Promise.resolve(),
-                createBidirectionalStream: async () => ({ readable, writable }),
+                createBidirectionalStream: async () => ({
+                  readable,
+                  writable,
+                }),
               },
               req.header,
               rawMessageGenerator(),
@@ -218,7 +425,7 @@ export function createConnectWebSocketTransport(
                 yield parse(env.data);
               }
             } finally {
-              socket.close();
+              mux.closeStream(streamId);
             }
           }
 

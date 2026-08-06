@@ -89,7 +89,7 @@ function withCors(res: Response): Response {
 
 export default {
   async fetch(request: Request): Promise<Response> {
-    // Bidi streaming: one WebSocket connection per RPC.
+    // Bidi streaming: one WebSocket connection, RPCs multiplexed by stream ID.
     const upgraded = handleWebSocketUpgrade(request);
     if (upgraded !== null) {
       return upgraded;

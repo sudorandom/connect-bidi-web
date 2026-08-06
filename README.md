@@ -4,8 +4,8 @@ Full bidirectional streaming for [ConnectRPC](https://connectrpc.com) in the bro
 
 Browsers can't do full bidi streaming with the plain Connect protocol because fetch can't stream request bodies in every browser and network path. This project adds pluggable transports that carry the Connect envelope protocol over:
 
-- **WebSocket** — one connection per RPC. Works everywhere, including through Cloudflare Workers.
-- **WebTransport** — one HTTP/3 session, one bidirectional stream per RPC. Lower overhead; Baseline in evergreen browsers (Chrome 97+, Firefox 114+, Safari 26.4+), but not available on Cloudflare Workers.
+- **WebSocket** — one shared connection, any number of concurrent RPCs multiplexed by a stream ID on every frame (an option gives each streaming RPC its own connection instead, avoiding head-of-line blocking). Works everywhere, including through Cloudflare Workers.
+- **WebTransport** — one HTTP/3 session, one bidirectional stream per RPC. QUIC streams make multiplexing the transport's job: no stream IDs needed, no head-of-line blocking. Baseline in evergreen browsers (Chrome 97+, Firefox 114+, Safari 26.4+), but not available on Cloudflare Workers.
 
 A composite transport keeps unary RPCs on plain HTTP (caching, observability, proxies) and routes streaming RPCs over the bidi transport.
 
@@ -19,6 +19,8 @@ A composite transport keeps unary RPCs on plain HTTP (caching, observability, pr
 | [`@sudorandom/connect-bidi-core`](https://www.npmjs.com/package/@sudorandom/connect-bidi-core) | Runtime-neutral server bridge to `@connectrpc/connect` handlers |
 | [`@sudorandom/connect-bidi-node`](https://www.npmjs.com/package/@sudorandom/connect-bidi-node) | Node.js WebSocket server adapter |
 | [`@sudorandom/connect-bidi-cloudflare`](https://www.npmjs.com/package/@sudorandom/connect-bidi-cloudflare) | Cloudflare Workers WebSocket server adapter |
+
+API references: [Go on pkg.go.dev](https://pkg.go.dev/github.com/sudorandom/connect-bidi-web) · [TypeScript on connect-bidi-web.kmcd.dev/docs](https://connect-bidi-web.kmcd.dev/docs/)
 
 > [!NOTE]
 > The Go packages build on connect-go **v2** and its new `Transport` API
@@ -69,7 +71,7 @@ const client = createClient(ElizaService, transport);
 ## Wire protocol
 
 Frames are Connect-style envelopes: a flag byte and a big-endian u32 payload length.
-`0x00` data, `0x01` compressed data, `0x02` end-stream (Connect `EndStreamResponse` JSON), `0x04` headers (JSON metadata, includes `:path`). Compression is negotiated with `connect-content-encoding`/`connect-accept-encoding` metadata. See the per-package READMEs for details.
+`0x00` data, `0x01` compressed data, `0x02` end-stream (Connect `EndStreamResponse` JSON), `0x07` headers (JSON metadata, includes `:path`), `0x0F` reset (WebSocket only; aborts one stream). On WebSocket, every frame is additionally prefixed with a 4-byte big-endian stream ID so concurrent RPCs can share the connection; WebTransport needs neither stream IDs nor resets, because each RPC has its own QUIC stream. Compression is negotiated with `connect-content-encoding`/`connect-accept-encoding` metadata. See the per-package READMEs for details.
 
 ## Demo
 

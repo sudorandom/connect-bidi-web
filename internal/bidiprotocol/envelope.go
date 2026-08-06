@@ -28,12 +28,22 @@ import (
 	"github.com/sudorandom/connect-bidi-web/internal/connectprotocol"
 )
 
-// Envelope flag constants.
+// Envelope flag constants. Connect's own flags (compressed, end-stream) are
+// bitmasks, so the transport-specific frame types deliberately use values
+// that no combination of Connect bitmask flags could ever produce: 0x07 and
+// 0x0F both set the low two bits alongside bits Connect has not allocated.
 const (
 	FlagEnvelopeData       uint8 = 0x00
 	FlagEnvelopeCompressed uint8 = connectprotocol.FlagEnvelopeCompressed
 	FlagEnvelopeEndStream  uint8 = connectprotocol.FlagEnvelopeEndStream
-	FlagEnvelopeHeaders    uint8 = 0x04
+	// FlagEnvelopeHeaders marks the leading metadata frame of a request or
+	// response, standing in for the HTTP headers a raw socket doesn't have.
+	FlagEnvelopeHeaders uint8 = 0x07
+	// FlagEnvelopeReset aborts a single stream, with an empty payload. It is
+	// used only by transports that multiplex several streams onto one
+	// connection (WebSocket); transports with one stream per connection
+	// simply close the connection instead.
+	FlagEnvelopeReset uint8 = 0x0F
 )
 
 const (
@@ -61,25 +71,6 @@ func putBuffer(p *[]byte) {
 	if p != nil {
 		bufferPool.Put(p)
 	}
-}
-
-// WriteEnvelope writes a single envelope to the writer using exactly one
-// Write call. Transports where each Write becomes a discrete message (such as
-// WebSocket) should use this variant so an envelope never spans messages.
-func WriteEnvelope(writer io.Writer, flag uint8, payload []byte) error {
-	if uint64(len(payload)) > math.MaxUint32 {
-		return errors.New("payload too large")
-	}
-	totalLen := envelopeLen + len(payload)
-	buf, poolPtr := getBuffer(totalLen)
-	defer putBuffer(poolPtr)
-
-	buf[0] = flag
-	//nolint:gosec // the payload length is bounded to MaxUint32 above
-	binary.BigEndian.PutUint32(buf[1:5], uint32(len(payload)))
-	copy(buf[envelopeLen:], payload)
-	_, err := writer.Write(buf)
-	return err
 }
 
 // WriteEnvelopeChunked writes the envelope head and payload as separate Write

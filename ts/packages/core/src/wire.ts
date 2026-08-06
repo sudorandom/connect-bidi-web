@@ -16,15 +16,84 @@
  * Envelope flag used only by the bidi wire protocol (not part of the
  * Connect-over-HTTP wire format) to mark the leading metadata frame of a
  * request or response. Must match the flag of the same name used by
- * @sudorandom/connect-bidi-web's client transports.
+ * @sudorandom/connect-bidi-web's client transports. Connect's own flags are
+ * bitmasks (0x01 compressed, 0x02 end-stream), so the transport-specific
+ * frame types use values no combination of Connect bitmask flags could
+ * produce: 0x07 and 0x0F set the low two bits alongside unallocated bits.
  */
-export const flagEnvelopeHeaders = 0x04;
+export const flagEnvelopeHeaders = 0x07;
+
+/**
+ * Envelope flag used only by the WebSocket wire protocol to abort a single
+ * stream on a multiplexed connection, with an empty payload. Transports
+ * with one stream per connection (WebTransport) simply close the stream
+ * instead.
+ */
+export const flagEnvelopeReset = 0x0f;
 
 /**
  * The "no flags set" value for a data envelope. Not a distinct flag, just
  * named for readability at call sites.
  */
 export const flagEnvelopeData = 0x00;
+
+/**
+ * Length of the prefix identifying the stream on every WebSocket message:
+ * a 4-byte big-endian stream ID, followed by one Connect envelope (1 flag
+ * byte, 4-byte big-endian payload length, payload).
+ */
+export const streamIdLength = 4;
+
+/**
+ * One WebSocket message, split into the stream it belongs to and the
+ * Connect envelope it carries.
+ */
+export interface StreamFrame {
+  streamId: number;
+  /** The envelope's flag byte (the first byte after the stream ID). */
+  flag: number;
+  /** The complete envelope: flag, length, and payload. */
+  envelope: Uint8Array;
+}
+
+/**
+ * Encode one WebSocket message: the stream ID followed by one envelope.
+ */
+export function encodeStreamFrame(
+  streamId: number,
+  envelope: Uint8Array,
+): Uint8Array {
+  const frame = new Uint8Array(streamIdLength + envelope.byteLength);
+  new DataView(frame.buffer).setUint32(0, streamId);
+  frame.set(envelope, streamIdLength);
+  return frame;
+}
+
+/**
+ * Split one WebSocket message into stream ID and envelope. Throws on a
+ * malformed frame: too short, or not exactly one complete envelope.
+ */
+export function decodeStreamFrame(message: Uint8Array): StreamFrame {
+  const envelopeHeadLength = 5;
+  if (message.byteLength < streamIdLength + envelopeHeadLength) {
+    throw new Error(`frame too short: ${message.byteLength} bytes`);
+  }
+  const view = new DataView(
+    message.buffer,
+    message.byteOffset,
+    message.byteLength,
+  );
+  const streamId = view.getUint32(0);
+  const flag = view.getUint8(streamIdLength);
+  const declared = view.getUint32(streamIdLength + 1);
+  const actual = message.byteLength - streamIdLength - envelopeHeadLength;
+  if (declared !== actual) {
+    throw new Error(
+      `envelope declares ${declared} payload bytes but frame carries ${actual}`,
+    );
+  }
+  return { streamId, flag, envelope: message.subarray(streamIdLength) };
+}
 
 /**
  * Concatenate a list of byte chunks into a single Uint8Array, avoiding a

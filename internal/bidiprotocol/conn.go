@@ -14,11 +14,10 @@
 
 package bidiprotocol
 
-import "io"
-
-// Conn is a duplex byte channel carrying the envelopes of a single RPC.
-// Implementations adapt a transport-specific connection (a WebSocket
-// connection, a WebTransport stream) to the shared protocol code.
+// Conn is a duplex channel carrying the envelopes of a single RPC stream.
+// Implementations adapt a transport-specific connection (a stream
+// multiplexed onto a WebSocket connection, a WebTransport stream) to the
+// shared protocol code.
 type Conn interface {
 	// ReadEnvelope reads the next envelope.
 	ReadEnvelope() (flag uint8, payload []byte, err error)
@@ -28,35 +27,6 @@ type Conn interface {
 	// half-close is expressed on the wire is transport-specific: an explicit
 	// end-stream envelope, or a stream FIN.
 	CloseSend() error
-	// Close releases the underlying connection.
+	// Close releases the underlying stream.
 	Close() error
-}
-
-// netConn adapts an io.ReadWriteCloser (such as a WebSocket connection
-// exposed as a net.Conn) to Conn. Half-close is expressed with an explicit
-// end-stream envelope, and every envelope is written with a single Write so
-// that message-oriented transports keep one envelope per message.
-type netConn struct {
-	rwc io.ReadWriteCloser
-}
-
-// NewNetConn returns a Conn backed by the given io.ReadWriteCloser.
-func NewNetConn(rwc io.ReadWriteCloser) Conn {
-	return &netConn{rwc: rwc}
-}
-
-func (c *netConn) ReadEnvelope() (uint8, []byte, error) {
-	return ReadEnvelope(c.rwc)
-}
-
-func (c *netConn) WriteEnvelope(flag uint8, payload []byte) error {
-	return WriteEnvelope(c.rwc, flag, payload)
-}
-
-func (c *netConn) CloseSend() error {
-	return WriteEnvelope(c.rwc, FlagEnvelopeEndStream, nil)
-}
-
-func (c *netConn) Close() error {
-	return c.rwc.Close()
 }

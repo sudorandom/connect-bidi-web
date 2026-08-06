@@ -12,16 +12,20 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import type { DuplexByteStream } from "@sudorandom/connect-bidi-core";
+import type { DuplexMessageStream } from "@sudorandom/connect-bidi-core";
 import type { RawData, WebSocket } from "ws";
 
 /**
- * Adapts a `ws` WebSocket connection to a `DuplexByteStream` for
- * `handleBidiSocket`. Binary messages become readable chunks; writes are
- * sent as binary WebSocket messages; closing or erroring the socket in
- * either direction propagates to both the readable and the writable side.
+ * Adapts a `ws` WebSocket connection to a `DuplexMessageStream` for
+ * `handleMuxedBidiSocket`. Message boundaries are preserved, as the muxed
+ * protocol requires: each binary message becomes exactly one readable
+ * chunk, and each written chunk is sent as one binary WebSocket message.
+ * Closing or erroring the socket in either direction propagates to both
+ * the readable and the writable side.
  */
-export function websocketToDuplexByteStream(ws: WebSocket): DuplexByteStream {
+export function websocketToDuplexMessageStream(
+  ws: WebSocket,
+): DuplexMessageStream {
   const readable = new ReadableStream<Uint8Array>({
     start(controller) {
       ws.on("message", (data: RawData, isBinary: boolean) => {

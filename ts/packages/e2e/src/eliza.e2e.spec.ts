@@ -39,6 +39,7 @@ import type { Client, ServiceImpl } from "@connectrpc/connect";
 import { createClient, createConnectRouter } from "@connectrpc/connect";
 import { createConnectTransport } from "@connectrpc/connect-web";
 import { createBidiWebSocketHandler } from "@sudorandom/connect-bidi-node";
+import type { ConnectWebSocketTransport } from "@sudorandom/connect-bidi-web";
 import {
   createCompositeTransport,
   createConnectWebSocketTransport,
@@ -146,6 +147,7 @@ const elizaImpl: ServiceImpl<typeof ElizaService> = {
 
 describe("TS WebSocket client <-> TS Node server", () => {
   let server: http.Server;
+  let transport: ConnectWebSocketTransport;
   let client: ElizaClient;
 
   before(async () => {
@@ -162,17 +164,18 @@ describe("TS WebSocket client <-> TS Node server", () => {
     const address = server.address();
     const port =
       typeof address === "object" && address !== null ? address.port : 0;
-    client = createClient(
-      ElizaService,
-      createConnectWebSocketTransport({
-        baseUrl: `http://127.0.0.1:${port}`,
-      }),
-    );
+    transport = createConnectWebSocketTransport({
+      baseUrl: `http://127.0.0.1:${port}`,
+    });
+    client = createClient(ElizaService, transport);
   });
 
   after(
     () =>
       new Promise<void>((resolve, reject) => {
+        // The shared multiplexed connection outlives individual RPCs and
+        // would otherwise keep server.close() (and the process) waiting.
+        transport.close();
         server.close((err) => (err ? reject(err) : resolve()));
       }),
   );
@@ -238,22 +241,29 @@ describe("TS composite client <-> Go server", {
   skip: goAvailable ? false : "go not found in PATH",
 }, () => {
   let goServer: GoServer;
+  let wsTransport: ConnectWebSocketTransport;
   let client: ElizaClient;
 
   before(async () => {
     goServer = await startGoServer();
     // Unary over plain Connect HTTP, streams over WebSocket — the
     // recommended production setup from the README.
+    wsTransport = createConnectWebSocketTransport({
+      baseUrl: goServer.baseUrl,
+    });
     client = createClient(
       ElizaService,
       createCompositeTransport(
         createConnectTransport({ baseUrl: goServer.baseUrl }),
-        createConnectWebSocketTransport({ baseUrl: goServer.baseUrl }),
+        wsTransport,
       ),
     );
   });
 
-  after(() => goServer.stop());
+  after(async () => {
+    wsTransport.close();
+    await goServer.stop();
+  });
 
   it("unary: say over plain Connect HTTP", async () => {
     const res = await client.say({ sentence: "unary hello" });

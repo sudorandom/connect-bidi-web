@@ -447,6 +447,73 @@ h3 {
   overflow-x: auto;
 }
 
+/* Breathing room between the feature cards above and the paragraphs
+   below; the surrounding grid and paragraphs bring no margins of their
+   own. */
+.wire-format-card {
+  margin: 2rem 0;
+}
+
+/* Wire-format card: frame diagram beside the flag-value table on wide
+   screens, stacked on narrow ones. minmax(0, ...) lets the diagram's own
+   horizontal scrollbar work instead of overflowing the page. */
+.wire-format {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+}
+
+.flag-table {
+  border-collapse: collapse;
+  margin: 1rem 1.5rem 1.25rem;
+  font-size: 0.85rem;
+  color: var(--text-code);
+}
+
+.flag-table th,
+.flag-table td {
+  text-align: left;
+  padding: 0.3rem 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.flag-table td:first-child {
+  padding-right: 1.1rem;
+}
+
+.flag-table thead th {
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #8b95a7;
+}
+
+.flag-table tbody tr:last-child th,
+.flag-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.flag-table code {
+  color: #98c379;
+  background: transparent;
+  padding: 0;
+}
+
+@media (max-width: 720px) {
+  .wire-format {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .wire-format pre {
+    padding-bottom: 0.5rem;
+  }
+
+  .flag-table {
+    margin-top: 0.25rem;
+  }
+}
+
 .code-card code {
   color: var(--text-code);
   font-size: 0.88rem;

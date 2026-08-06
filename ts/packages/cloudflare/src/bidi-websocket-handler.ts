@@ -13,17 +13,17 @@
 // limitations under the License.
 
 import type { HandleBidiSocketOptions } from "@sudorandom/connect-bidi-core";
-import { handleBidiSocket } from "@sudorandom/connect-bidi-core";
+import { handleMuxedBidiSocket } from "@sudorandom/connect-bidi-core";
 import type { UniversalHandler } from "@connectrpc/connect/protocol";
 import { wrapWebSocket } from "./websocket-like.js";
 
 export interface CreateBidiWebSocketHandlerOptions
   extends HandleBidiSocketOptions {
   /**
-   * Called if `handleBidiSocket` rejects for a given connection (a bug in a
-   * handler implementation; protocol errors are reported to the client
+   * Called if `handleMuxedBidiSocket` rejects for a given connection (a bug
+   * in a handler implementation; protocol errors are reported to the client
    * instead of throwing). Defaults to a no-op -- the fetch handler never
-   * awaits the RPC, so an unset `onError` would otherwise surface as a
+   * awaits the RPCs, so an unset `onError` would otherwise surface as a
    * silently swallowed rejection.
    */
   onError?: (error: unknown) => void;
@@ -31,9 +31,9 @@ export interface CreateBidiWebSocketHandlerOptions
 
 /**
  * Creates a fetch-handler helper that upgrades `Upgrade: websocket`
- * requests into a single-RPC bidi connection, bridged to `handlers` via
- * `@sudorandom/connect-bidi-core`'s `handleBidiSocket`. Get `handlers` from
- * `createConnectRouter(...).handlers` (`@connectrpc/connect`).
+ * requests into a multiplexed bidi connection, bridged to `handlers` via
+ * `@sudorandom/connect-bidi-core`'s `handleMuxedBidiSocket`. Get `handlers`
+ * from `createConnectRouter(...).handlers` (`@connectrpc/connect`).
  *
  * The returned function returns the 101 upgrade `Response` for WebSocket
  * upgrade requests, or `null` for everything else, so callers can fall
@@ -49,8 +49,9 @@ export interface CreateBidiWebSocketHandlerOptions
  * };
  * ```
  *
- * One WebSocket connection carries exactly one RPC, matching the Go and
- * Node adapters.
+ * One WebSocket connection carries any number of concurrent RPCs,
+ * demultiplexed by the stream ID on every frame, matching the Go and Node
+ * adapters.
  */
 export function createBidiWebSocketHandler(
   handlers: readonly UniversalHandler[],
@@ -66,7 +67,7 @@ export function createBidiWebSocketHandler(
     const server = pair[1];
     server.accept();
 
-    handleBidiSocket(wrapWebSocket(server), handlers, options).catch(
+    handleMuxedBidiSocket(wrapWebSocket(server), handlers, options).catch(
       (error: unknown) => {
         options?.onError?.(error);
       },

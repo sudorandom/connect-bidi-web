@@ -1,0 +1,77 @@
+/*
+ * Skins TypeDoc's default theme to match the marketing site
+ * (demo/web/style.css). TypeDoc maps --light-color-* / --dark-color-*
+ * pairs onto --color-* according to the visitor's theme choice, so
+ * overriding the pairs here restyles OS-auto, forced-light, and
+ * forced-dark modes alike. Keep the palette in sync with
+ * demo/web/style.css when the site's brand colors change.
+ */
+:root {
+  /* Light theme — site light palette */
+  --light-color-background: #f7f8fb;
+  --light-color-background-secondary: #ffffff;
+  --light-color-background-active: #eef0ff;
+  --light-color-accent: rgba(15, 23, 42, 0.16);
+  --light-color-active-menu-item: #eef0ff;
+  --light-color-text: #0f172a;
+  --light-color-text-aside: #5b6472;
+  --light-color-link: #4f46e5;
+  --light-color-focus-outline: #6366f1;
+  --light-color-document: #ffffff;
+
+  /* Dark theme — site dark palette */
+  --dark-color-background: #0b0f19;
+  --dark-color-background-secondary: #10141f;
+  --dark-color-background-active: rgba(30, 41, 59, 0.85);
+  --dark-color-accent: rgba(255, 255, 255, 0.14);
+  --dark-color-active-menu-item: rgba(99, 102, 241, 0.22);
+  --dark-color-text: #f8fafc;
+  --dark-color-text-aside: #94a3b8;
+  --dark-color-link: #818cf8;
+  --dark-color-focus-outline: #818cf8;
+  --dark-color-document: #10141f;
+}
+
+/* Same type stacks as the site. */
+body {
+  font-family:
+    -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial,
+    sans-serif;
+  line-height: 1.5;
+}
+
+code,
+pre {
+  font-family:
+    ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas,
+    "Liberation Mono", monospace;
+}
+
+h1,
+h2,
+h3 {
+  line-height: 1.2;
+  letter-spacing: -0.01em;
+}
+
+/* Header: elevated bar with a hairline border, like the site header. */
+.tsd-page-toolbar {
+  background: var(--color-background-secondary);
+  border-bottom: 1px solid var(--color-accent);
+}
+
+/* The toolbar title doubles as the brand; give it the site's accent. */
+.tsd-page-toolbar .title {
+  color: var(--color-link);
+  font-weight: 600;
+}
+
+/* Softer corners on code samples, matching the site's code cards. */
+pre {
+  border-radius: 10px;
+}
+
+/* Underline-on-hover links, like the site. */
+a:hover {
+  text-decoration: underline;
+}

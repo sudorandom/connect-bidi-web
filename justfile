@@ -24,10 +24,20 @@ e2e: build
 bench: build
     go test -bench=. -benchmem -run=NONE ./connectwebsocket/... ./connectwebtransport/...
 
-# Build the demo site bundle
+# Build the demo site bundle, including the TypeScript API reference at
+# /docs/ (TypeDoc). Order matters: the site build wipes demo/web/dist.
 demo-build:
     npm --prefix demo/web install
     npm --prefix demo/web run build
+    just docs
+
+# Generate the TypeScript API reference into demo/web/dist/docs. TypeDoc
+# lives in its own small package (ts/docs) because it pins its own
+# TypeScript version, separate from the workspace's.
+docs:
+    npm --prefix ts install
+    npm --prefix ts/docs install
+    npm --prefix ts/docs run docs
 
 # Run the Go demo server (Connect HTTP + WebSocket + WebTransport) at
 # https://localhost:4433. Certs are created with mkcert on first run;

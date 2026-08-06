@@ -20,4 +20,4 @@ export type {
   BidiWebSocketHandler,
   BidiWebSocketHandlerOptions,
 } from "./create-bidi-websocket-handler.js";
-export { websocketToDuplexByteStream } from "./websocket-duplex.js";
+export { websocketToDuplexMessageStream } from "./websocket-duplex.js";

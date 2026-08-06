@@ -1,0 +1,13 @@
+{
+  "name": "connect-bidi-web-docs",
+  "private": true,
+  "type": "module",
+  "description": "Generates the TypeScript API reference (TypeDoc) into the demo site's dist/docs, served at /docs/ on the deployed site.",
+  "scripts": {
+    "docs": "typedoc"
+  },
+  "devDependencies": {
+    "typedoc": "^0.28.20",
+    "typescript": "^6.0.3"
+  }
+}

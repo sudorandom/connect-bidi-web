@@ -16,10 +16,10 @@ import type * as http from "node:http";
 import type * as https from "node:https";
 import type { ConnectRouter, ContextValues } from "@connectrpc/connect";
 import type { UniversalHandler } from "@connectrpc/connect/protocol";
-import { handleBidiSocket } from "@sudorandom/connect-bidi-core";
+import { handleMuxedBidiSocket } from "@sudorandom/connect-bidi-core";
 import type { ServerOptions, WebSocket } from "ws";
 import { WebSocketServer } from "ws";
-import { websocketToDuplexByteStream } from "./websocket-duplex.js";
+import { websocketToDuplexMessageStream } from "./websocket-duplex.js";
 
 /**
  * The path WebSocket upgrades are accepted on by default, when using
@@ -56,8 +56,9 @@ export interface BidiWebSocketHandler {
   /**
    * Subscribes to `server`'s `'upgrade'` event and accepts WebSocket
    * upgrade requests whose path matches `path` (or the handler's
-   * configured `path`, default "/websocket"), serving exactly one RPC per
-   * accepted connection. Upgrade requests for other paths are left
+   * configured `path`, default "/websocket"), serving any number of
+   * concurrent RPCs per accepted connection, demultiplexed by the stream
+   * ID on every frame. Upgrade requests for other paths are left
    * untouched, so multiple `BidiWebSocketHandler`s -- or other `'upgrade'`
    * listeners -- can share the same `http.Server`. Ordinary HTTP requests
    * (the `'request'` event) are entirely unaffected.
@@ -65,19 +66,19 @@ export interface BidiWebSocketHandler {
   upgrade(server: http.Server | https.Server, path?: string): void;
 
   /**
-   * Serves exactly one RPC on an already-accepted WebSocket connection. Use
-   * this if you manage the `'upgrade'` event yourself, for example to
-   * integrate with a framework that already runs its own
+   * Serves RPCs on an already-accepted WebSocket connection until it
+   * closes. Use this if you manage the `'upgrade'` event yourself, for
+   * example to integrate with a framework that already runs its own
    * `ws.WebSocketServer`.
    */
   handleConnection(ws: WebSocket): Promise<void>;
 }
 
 /**
- * Creates a handler that bridges `ws` WebSocket connections to Connect RPCs,
- * using `@sudorandom/connect-bidi-core`'s `handleBidiSocket`. Accepts either
- * a `ConnectRouter` (as returned by `createConnectRouter()`) or a plain
- * `UniversalHandler[]` array (`router.handlers`).
+ * Creates a handler that bridges `ws` WebSocket connections to Connect
+ * RPCs, using `@sudorandom/connect-bidi-core`'s `handleMuxedBidiSocket`.
+ * Accepts either a `ConnectRouter` (as returned by `createConnectRouter()`)
+ * or a plain `UniversalHandler[]` array (`router.handlers`).
  */
 export function createBidiWebSocketHandler(
   routerOrHandlers: ConnectRouter | readonly UniversalHandler[],
@@ -88,8 +89,8 @@ export function createBidiWebSocketHandler(
     : routerOrHandlers;
 
   async function handleConnection(ws: WebSocket): Promise<void> {
-    const socket = websocketToDuplexByteStream(ws);
-    await handleBidiSocket(socket, handlers, {
+    const socket = websocketToDuplexMessageStream(ws);
+    await handleMuxedBidiSocket(socket, handlers, {
       contextValues: options?.contextValues,
     });
   }
@@ -108,7 +109,7 @@ export function createBidiWebSocketHandler(
           return;
         }
         wss.handleUpgrade(request, socket, head, (ws) => {
-          // handleBidiSocket already reports RPC-level failures to the
+          // handleMuxedBidiSocket already reports RPC-level failures to the
           // client via an error end-stream envelope; a rejection here means
           // the connection itself failed in some more fundamental way, and
           // there is nothing left to do but let it close.

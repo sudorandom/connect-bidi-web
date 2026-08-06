@@ -13,9 +13,16 @@
 // limitations under the License.
 
 export { createConnectWebSocketTransport } from "./connect-websocket-transport.js";
-export type { ConnectWebSocketTransportOptions } from "./connect-websocket-transport.js";
+export type {
+  ConnectWebSocketTransport,
+  ConnectWebSocketTransportOptions,
+} from "./connect-websocket-transport.js";
 export { createConnectWebTransportTransport } from "./connect-webtransport-transport.js";
 export type { ConnectWebTransportTransportOptions } from "./connect-webtransport-transport.js";
+export type {
+  WebTransportBidirectionalStream,
+  WebTransportSession,
+} from "./webtransport-helper.js";
 export { createCompositeTransport } from "./composite-transport.js";
 export {
   decodeHeadersFrame,

@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import type { DuplexByteStream } from "@sudorandom/connect-bidi-core";
+import type { DuplexMessageStream } from "@sudorandom/connect-bidi-core";
 
 /**
  * The subset of the Workers `WebSocket` interface that `wrapWebSocket`
@@ -40,16 +40,20 @@ export interface BidiWebSocketLike {
 
 /**
  * Adapts a `BidiWebSocketLike` (an accepted Workers `WebSocket`, or a mock
- * of one in tests) into the `DuplexByteStream` that
- * `@sudorandom/connect-bidi-core`'s `handleBidiSocket` bridges to a Connect
- * `UniversalHandler`.
+ * of one in tests) into the `DuplexMessageStream` that
+ * `@sudorandom/connect-bidi-core`'s `handleMuxedBidiSocket` bridges to
+ * Connect `UniversalHandler`s. Message boundaries are preserved, as the
+ * muxed protocol requires: each message becomes exactly one readable
+ * chunk, and each written chunk is sent as one WebSocket message.
  *
  * Message frames are converted to `Uint8Array` regardless of whether they
  * arrive as text or binary, matching `@sudorandom/connect-bidi-web`'s
  * browser transports, which always send binary frames but whose peer could
  * in principle be any WebSocket client.
  */
-export function wrapWebSocket(socket: BidiWebSocketLike): DuplexByteStream {
+export function wrapWebSocket(
+  socket: BidiWebSocketLike,
+): DuplexMessageStream {
   // Receive binary frames as ArrayBuffer, not the spec-default Blob.
   socket.binaryType = "arraybuffer";
   // The socket keeps firing events after the consumer cancels the stream

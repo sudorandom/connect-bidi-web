@@ -48,7 +48,9 @@ import type { WebTransportSession } from "./webtransport-helper.js";
 import { runWebTransportCall } from "./webtransport-helper.js";
 
 const flagEnvelopeData = 0x00;
-const flagEnvelopeHeaders = 0x04;
+// 0x07 rather than a single bit: no combination of Connect's bitmask flags
+// (0x01 compressed, 0x02 end-stream) can produce it.
+const flagEnvelopeHeaders = 0x07;
 
 export interface ConnectWebTransportTransportOptions {
   /**

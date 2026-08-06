@@ -1,6 +1,6 @@
 {
   "name": "@sudorandom/connect-bidi-cloudflare",
-  "version": "0.1.2",
+  "version": "0.2.0",
   "description": "Cloudflare Workers WebSocket adapter for ConnectRPC bidirectional streaming",
   "license": "Apache-2.0",
   "repository": {
@@ -35,7 +35,7 @@
     "node": ">=20.19.0"
   },
   "dependencies": {
-    "@sudorandom/connect-bidi-core": "0.1.2"
+    "@sudorandom/connect-bidi-core": "0.2.0"
   },
   "peerDependencies": {
     "@bufbuild/protobuf": "^2.7.0",

@@ -14,7 +14,7 @@
 
 import type { Client } from "@connectrpc/connect";
 import type { ElizaService } from "../gen/connectbidi/eliza/v1/eliza_pb.js";
-import { requireElement } from "./dom.js";
+import { isWebTransportConnectionError, requireElement } from "./dom.js";
 
 const LANE_LABELS: readonly string[] = [
   "Stream Lane #1 ⚡",
@@ -53,6 +53,7 @@ export function createStreamsView(
   const descriptionEl = requireElement<HTMLElement>(
     "#lane-transport-description",
   );
+  const errorHint = requireElement<HTMLElement>("#lane-error-hint");
 
   const lanes: Lane[] = LANE_LABELS.map((label, index) => ({
     id: index + 1,
@@ -109,17 +110,26 @@ export function createStreamsView(
     return card;
   }
 
-  function setLaneRunning(lane: Lane, isRunning: boolean): void {
+  function setLaneState(
+    lane: Lane,
+    state: "running" | "done" | "error",
+  ): void {
     const card = document.querySelector<HTMLElement>(
       `#lane-card-${lane.id}`,
     );
     const status = document.querySelector<HTMLElement>(
       `#lane-status-${lane.id}`,
     );
-    card?.classList.toggle("running", isRunning);
-    status?.classList.toggle("active", isRunning);
+    card?.classList.toggle("running", state === "running");
+    status?.classList.toggle("active", state === "running");
+    status?.classList.toggle("error", state === "error");
     if (status !== null) {
-      status.innerText = isRunning ? "STREAM ACTIVE" : "COMPLETED";
+      status.innerText =
+        state === "running"
+          ? "STREAM ACTIVE"
+          : state === "error"
+            ? "ERROR"
+            : "COMPLETED";
     }
   }
 
@@ -154,6 +164,7 @@ export function createStreamsView(
     running = true;
     toggleButton.classList.add("active");
     toggleButton.innerText = "Stop all streams";
+    errorHint.classList.add("hidden");
     for (const lane of lanes) {
       void runLane(lane);
     }
@@ -173,7 +184,8 @@ export function createStreamsView(
     lane.rxCount = 0;
     lane.abortController = new AbortController();
     const signal = lane.abortController.signal;
-    setLaneRunning(lane, true);
+    let failed = false;
+    setLaneState(lane, "running");
 
     async function* generateRequests() {
       for (let i = 1; i <= MESSAGES_PER_LANE && !signal.aborted; i++) {
@@ -196,10 +208,17 @@ export function createStreamsView(
       }
     } catch (err) {
       if (!signal.aborted) {
+        failed = true;
         console.error(`stream lane ${lane.id} error:`, err);
+        // A rejected WebTransport handshake on a local server is almost
+        // always the browser's stricter certificate rules; point at the
+        // "Run it yourself" section, which documents the fix per browser.
+        if (isWebTransportConnectionError(err)) {
+          errorHint.classList.remove("hidden");
+        }
       }
     } finally {
-      setLaneRunning(lane, false);
+      setLaneState(lane, failed ? "error" : "done");
     }
   }
 

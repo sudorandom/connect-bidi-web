@@ -14,7 +14,11 @@
 
 import type { Client } from "@connectrpc/connect";
 import type { ElizaService } from "../gen/connectbidi/eliza/v1/eliza_pb.js";
-import { appendMessage } from "./dom.js";
+import {
+  appendMessage,
+  appendWebTransportHint,
+  isWebTransportConnectionError,
+} from "./dom.js";
 
 export interface ChatView {
   /** Starts the name prompt, introduction, and the ongoing chat loop. */
@@ -38,6 +42,18 @@ export function createChatView(
 ): ChatView {
   let name: string | undefined;
   let abortController = new AbortController();
+  // The introduction and the conversation usually fail together (they share
+  // the transport), so the certificate hint is shown at most once per
+  // transport choice.
+  let hintShown = false;
+
+  function reportError(prefix: string, err: unknown): void {
+    appendMessage(messages, "system", `${prefix}: ${String(err)}`);
+    if (!hintShown && isWebTransportConnectionError(err)) {
+      hintShown = true;
+      appendWebTransportHint(messages);
+    }
+  }
 
   function promptForText(signal?: AbortSignal): Promise<string> {
     const input = document.createElement("input");
@@ -96,7 +112,7 @@ export function createChatView(
         appendMessage(messages, "eliza", res.sentence);
       }
     } catch (err) {
-      appendMessage(messages, "system", `Introduce error: ${String(err)}`);
+      reportError("Introduce error", err);
     }
   }
 
@@ -122,7 +138,7 @@ export function createChatView(
       }
     } catch (err) {
       if (!signal.aborted) {
-        appendMessage(messages, "system", `Converse error: ${String(err)}`);
+        reportError("Converse error", err);
       }
     }
   }
@@ -141,6 +157,8 @@ export function createChatView(
       "system",
       `Switched streaming transport to ${transportLabel}.`,
     );
+    // A new transport choice may well fix the connection; re-arm the hint.
+    hintShown = false;
     abortController.abort();
     abortController = new AbortController();
     void runConversation();

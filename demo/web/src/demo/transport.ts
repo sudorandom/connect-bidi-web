@@ -73,13 +73,23 @@ export function createDemoTransport(
     let session: WebTransport | undefined;
     function dialSession(): WebTransport {
       if (session === undefined) {
-        session = new WebTransport(new URL("/webtransport", serverUrl));
+        const dialed = new WebTransport(new URL("/webtransport", serverUrl));
         // A rejected connection rejects `ready` and `closed` too. RPC
         // attempts surface the failure as ConnectErrors through the
         // transport, so handle the bare promises here to keep the rejection
         // from also reaching the console as an uncaught error.
-        session.ready.catch(() => {});
-        session.closed.catch(() => {});
+        dialed.ready.catch(() => {});
+        // Once the session dies — a rejected handshake (e.g. the browser
+        // refusing a locally-trusted certificate), a network drop, a server
+        // restart — forget it, so the next RPC dials a fresh session
+        // instead of failing forever on the corpse.
+        const forget = (): void => {
+          if (session === dialed) {
+            session = undefined;
+          }
+        };
+        dialed.closed.then(forget, forget);
+        session = dialed;
       }
       return session;
     }

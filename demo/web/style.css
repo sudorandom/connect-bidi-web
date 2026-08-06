@@ -675,7 +675,6 @@ h3 {
   font-weight: 400;
 }
 
-.demo-toolbar-input,
 .demo-toolbar-row select {
   flex: 1;
   background: var(--bg-input);
@@ -698,28 +697,9 @@ h3 {
   padding-right: 2rem;
 }
 
-.demo-toolbar-input:focus,
 .demo-toolbar-row select:focus {
   border-color: var(--accent-secondary);
   box-shadow: 0 0 0 3px var(--accent-glow);
-}
-
-.demo-toolbar-input.invalid {
-  border-color: var(--danger);
-}
-
-.demo-toolbar-input.invalid:focus {
-  box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.2);
-}
-
-.input-error {
-  margin: -0.15rem 0 0;
-  font-size: 0.76rem;
-  color: var(--danger);
-}
-
-.input-error.hidden {
-  display: none;
 }
 
 .badge {
@@ -994,6 +974,23 @@ a.badge:hover {
 .status-badge.active {
   background: rgba(34, 197, 94, 0.15);
   color: var(--success);
+}
+
+.status-badge.error {
+  background: rgba(239, 68, 68, 0.15);
+  color: var(--danger);
+}
+
+/* Shown when a stream lane fails with a WebTransport connection error,
+   pointing at the local-certificate browser tweaks. */
+.lane-error-hint {
+  margin: 0.9rem 0 0;
+  font-size: 0.82rem;
+  color: var(--danger);
+}
+
+.lane-error-hint.hidden {
+  display: none;
 }
 
 .lane-stats {

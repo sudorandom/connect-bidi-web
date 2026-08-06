@@ -110,13 +110,6 @@ just demo-worker   # wrangler dev at http://localhost:8787
 `npm run deploy` in `demo/worker` deploys it to your Cloudflare account; see
 [demo/worker/README.md](demo/worker/README.md).
 
-### Pointing the UI at another server
-
-The demo page talks to its own origin by default. Use the server URL box in
-the live demo — or a `?server=https://host:4433` query parameter — to point
-any deployment of the page at any server, e.g. the hosted site at your local
-`just demo` server.
-
 ## Development
 
 Dev tooling is managed with [mise](https://mise.jdx.dev) and [just](https://just.systems):

@@ -352,22 +352,6 @@ client := elizav1connect.NewElizaServiceClient(connect.NewClient(transport))</co
           <div class="demo-card">
             <div class="demo-toolbar">
               <div class="demo-toolbar-row">
-                <label for="server-url-input">Server</label>
-                <input
-                  id="server-url-input"
-                  class="demo-toolbar-input"
-                  type="text"
-                  autocomplete="off"
-                  spellcheck="false"
-                  placeholder="https://localhost:4433"
-                  aria-invalid="false"
-                  aria-describedby="server-url-error"
-                />
-              </div>
-              <p id="server-url-error" class="input-error hidden">
-                Enter a valid http(s) URL, e.g. https://localhost:4433
-              </p>
-              <div class="demo-toolbar-row">
                 <label for="transport-select">Streaming transport</label>
                 <select id="transport-select">
                   <option value="webtransport">
@@ -446,6 +430,13 @@ client := elizav1connect.NewElizaServiceClient(connect.NewClient(transport))</co
                   </button>
                 </div>
                 <div id="lanes-container" class="lanes-container"></div>
+                <p id="lane-error-hint" class="lane-error-hint hidden">
+                  WebTransport connection rejected? On a local server, that
+                  is usually the browser refusing the demo's locally-trusted
+                  certificate &mdash; see
+                  <a href="#run-it-yourself">Run it yourself</a> below for
+                  the one-line browser tweak.
+                </p>
               </section>
             </div>
           </div>
@@ -460,7 +451,7 @@ client := elizav1connect.NewElizaServiceClient(connect.NewClient(transport))</co
             >
           </p>
 
-          <div class="run-local">
+          <div id="run-it-yourself" class="run-local">
             <h3>Run it yourself</h3>
             <p class="run-local-lede">
               The whole demo &mdash; site, Go server, and Cloudflare Workers
@@ -503,8 +494,8 @@ just demo-worker   # Cloudflare workerd: http://localhost:8787
                 </li>
               </ul>
               <p>
-                To point the live demo at your local server, use the server
-                box above or a <code>?server=</code> query parameter.
+                Each server serves this same page, with the live demo above
+                talking to whichever one you opened.
               </p>
             </div>
           </div>

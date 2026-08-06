@@ -41,3 +41,34 @@ export function appendMessage(
   container.append(bubble);
   container.scrollTop = container.scrollHeight;
 }
+
+/**
+ * Reports whether an RPC failure looks like a rejected WebTransport
+ * connection, the one failure with a documented self-service fix (the
+ * browser's stricter certificate rules for locally-trusted certs).
+ */
+export function isWebTransportConnectionError(err: unknown): boolean {
+  return String(err).includes("WebTransport");
+}
+
+/**
+ * Appends a system bubble linking to the "Run it yourself" section, which
+ * documents the per-browser fix for locally rejected WebTransport
+ * connections. Built from DOM nodes because `appendMessage` is text-only
+ * by design.
+ */
+export function appendWebTransportHint(container: HTMLElement): void {
+  const bubble = document.createElement("div");
+  bubble.className = "msg-bubble msg-system";
+  bubble.append(
+    "WebTransport connection rejected? On a local server, that is usually " +
+      "the browser refusing the demo's locally-trusted certificate — see ",
+  );
+  const link = document.createElement("a");
+  link.href = "#run-it-yourself";
+  link.innerText = "Run it yourself";
+  bubble.append(link);
+  bubble.append(" below for the one-line browser tweak.");
+  container.append(bubble);
+  container.scrollTop = container.scrollHeight;
+}

@@ -16,11 +16,6 @@ import { createClient } from "@connectrpc/connect";
 import { createChatView } from "./demo/chat-view.js";
 import { requireElement } from "./demo/dom.js";
 import { highlightCodeExamples } from "./demo/highlight.js";
-import {
-  isValidServerUrl,
-  resolveServerUrl,
-  saveServerUrl,
-} from "./demo/settings.js";
 import { createStreamsView } from "./demo/streams-view.js";
 import { initTabs } from "./demo/tabs.js";
 import { createDemoTransport } from "./demo/transport.js";
@@ -71,8 +66,6 @@ function main(): void {
     },
   ]);
 
-  const serverInput = requireElement<HTMLInputElement>("#server-url-input");
-  const serverError = requireElement<HTMLElement>("#server-url-error");
   const transportSelect = requireElement<HTMLSelectElement>(
     "#transport-select",
   );
@@ -84,8 +77,9 @@ function main(): void {
     "#mux-toggle-input",
   );
 
-  let serverUrl = resolveServerUrl();
-  serverInput.value = serverUrl;
+  // The demo always talks to its own origin; the server address is not
+  // user-configurable.
+  const serverUrl = window.location.origin;
 
   const webTransportOption = transportSelect.querySelector<HTMLOptionElement>(
     'option[value="webtransport"]',
@@ -186,12 +180,6 @@ function main(): void {
     { buttonId: "tab-btn-streams", panelId: "view-streams" },
   ]);
 
-  function setServerInputInvalid(isInvalid: boolean): void {
-    serverInput.classList.toggle("invalid", isInvalid);
-    serverInput.setAttribute("aria-invalid", String(isInvalid));
-    serverError.classList.toggle("hidden", !isInvalid);
-  }
-
   function applyTransportChange(): void {
     const choice = currentChoice();
     syncMuxToggleVisibility();
@@ -206,7 +194,6 @@ function main(): void {
       );
     } catch (err) {
       console.error("failed to switch transport:", err);
-      setServerInputInvalid(true);
     }
   }
 
@@ -220,22 +207,6 @@ function main(): void {
   // on the visitor's first interaction with the demo.
   void refreshWebTransportAvailability();
 
-  serverInput.addEventListener("change", () => {
-    const nextUrl = serverInput.value.trim();
-    if (nextUrl.length === 0 || nextUrl === serverUrl) {
-      setServerInputInvalid(false);
-      return;
-    }
-    if (!isValidServerUrl(nextUrl)) {
-      setServerInputInvalid(true);
-      return;
-    }
-    setServerInputInvalid(false);
-    serverUrl = nextUrl;
-    saveServerUrl(serverUrl);
-    applyTransportChange();
-    void refreshWebTransportAvailability();
-  });
 }
 
 main();

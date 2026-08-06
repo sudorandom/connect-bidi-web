@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.2](https://github.com/sudorandom/connect-bidi-web/compare/v0.1.1...v0.1.2) (2026-08-06)
+
+
+### Bug Fixes
+
+* force upgrade undici dep since wrangler locks it ([eda17cb](https://github.com/sudorandom/connect-bidi-web/commit/eda17cba244d4cbf1888104f1df069a7bf40346f))
+* improve demo; adjust webtransport ux ([103f342](https://github.com/sudorandom/connect-bidi-web/commit/103f3426c8495f96493489636282744cd37500bd))
+
 ## [0.1.1](https://github.com/sudorandom/connect-bidi-web/compare/v0.1.0...v0.1.1) (2026-08-05)
 
 

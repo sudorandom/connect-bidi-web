@@ -6,8 +6,12 @@
     </linearGradient>
   </defs>
   <rect width="64" height="64" rx="14" fill="url(#g)"/>
-  <path d="M14 24h28" stroke="#ffffff" stroke-width="5" stroke-linecap="round"/>
-  <path d="M36 15l12 9-12 9" fill="none" stroke="#ffffff" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
-  <path d="M50 40H22" stroke="#ffffff" stroke-width="5" stroke-linecap="round"/>
-  <path d="M28 49l-12-9 12-9" fill="none" stroke="#ffffff" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- Two opposing arrows, mirror images of each other: the content bounds
+       are symmetric about (32,32) so the mark reads centered. -->
+  <g stroke="#fff" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" fill="none">
+    <path d="M12 20h36"/>
+    <path d="M44 12l8 8-8 8"/>
+    <path d="M52 44H16"/>
+    <path d="M20 52l-8-8 8-8"/>
+  </g>
 </svg>

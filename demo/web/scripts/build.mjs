@@ -29,6 +29,15 @@ mkdirSync(distDir, { recursive: true });
 cpSync(path.join(rootDir, "index.html"), path.join(distDir, "index.html"));
 cpSync(path.join(rootDir, "style.css"), path.join(distDir, "style.css"));
 cpSync(path.join(rootDir, "favicon.svg"), path.join(distDir, "favicon.svg"));
+// Browser/edge cache policy, honored by Workers Assets (and Pages-style hosts).
+cpSync(path.join(rootDir, "_headers"), path.join(distDir, "_headers"));
+// Static default for the WebTransport capability probe: correct for any
+// host that can only serve static files (Cloudflare Workers included).
+// The Go demo server overrides this path with {"webtransport":true}.
+cpSync(
+  path.join(rootDir, "capabilities.json"),
+  path.join(distDir, "capabilities.json"),
+);
 
 await build({
   entryPoints: [path.join(rootDir, "src/main.ts")],

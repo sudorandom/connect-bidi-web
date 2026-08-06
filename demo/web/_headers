@@ -1,0 +1,16 @@
+# Browser cache policy for the static site (Workers Assets honors this
+# file; Cloudflare's edge cache serves assets with ETag revalidation
+# regardless). Assets are not content-hashed, so max-ages stay modest.
+# The HTML page is served at "/" (Workers Assets redirects /index.html
+# there). Short max-age: repeat visits skip the request entirely, at the
+# cost of up to 5 minutes of staleness after a deploy.
+/
+  Cache-Control: public, max-age=300
+/bundle.js
+  Cache-Control: public, max-age=3600
+/style.css
+  Cache-Control: public, max-age=3600
+/favicon.svg
+  Cache-Control: public, max-age=86400
+/capabilities.json
+  Cache-Control: public, max-age=3600

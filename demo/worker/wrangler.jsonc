@@ -14,10 +14,9 @@
     // The built demo site; run `npm run build` in demo/web first.
     "directory": "../web/dist",
     // Assets normally win for matching GET requests; these paths must always
-    // reach the worker (WebSocket upgrade, RPCs, and the capability probe).
+    // reach the worker (WebSocket upgrade and RPCs)
     "run_worker_first": [
       "/websocket",
-      "/capabilities.json",
       "/connectbidi.eliza.v1.ElizaService/*"
     ]
   },

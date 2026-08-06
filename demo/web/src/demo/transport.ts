@@ -24,6 +24,16 @@ import { isWebTransportSupported } from "./webtransport-support.js";
 /** Which bidi-capable transport carries streaming RPCs. */
 export type StreamingTransportChoice = "webtransport" | "websocket";
 
+export interface DemoTransportOptions {
+  /**
+   * WebSocket only: dial a dedicated connection per streaming RPC (the
+   * transport's `connectionPerStream` option) instead of multiplexing all
+   * RPCs onto one shared connection. Ignored for WebTransport, where QUIC
+   * streams make the question moot.
+   */
+  connectionPerStream?: boolean;
+}
+
 export interface DemoTransport {
   transport: Transport;
   /** A short, transport-specific description shown next to the demo. */
@@ -39,6 +49,7 @@ export interface DemoTransport {
 export function createDemoTransport(
   choice: StreamingTransportChoice,
   serverUrl: string,
+  options: DemoTransportOptions = {},
 ): DemoTransport {
   const unary = createConnectTransport({ baseUrl: serverUrl });
 
@@ -74,9 +85,18 @@ export function createDemoTransport(
     };
   }
 
-  const streaming = createConnectWebSocketTransport({ baseUrl: serverUrl });
+  const connectionPerStream = options.connectionPerStream === true;
+  const streaming = createConnectWebSocketTransport({
+    baseUrl: serverUrl,
+    connectionPerStream,
+  });
   return {
     transport: createCompositeTransport(unary, streaming),
-    description: "Each lane below opens an independent WebSocket connection.",
+    description: connectionPerStream
+      ? "Each lane below dials its own WebSocket connection " +
+        "(connectionPerStream) — fully isolated, no head-of-line " +
+        "blocking, one handshake per stream."
+      : "Each lane below is an independent stream, multiplexed onto one " +
+        "shared WebSocket connection by the stream ID on every frame.",
   };
 }

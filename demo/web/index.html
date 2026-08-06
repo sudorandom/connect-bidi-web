@@ -37,7 +37,8 @@
         <nav class="site-nav">
           <a href="#what-it-is">What it is</a>
           <a href="#protocol">Protocol</a>
-          <a href="#code-examples">Code</a>
+          <a href="#code-examples">TypeScript</a>
+          <a href="#code-examples-go">Go</a>
           <a href="#live-demo">Live demo</a>
           <a href="#support-matrix">Support</a>
           <a
@@ -513,6 +514,21 @@ client := elizav1connect.NewElizaServiceClient(connect.NewClient(transport))</co
                     WebSocket (multiplexed connection)
                   </option>
                 </select>
+              </div>
+              <div id="mux-toggle-row" class="demo-toolbar-row hidden">
+                <label
+                  class="mux-toggle"
+                  for="mux-toggle-input"
+                  title="On: all streaming RPCs share one WebSocket connection, demultiplexed by stream ID. Off: each streaming RPC dials its own connection (the connectionPerStream option), trading a handshake per RPC for freedom from head-of-line blocking."
+                >
+                  <input type="checkbox" id="mux-toggle-input" checked />
+                  <span
+                    >Multiplex RPCs on one connection
+                    <span class="mux-toggle-hint"
+                      >(off = one connection per RPC)</span
+                    ></span
+                  >
+                </label>
               </div>
             </div>
 

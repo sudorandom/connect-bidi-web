@@ -658,6 +658,23 @@ h3 {
   white-space: nowrap;
 }
 
+.mux-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+}
+
+.mux-toggle input {
+  accent-color: var(--accent-primary);
+  margin: 0;
+  cursor: pointer;
+}
+
+.mux-toggle-hint {
+  font-weight: 400;
+}
+
 .demo-toolbar-input,
 .demo-toolbar-row select {
   flex: 1;

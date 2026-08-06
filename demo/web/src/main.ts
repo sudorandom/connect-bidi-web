@@ -33,8 +33,16 @@ import {
 import { SwappableTransport } from "./demo/swappable-transport.js";
 import { ElizaService } from "./gen/connectbidi/eliza/v1/eliza_pb.js";
 
-function transportLabel(choice: StreamingTransportChoice): string {
-  return choice === "webtransport" ? "WebTransport" : "WebSocket";
+function transportLabel(
+  choice: StreamingTransportChoice,
+  connectionPerStream: boolean,
+): string {
+  if (choice === "webtransport") {
+    return "WebTransport";
+  }
+  return connectionPerStream
+    ? "WebSocket (connection per RPC)"
+    : "WebSocket (multiplexed)";
 }
 
 /** Wires up the live demo: transport/server controls, tabs, and RPC views. */
@@ -70,6 +78,10 @@ function main(): void {
   );
   const unsupportedBadge = requireElement<HTMLElement>(
     "#transport-unsupported-badge",
+  );
+  const muxToggleRow = requireElement<HTMLElement>("#mux-toggle-row");
+  const muxToggleInput = requireElement<HTMLInputElement>(
+    "#mux-toggle-input",
   );
 
   let serverUrl = resolveServerUrl();
@@ -129,6 +141,16 @@ function main(): void {
       : "websocket";
   }
 
+  function connectionPerStream(): boolean {
+    return !muxToggleInput.checked;
+  }
+
+  // The multiplexing toggle only means something on WebSocket; QUIC
+  // streams make the question moot on WebTransport.
+  function syncMuxToggleVisibility(): void {
+    muxToggleRow.classList.toggle("hidden", currentChoice() !== "websocket");
+  }
+
   // Pick a safe initial choice before building any transport: the select
   // may default to WebTransport, and constructing an impossible transport
   // throws synchronously, which would take the whole demo down with it.
@@ -139,7 +161,10 @@ function main(): void {
     transportSelect.value = "websocket";
   }
 
-  const initial = createDemoTransport(currentChoice(), serverUrl);
+  const initial = createDemoTransport(currentChoice(), serverUrl, {
+    connectionPerStream: connectionPerStream(),
+  });
+  syncMuxToggleVisibility();
   const swappable = new SwappableTransport(initial.transport);
   const client = createClient(ElizaService, swappable);
 
@@ -169,11 +194,16 @@ function main(): void {
 
   function applyTransportChange(): void {
     const choice = currentChoice();
+    syncMuxToggleVisibility();
     try {
-      const next = createDemoTransport(choice, serverUrl);
+      const next = createDemoTransport(choice, serverUrl, {
+        connectionPerStream: connectionPerStream(),
+      });
       swappable.swap(next.transport);
       streamsView.setTransportDescription(next.description);
-      chatView.notifyTransportChanged(transportLabel(choice));
+      chatView.notifyTransportChanged(
+        transportLabel(choice, connectionPerStream()),
+      );
     } catch (err) {
       console.error("failed to switch transport:", err);
       setServerInputInvalid(true);
@@ -181,6 +211,7 @@ function main(): void {
   }
 
   transportSelect.addEventListener("change", applyTransportChange);
+  muxToggleInput.addEventListener("change", applyTransportChange);
 
   void refreshWebTransportAvailability();
 

@@ -17,6 +17,8 @@ jobs:
     steps:
       - uses: googleapis/release-please-action@v4
         id: release
+        with:
+          token: ${{ secrets.RELEASE_PLEASE_TOKEN || github.token }}
   # Publishing runs in this same workflow because tags created with the
   # default GITHUB_TOKEN do not trigger other workflows.
   npm-publish:

@@ -119,7 +119,22 @@ export function createChatView(
   async function runConversation(): Promise<void> {
     const signal = abortController.signal;
 
+    // Wait for the visitor's first message before opening the RPC: calling
+    // converse() dials the transport immediately, and the page must not
+    // touch the backend until the demo is actually used. This also keeps
+    // the automatic WebTransport->WebSocket fallback on page load (which
+    // restarts this loop via notifyTransportChanged) from opening a
+    // connection for an idle chat.
+    let firstSentence: string;
+    try {
+      firstSentence = await promptForText(signal);
+    } catch {
+      return;
+    }
+    appendMessage(messages, "user", firstSentence);
+
     async function* requests() {
+      yield { sentence: firstSentence };
       for (;;) {
         let sentence: string;
         try {
@@ -152,6 +167,13 @@ export function createChatView(
   }
 
   function notifyTransportChanged(transportLabel: string): void {
+    // Before the visitor has engaged (no name given yet), there is nothing
+    // to restart and nothing worth announcing — this path also runs on
+    // page load, when the WebTransport availability probe falls back to
+    // WebSocket automatically.
+    if (name === undefined) {
+      return;
+    }
     appendMessage(
       messages,
       "system",

@@ -552,6 +552,24 @@ describe("wrapWebSocket() + handleMuxedBidiSocket()", () => {
     assert.strictEqual(response.end.error?.code, Code.Unimplemented);
   });
 
+  it("idle timeout tears down a quiet connection", async () => {
+    const handlers = createTestHandlers();
+    const handler = findHandler(handlers, "CumSum");
+    const socket = new MockWebSocket();
+    const duplex = wrapWebSocket(socket);
+
+    // A stream opens, then the peer goes silent — never half-closing,
+    // never resetting, never disconnecting. Without the idle timeout this
+    // would park the handler (and on Workers, pin the invocation) forever.
+    socket.emit(
+      encodeHeadersFrame(1, handler.requestPath, contentTypeStreamProto),
+    );
+
+    await handleMuxedBidiSocket(duplex, handlers, { idleTimeoutMs: 20 });
+
+    assert.ok(socket.closed, "expected the idle connection to be closed");
+  });
+
   it("sets binaryType to arraybuffer", () => {
     // Regression: workerd honors the WebSocket spec default of
     // binaryType = "blob", and a Blob cannot be read synchronously by the

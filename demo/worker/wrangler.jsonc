@@ -1,6 +1,6 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "connect-bidi-web-demo",
+  "name": "connect-bidi-web",
   "main": "src/worker.ts",
   "compatibility_date": "2026-07-30",
   // Custom domain: Cloudflare creates the DNS record and certificate on

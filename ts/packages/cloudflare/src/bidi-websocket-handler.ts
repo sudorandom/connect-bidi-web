@@ -12,13 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import type { HandleBidiSocketOptions } from "@sudorandom/connect-bidi-core";
+import type { HandleMuxedBidiSocketOptions } from "@sudorandom/connect-bidi-core";
 import { handleMuxedBidiSocket } from "@sudorandom/connect-bidi-core";
 import type { UniversalHandler } from "@connectrpc/connect/protocol";
 import { wrapWebSocket } from "./websocket-like.js";
 
 export interface CreateBidiWebSocketHandlerOptions
-  extends HandleBidiSocketOptions {
+  extends HandleMuxedBidiSocketOptions {
   /**
    * Called if `handleMuxedBidiSocket` rejects for a given connection (a bug
    * in a handler implementation; protocol errors are reported to the client

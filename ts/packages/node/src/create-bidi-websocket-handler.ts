@@ -42,6 +42,12 @@ export interface BidiWebSocketHandlerOptions {
   contextValues?: ContextValues;
 
   /**
+   * Tears a connection down after this many milliseconds without an
+   * incoming frame; see `HandleMuxedBidiSocketOptions.idleTimeoutMs`.
+   */
+  idleTimeoutMs?: number;
+
+  /**
    * Options forwarded to the underlying `ws.WebSocketServer` used by
    * `upgrade()`. `noServer` is always set by `upgrade()` and cannot be
    * overridden here.
@@ -92,6 +98,7 @@ export function createBidiWebSocketHandler(
     const socket = websocketToDuplexMessageStream(ws);
     await handleMuxedBidiSocket(socket, handlers, {
       contextValues: options?.contextValues,
+      idleTimeoutMs: options?.idleTimeoutMs,
     });
   }
 

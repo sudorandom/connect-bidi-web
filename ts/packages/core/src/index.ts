@@ -18,4 +18,7 @@ export type {
   HandleBidiSocketOptions,
 } from "./handle-bidi-socket.js";
 export { handleMuxedBidiSocket } from "./handle-muxed-bidi-socket.js";
-export type { DuplexMessageStream } from "./handle-muxed-bidi-socket.js";
+export type {
+  DuplexMessageStream,
+  HandleMuxedBidiSocketOptions,
+} from "./handle-muxed-bidi-socket.js";

@@ -42,6 +42,21 @@ export interface DuplexMessageStream {
   close?: () => void;
 }
 
+export interface HandleMuxedBidiSocketOptions extends HandleBidiSocketOptions {
+  /**
+   * Tears the connection down after this many milliseconds without an
+   * incoming frame: in-flight RPCs are aborted and the socket is closed.
+   *
+   * Recommended on pay-per-use runtimes such as Cloudflare Workers, where
+   * an idle connection otherwise pins a live invocation until the platform
+   * reaps it (and logs the request as hung). Streams that are actively
+   * receiving are kept alive by their own traffic; only a fully quiet peer
+   * is disconnected. Well-behaved clients dial a fresh connection on their
+   * next RPC.
+   */
+  idleTimeoutMs?: number;
+}
+
 interface StreamEntry {
   /** Feeds incoming envelopes to the stream's handleBidiSocket. */
   controller: ReadableStreamDefaultController<Uint8Array>;
@@ -50,6 +65,9 @@ interface StreamEntry {
   /** Set on reset: suppresses further writes for this stream. */
   reset: boolean;
 }
+
+/** Sentinel resolved by the read-with-timeout race when the peer is quiet. */
+const idle = Symbol("idle");
 
 /**
  * Bridges a multiplexed bidi connection (a WebSocket) to UniversalHandlers
@@ -69,12 +87,39 @@ interface StreamEntry {
 export async function handleMuxedBidiSocket(
   socket: DuplexMessageStream,
   handlers: readonly UniversalHandler[],
-  options?: HandleBidiSocketOptions,
+  options?: HandleMuxedBidiSocketOptions,
 ): Promise<void> {
   const reader = socket.readable.getReader();
   const writer = socket.writable.getWriter();
   const streams = new Map<number, StreamEntry>();
   const running = new Set<Promise<void>>();
+  const idleTimeoutMs = options?.idleTimeoutMs;
+  let idledOut = false;
+
+  // Reads the next message, resolving to the idle sentinel if the peer
+  // sends nothing for idleTimeoutMs. The abandoned read settles later,
+  // when the finally block cancels the reader.
+  function readNext(): Promise<
+    ReadableStreamReadResult<Uint8Array> | typeof idle
+  > {
+    const read = reader.read();
+    if (idleTimeoutMs === undefined) {
+      return read;
+    }
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => resolve(idle), idleTimeoutMs);
+      read.then(
+        (result) => {
+          clearTimeout(timer);
+          resolve(result);
+        },
+        (err: unknown) => {
+          clearTimeout(timer);
+          reject(err);
+        },
+      );
+    });
+  }
 
   function startStream(streamId: number, headersEnvelope: Uint8Array): void {
     // start() runs synchronously in the ReadableStream constructor, so the
@@ -149,11 +194,15 @@ export async function handleMuxedBidiSocket(
 
   try {
     for (;;) {
-      let result: ReadableStreamReadResult<Uint8Array>;
+      let result: ReadableStreamReadResult<Uint8Array> | typeof idle;
       try {
-        result = await reader.read();
+        result = await readNext();
       } catch {
         // The connection broke; teardown in finally aborts the streams.
+        return;
+      }
+      if (result === idle) {
+        idledOut = true;
         return;
       }
       if (result.done) {
@@ -194,7 +243,12 @@ export async function handleMuxedBidiSocket(
     }
   } finally {
     teardown(
-      new ConnectError("websocket connection closed", Code.Unavailable),
+      new ConnectError(
+        idledOut
+          ? "connection closed after idle timeout"
+          : "websocket connection closed",
+        Code.Unavailable,
+      ),
     );
     await Promise.allSettled(running);
     await reader.cancel().catch(() => {

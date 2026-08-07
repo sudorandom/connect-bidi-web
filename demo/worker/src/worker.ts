@@ -60,6 +60,11 @@ const rpcHandlers = new Map(
 );
 
 const handleWebSocketUpgrade = createBidiWebSocketHandler(router.handlers, {
+  // Cost control: a connection that sends nothing for a minute is torn
+  // down instead of pinning this invocation until the platform reaps it
+  // (which shows up as a "hung request" error). The demo client re-dials
+  // transparently on the next message.
+  idleTimeoutMs: 60_000,
   onError: (error) => console.error("bidi websocket error:", error),
 });
 

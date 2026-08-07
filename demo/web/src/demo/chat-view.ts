@@ -144,6 +144,13 @@ export function createChatView(
         reportError("Converse error", err);
       }
     }
+    // The stream is gone: a server-side idle timeout, a dropped
+    // connection, or a server restart. Re-arm the loop rather than
+    // dead-ending the chat — the next message the visitor types opens a
+    // fresh stream (dialing is lazy), so no input means no reconnect.
+    if (!signal.aborted) {
+      void runConversation();
+    }
   }
 
   async function start(): Promise<void> {

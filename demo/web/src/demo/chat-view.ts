@@ -21,7 +21,7 @@ import {
 } from "./dom.js";
 
 export interface ChatView {
-  /** Starts the name prompt, introduction, and the ongoing chat loop. */
+  /** Shows the opening prompt and starts the ongoing chat loop. */
   start(): Promise<void>;
   /**
    * Aborts the in-flight `Converse` call and starts a new one, so the chat
@@ -31,20 +31,20 @@ export interface ChatView {
 }
 
 /**
- * Creates the stateful "Streaming Chat" tab, backed by one long-lived
- * `Converse` bidi-streaming RPC per transport, plus a one-shot `Introduce`
- * server-streaming RPC once the visitor's name is known.
+ * Creates the stateful "Streaming Chat" tab, backed by a single long-lived
+ * `Converse` bidi-streaming RPC per transport: every message — including
+ * the visitor's answer to the opening question — travels as one more
+ * message on the same stream.
  */
 export function createChatView(
   client: Client<typeof ElizaService>,
   messages: HTMLElement,
   inputContainer: HTMLElement,
 ): ChatView {
-  let name: string | undefined;
+  // Whether the visitor has sent a message, i.e. a Converse stream exists.
+  let engaged = false;
   let abortController = new AbortController();
-  // The introduction and the conversation usually fail together (they share
-  // the transport), so the certificate hint is shown at most once per
-  // transport choice.
+  // The certificate hint is shown at most once per transport choice.
   let hintShown = false;
 
   function reportError(prefix: string, err: unknown): void {
@@ -103,19 +103,6 @@ export function createChatView(
     });
   }
 
-  async function runIntroduction(): Promise<void> {
-    if (name === undefined) {
-      return;
-    }
-    try {
-      for await (const res of client.introduce({ name })) {
-        appendMessage(messages, "eliza", res.sentence);
-      }
-    } catch (err) {
-      reportError("Introduce error", err);
-    }
-  }
-
   async function runConversation(): Promise<void> {
     const signal = abortController.signal;
 
@@ -131,6 +118,7 @@ export function createChatView(
     } catch {
       return;
     }
+    engaged = true;
     appendMessage(messages, "user", firstSentence);
 
     async function* requests() {
@@ -160,18 +148,15 @@ export function createChatView(
 
   async function start(): Promise<void> {
     appendMessage(messages, "eliza", "What is your name?");
-    name = await promptForText();
-    appendMessage(messages, "user", name);
-    await runIntroduction();
     await runConversation();
   }
 
   function notifyTransportChanged(transportLabel: string): void {
-    // Before the visitor has engaged (no name given yet), there is nothing
-    // to restart and nothing worth announcing — this path also runs on
-    // page load, when the WebTransport availability probe falls back to
-    // WebSocket automatically.
-    if (name === undefined) {
+    // Before the visitor has engaged (no message sent yet), there is
+    // nothing to restart and nothing worth announcing — this path also
+    // runs on page load, when the WebTransport availability probe falls
+    // back to WebSocket automatically.
+    if (!engaged) {
       return;
     }
     appendMessage(

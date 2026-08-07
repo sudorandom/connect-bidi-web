@@ -149,6 +149,7 @@ describe("TS WebSocket client <-> TS Node server", () => {
   let server: http.Server;
   let transport: ConnectWebSocketTransport;
   let client: ElizaClient;
+  let upgrades = 0;
 
   before(async () => {
     const router = createConnectRouter();
@@ -156,6 +157,9 @@ describe("TS WebSocket client <-> TS Node server", () => {
     server = http.createServer((_req, res) => {
       res.writeHead(404);
       res.end();
+    });
+    server.on("upgrade", () => {
+      upgrades++;
     });
     createBidiWebSocketHandler(router).upgrade(server);
     await new Promise<void>((resolve) => {
@@ -173,6 +177,14 @@ describe("TS WebSocket client <-> TS Node server", () => {
   after(
     () =>
       new Promise<void>((resolve, reject) => {
+        // Every RPC in this suite — a server-streaming Introduce and a bidi
+        // Converse — must have been multiplexed onto one shared WebSocket
+        // connection; a second upgrade means connection reuse broke.
+        assert.strictEqual(
+          upgrades,
+          1,
+          `expected all RPCs to share one connection, saw ${upgrades} upgrades`,
+        );
         // The shared multiplexed connection outlives individual RPCs and
         // would otherwise keep server.close() (and the process) waiting.
         transport.close();

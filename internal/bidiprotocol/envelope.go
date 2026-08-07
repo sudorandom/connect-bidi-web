@@ -23,7 +23,6 @@ import (
 	"errors"
 	"io"
 	"math"
-	"sync"
 
 	"github.com/sudorandom/connect-bidi-web/internal/connectprotocol"
 )
@@ -46,32 +45,7 @@ const (
 	FlagEnvelopeReset uint8 = 0x0F
 )
 
-const (
-	envelopeLen         = 5
-	maxPooledBufferSize = 64 * 1024 // 64 KiB
-)
-
-var bufferPool = sync.Pool{
-	New: func() any {
-		b := make([]byte, maxPooledBufferSize)
-		return &b
-	},
-}
-
-func getBuffer(size int) ([]byte, *[]byte) {
-	if size <= maxPooledBufferSize {
-		p := bufferPool.Get().(*[]byte)
-		return (*p)[:size], p
-	}
-	b := make([]byte, size)
-	return b, nil
-}
-
-func putBuffer(p *[]byte) {
-	if p != nil {
-		bufferPool.Put(p)
-	}
-}
+const envelopeLen = 5
 
 // WriteEnvelopeChunked writes the envelope head and payload as separate Write
 // calls, avoiding a copy of the payload. Suitable for byte-stream transports
@@ -95,9 +69,18 @@ func WriteEnvelopeChunked(writer io.Writer, flag uint8, payload []byte) error {
 	return nil
 }
 
+// DefaultMaxReadFrameSize is the default upper limit (128 MiB) on envelope payloads
+// read from raw socket readers to prevent unbounded memory allocation.
+const DefaultMaxReadFrameSize = 128 * 1024 * 1024
+
 // ReadEnvelope reads a single envelope from the reader, returning its flag
 // and payload.
 func ReadEnvelope(reader io.Reader) (uint8, []byte, error) {
+	return ReadEnvelopeWithSizeLimit(reader, DefaultMaxReadFrameSize)
+}
+
+// ReadEnvelopeWithSizeLimit reads a single envelope from the reader up to maxReadSize bytes.
+func ReadEnvelopeWithSizeLimit(reader io.Reader, maxReadSize int) (uint8, []byte, error) {
 	var head [envelopeLen]byte
 	if _, err := io.ReadFull(reader, head[:]); err != nil {
 		return 0, nil, err
@@ -107,13 +90,12 @@ func ReadEnvelope(reader io.Reader) (uint8, []byte, error) {
 	if length == 0 {
 		return flag, nil, nil
 	}
-	buf, poolPtr := getBuffer(int(length))
-	if _, err := io.ReadFull(reader, buf); err != nil {
-		putBuffer(poolPtr)
-		return 0, nil, err
+	if maxReadSize > 0 && int64(length) > int64(maxReadSize) {
+		return 0, nil, errors.New("envelope payload exceeds maximum allowed size")
 	}
 	payload := make([]byte, length)
-	copy(payload, buf)
-	putBuffer(poolPtr)
+	if _, err := io.ReadFull(reader, payload); err != nil {
+		return 0, nil, err
+	}
 	return flag, payload, nil
 }

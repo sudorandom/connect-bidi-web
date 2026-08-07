@@ -138,11 +138,19 @@ func (mc *muxConn) newStream(ctx context.Context, dedicated bool) (*muxStream, e
 	if mc.closed {
 		return nil, mc.closeErr
 	}
-	mc.nextID++
-	stream := newMuxStream(ctx, mc, mc.nextID)
-	stream.dedicated = dedicated
-	mc.streams[stream.id] = stream
-	return stream, nil
+	for i := 0; i < math.MaxUint32; i++ {
+		mc.nextID++
+		if mc.nextID == 0 {
+			mc.nextID = 1
+		}
+		if _, exists := mc.streams[mc.nextID]; !exists {
+			stream := newMuxStream(ctx, mc, mc.nextID)
+			stream.dedicated = dedicated
+			mc.streams[stream.id] = stream
+			return stream, nil
+		}
+	}
+	return nil, errors.New("stream ID space exhausted")
 }
 
 // register adds a peer-initiated stream (server side). It reports false if
@@ -281,7 +289,7 @@ func newMuxStream(ctx context.Context, mc *muxConn, id uint32) *muxStream {
 		mc:         mc,
 		id:         id,
 		ctx:        ctx,
-		inbox:      make(chan envelope, 1),
+		inbox:      make(chan envelope, 64),
 		terminated: make(chan struct{}),
 	}
 }

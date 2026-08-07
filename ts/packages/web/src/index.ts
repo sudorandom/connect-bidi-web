@@ -23,7 +23,10 @@ export type {
   WebTransportBidirectionalStream,
   WebTransportSession,
 } from "./webtransport-helper.js";
-export { createCompositeTransport } from "./composite-transport.js";
+export {
+  createCompositeTransport,
+  createAutoTransport,
+} from "./composite-transport.js";
 export {
   decodeHeadersFrame,
   encodeHeadersFrame,

@@ -233,6 +233,7 @@ class WebSocketMux {
         this.route(new Uint8Array(event.data as ArrayBuffer));
       };
     });
+    this.opening.catch(() => {});
     return this.opening;
   }
 

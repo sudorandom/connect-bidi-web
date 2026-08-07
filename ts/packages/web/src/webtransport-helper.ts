@@ -87,7 +87,10 @@ export async function runWebTransportCall(
   async function* readResponseBody() {
     try {
       for (;;) {
-        const result = await envReader.read();
+        const result = await Promise.race([
+          envReader.read(),
+          writePromise.then(() => new Promise<never>(() => {})),
+        ]);
         if (result.done) {
           break;
         }

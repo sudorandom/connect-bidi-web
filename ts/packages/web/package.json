@@ -1,6 +1,6 @@
 {
   "name": "@sudorandom/connect-bidi-web",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "WebSocket and WebTransport client transports for ConnectRPC",
   "license": "Apache-2.0",
   "repository": {

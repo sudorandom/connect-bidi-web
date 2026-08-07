@@ -21,7 +21,7 @@ import {
 } from "./dom.js";
 
 export interface ChatView {
-  /** Shows the opening prompt and starts the ongoing chat loop. */
+  /** Starts the name prompt, introduction, and the ongoing chat loop. */
   start(): Promise<void>;
   /**
    * Aborts the in-flight `Converse` call and starts a new one, so the chat
@@ -31,18 +31,17 @@ export interface ChatView {
 }
 
 /**
- * Creates the stateful "Streaming Chat" tab, backed by a single long-lived
- * `Converse` bidi-streaming RPC per transport: every message — including
- * the visitor's answer to the opening question — travels as one more
- * message on the same stream.
+ * Creates the stateful "Streaming Chat" tab: a one-shot server-streaming
+ * `Introduce` RPC greets the visitor by name, then a long-lived `Converse`
+ * bidi-streaming RPC carries the conversation — two different RPC types,
+ * multiplexed onto the same connection.
  */
 export function createChatView(
   client: Client<typeof ElizaService>,
   messages: HTMLElement,
   inputContainer: HTMLElement,
 ): ChatView {
-  // Whether the visitor has sent a message, i.e. a Converse stream exists.
-  let engaged = false;
+  let name: string | undefined;
   let abortController = new AbortController();
   // The certificate hint is shown at most once per transport choice.
   let hintShown = false;
@@ -114,22 +113,37 @@ export function createChatView(
     });
   }
 
+  // A one-shot server-streaming RPC: the greeting arrives as a short
+  // response stream, multiplexed onto the same connection the Converse
+  // stream below uses.
+  async function runIntroduction(): Promise<void> {
+    if (name === undefined) {
+      return;
+    }
+    try {
+      for await (const res of client.introduce({ name })) {
+        appendMessage(messages, "eliza", res.sentence);
+      }
+    } catch (err) {
+      reportError("Introduce error", err);
+    }
+  }
+
   async function runConversation(): Promise<void> {
     const signal = abortController.signal;
 
-    // Wait for the visitor's first message before opening the RPC: calling
-    // converse() dials the transport immediately, and the page must not
-    // touch the backend until the demo is actually used. This also keeps
-    // the automatic WebTransport->WebSocket fallback on page load (which
-    // restarts this loop via notifyTransportChanged) from opening a
-    // connection for an idle chat.
+    // Wait for the visitor's next message before opening the RPC: calling
+    // converse() dials the transport immediately, and an idle stream would
+    // needlessly hold the connection (and, on Workers, an invocation)
+    // open. This also keeps the automatic WebTransport->WebSocket fallback
+    // on page load (which restarts this loop via notifyTransportChanged)
+    // from opening a connection for an idle chat.
     let firstSentence: string;
     try {
       firstSentence = await promptForText(signal);
     } catch {
       return;
     }
-    engaged = true;
     appendMessage(messages, "user", firstSentence);
 
     async function* requests() {
@@ -166,15 +180,20 @@ export function createChatView(
 
   async function start(): Promise<void> {
     appendMessage(messages, "eliza", "What is your name?");
+    // The name prompt is the first interaction; nothing dials before it
+    // resolves.
+    name = await promptForText();
+    appendMessage(messages, "user", name);
+    await runIntroduction();
     await runConversation();
   }
 
   function notifyTransportChanged(transportLabel: string): void {
-    // Before the visitor has engaged (no message sent yet), there is
+    // Before the visitor has engaged (no name given yet), there is
     // nothing to restart and nothing worth announcing — this path also
     // runs on page load, when the WebTransport availability probe falls
     // back to WebSocket automatically.
-    if (!engaged) {
+    if (name === undefined) {
       return;
     }
     appendMessage(

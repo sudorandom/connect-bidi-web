@@ -378,9 +378,10 @@ client := elizav1connect.NewElizaServiceClient(connect.NewClient(transport))</co
             <div class="demo-viewport">
               <section id="view-chat" class="view-panel">
                 <p class="view-description">
-                  Stateful bidi streaming — one long-lived
-                  <code>Converse</code> RPC carries every message in both
-                  directions over the transport selected above.
+                  A server-streaming <code>Introduce</code> RPC greets you
+                  by name, then one long-lived <code>Converse</code> RPC
+                  carries the conversation — two RPC types multiplexed on
+                  the same connection.
                 </p>
                 <div id="chat-messages" class="messages-list"></div>
                 <div id="chat-input-container" class="input-container"></div>

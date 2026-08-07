@@ -36,10 +36,12 @@ export interface DuplexMessageStream {
   readonly readable: ReadableStream<Uint8Array>;
   readonly writable: WritableStream<Uint8Array>;
   /**
-   * Close the underlying connection. Called once the connection's read side
-   * has ended and every in-flight RPC has finished.
+   * Close the underlying connection, optionally with a WebSocket close
+   * code and reason the peer can surface to its callers. Called once the
+   * connection's read side has ended and every in-flight RPC has
+   * finished, and eagerly (with a reason) when an idle timeout fires.
    */
-  close?: () => void;
+  close?: (code?: number, reason?: string) => void;
 }
 
 export interface HandleMuxedBidiSocketOptions extends HandleBidiSocketOptions {
@@ -203,6 +205,10 @@ export async function handleMuxedBidiSocket(
       }
       if (result === idle) {
         idledOut = true;
+        // Close with an explicit reason before the generic cleanup below
+        // races to close the socket without one, so the peer can tell an
+        // expected idle disconnect from a failure.
+        socket.close?.(1000, "idle timeout");
         return;
       }
       if (result.done) {

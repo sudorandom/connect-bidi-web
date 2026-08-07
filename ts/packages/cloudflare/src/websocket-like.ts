@@ -93,7 +93,7 @@ export function wrapWebSocket(
     },
     cancel() {
       ended = true;
-      socket.close();
+      closeQuietly(socket);
     },
   });
 
@@ -102,20 +102,37 @@ export function wrapWebSocket(
       socket.send(chunk);
     },
     close() {
-      socket.close();
+      closeQuietly(socket);
     },
     abort() {
-      socket.close();
+      closeQuietly(socket);
     },
   });
 
   return {
     readable,
     writable,
-    close: () => {
-      socket.close();
+    close: (code?: number, reason?: string) => {
+      closeQuietly(socket, code, reason);
     },
   };
+}
+
+/**
+ * Closes the socket, tolerating a socket that is already closed: Workers
+ * throw on a second `close()`, and teardown legitimately reaches several
+ * close paths (idle-timeout close, stream cancel, writer close).
+ */
+function closeQuietly(
+  socket: BidiWebSocketLike,
+  code?: number,
+  reason?: string,
+): void {
+  try {
+    socket.close(code ?? 1000, reason);
+  } catch {
+    // Already closed.
+  }
 }
 
 /**

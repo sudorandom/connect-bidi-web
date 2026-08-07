@@ -220,13 +220,20 @@ class WebSocketMux {
           new ConnectError("WebSocket connection failed", Code.Unavailable),
         );
       };
-      socket.onclose = () => {
+      socket.onclose = (event) => {
         this.opening = undefined;
         if (this.socket === socket) {
           this.socket = undefined;
         }
+        // Surface the server's close reason (e.g. "idle timeout") so
+        // callers can tell an expected disconnect from a failure.
         this.failAll(
-          new ConnectError("WebSocket closed", Code.Unavailable),
+          new ConnectError(
+            event.reason !== ""
+              ? `WebSocket closed: ${event.reason}`
+              : "WebSocket closed",
+            Code.Unavailable,
+          ),
         );
       };
       socket.onmessage = (event) => {

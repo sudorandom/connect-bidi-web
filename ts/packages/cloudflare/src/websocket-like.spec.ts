@@ -118,6 +118,7 @@ class MockWebSocket {
   } = { message: [], close: [], error: [] };
   readonly sentFrames: Uint8Array[] = [];
   closed = false;
+  closeReason: string | undefined;
   // Workers WebSockets follow the spec default of "blob"; wrapWebSocket
   // must flip this to "arraybuffer".
   binaryType = "blob";
@@ -163,11 +164,14 @@ class MockWebSocket {
     this.sentFrames.push(toBytes(message));
   }
 
-  close(): void {
+  close(_code?: number, reason?: string): void {
     if (this.closed) {
-      return;
+      // Workers throw when close() is called twice; the adapter must have
+      // guarded against that.
+      throw new TypeError("Can't call WebSocket close() after close().");
     }
     this.closed = true;
+    this.closeReason = reason;
     for (const listener of this.listeners.close) {
       listener();
     }
@@ -177,6 +181,13 @@ class MockWebSocket {
   emit(data: Uint8Array): void {
     for (const listener of this.listeners.message) {
       listener({ data: data.slice() });
+    }
+  }
+
+  /** Test helper: fires a (possibly duplicate) close event. */
+  emitClose(): void {
+    for (const listener of this.listeners.close) {
+      listener();
     }
   }
 }
@@ -568,6 +579,11 @@ describe("wrapWebSocket() + handleMuxedBidiSocket()", () => {
     await handleMuxedBidiSocket(duplex, handlers, { idleTimeoutMs: 20 });
 
     assert.ok(socket.closed, "expected the idle connection to be closed");
+    assert.strictEqual(
+      socket.closeReason,
+      "idle timeout",
+      "the close reason tells the peer this was an expected disconnect",
+    );
   });
 
   it("sets binaryType to arraybuffer", () => {
@@ -630,6 +646,6 @@ describe("wrapWebSocket() + handleMuxedBidiSocket()", () => {
     // Late events (a frame already in flight, a duplicate close) must be
     // no-ops rather than throwing at the dead stream's controller.
     socket.emit(encodeEndStreamFrame(1));
-    socket.close();
+    socket.emitClose();
   });
 });

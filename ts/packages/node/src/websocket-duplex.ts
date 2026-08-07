@@ -71,8 +71,8 @@ export function websocketToDuplexMessageStream(
   return {
     readable,
     writable,
-    close: () => {
-      ws.close(1000);
+    close: (code?: number, reason?: string) => {
+      ws.close(code ?? 1000, reason);
     },
   };
 }

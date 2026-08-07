@@ -48,6 +48,17 @@ export function createChatView(
   let hintShown = false;
 
   function reportError(prefix: string, err: unknown): void {
+    // The server closes idle connections on purpose (see the worker's
+    // idleTimeoutMs); that is not a failure worth an error message. The
+    // re-armed conversation loop reconnects on the next message.
+    if (String(err).includes("idle timeout")) {
+      appendMessage(
+        messages,
+        "system",
+        "Disconnected after inactivity — your next message reconnects.",
+      );
+      return;
+    }
     appendMessage(messages, "system", `${prefix}: ${String(err)}`);
     if (!hintShown && isWebTransportConnectionError(err)) {
       hintShown = true;

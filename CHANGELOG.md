@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.3.0](https://github.com/sudorandom/connect-bidi-web/compare/v0.2.1...v0.3.0) (2026-08-07)
+
+
+### Features
+
+* idle timeout changed to have different error ([e31e1e3](https://github.com/sudorandom/connect-bidi-web/commit/e31e1e360e8a1b0facd22e0ae585410ccd14484e))
+* impl idle timeouts for websockets ([8d6676f](https://github.com/sudorandom/connect-bidi-web/commit/8d6676fb39710c912b8f6127716e30da5b5b452e))
+* switch flags to avoid using the highest value (typically reserved for continuation) ([6d004e7](https://github.com/sudorandom/connect-bidi-web/commit/6d004e75b26c4b84442aeb32634e92de6949858c))
+
 ## [0.2.1](https://github.com/sudorandom/connect-bidi-web/compare/v0.2.0...v0.2.1) (2026-08-07)
 
 

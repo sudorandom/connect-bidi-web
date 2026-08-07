@@ -20,7 +20,6 @@ import { createStreamsView } from "./demo/streams-view.js";
 import { initTabs } from "./demo/tabs.js";
 import { createDemoTransport } from "./demo/transport.js";
 import type { StreamingTransportChoice } from "./demo/transport.js";
-import { initUnaryView } from "./demo/unary-view.js";
 import {
   isWebTransportSupported,
   probeServerWebTransport,
@@ -156,8 +155,6 @@ function main(): void {
   const streamsView = createStreamsView(client);
   streamsView.setTransportDescription(initial.description);
 
-  initUnaryView(client);
-
   const chatView = createChatView(
     client,
     requireElement<HTMLElement>("#chat-messages"),
@@ -166,9 +163,8 @@ function main(): void {
   void chatView.start();
 
   initTabs([
-    { buttonId: "tab-btn-unary", panelId: "view-unary" },
-    { buttonId: "tab-btn-chat", panelId: "view-chat" },
     { buttonId: "tab-btn-streams", panelId: "view-streams" },
+    { buttonId: "tab-btn-chat", panelId: "view-chat" },
   ]);
 
   function applyTransportChange(): void {
@@ -177,6 +173,10 @@ function main(): void {
       const next = createDemoTransport(choice, serverUrl, {
         connectionPerStream: connectionPerStream(),
       });
+      // Running lanes hold streams on the old transport; stop them rather
+      // than leaving them running against a transport that is no longer
+      // selected.
+      streamsView.stopStreams();
       swappable.swap(next.transport);
       streamsView.setTransportDescription(next.description);
       chatView.notifyTransportChanged(

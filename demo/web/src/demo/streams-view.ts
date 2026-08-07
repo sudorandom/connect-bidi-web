@@ -36,6 +36,12 @@ interface Lane {
 export interface StreamsView {
   /** Updates the blurb describing how the current transport carries lanes. */
   setTransportDescription(text: string): void;
+  /**
+   * Stops any running streams. Called when the streaming transport is
+   * switched: the lanes hold streams on the old transport, which would
+   * otherwise keep running against it.
+   */
+  stopStreams(): void;
 }
 
 /**
@@ -114,7 +120,7 @@ export function createStreamsView(
     if (status !== null) {
       status.innerText =
         state === "running"
-          ? "STREAM ACTIVE"
+          ? "ACTIVE"
           : state === "error"
             ? "ERROR"
             : "COMPLETED";
@@ -227,5 +233,11 @@ export function createStreamsView(
     descriptionEl.innerText = text;
   }
 
-  return { setTransportDescription };
+  function stopStreams(): void {
+    if (running) {
+      stopAll();
+    }
+  }
+
+  return { setTransportDescription, stopStreams };
 }

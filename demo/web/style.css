@@ -955,7 +955,13 @@ a.badge:hover {
 .status-badge {
   font-size: 0.66rem;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  padding: 0.22rem 0.55rem;
+  padding: 0.22rem 0;
+  /* Fixed width sized to the longest state ("COMPLETED"), so state
+     changes never shift the lane layout. */
+  width: 5.2rem;
+  flex-shrink: 0;
+  text-align: center;
+  display: inline-block;
   border-radius: 12px;
   background: rgba(148, 163, 184, 0.18);
   color: var(--text-muted);
@@ -988,6 +994,9 @@ a.badge:hover {
   color: var(--text-muted);
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   white-space: nowrap;
+  /* Wide enough for two-digit counts ("TX 20 · RX 20"), so the track
+     doesn't shrink as the numbers grow. */
+  min-width: 6.5rem;
 }
 
 .lane-counts strong {

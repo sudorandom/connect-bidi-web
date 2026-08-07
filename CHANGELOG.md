@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.1](https://github.com/sudorandom/connect-bidi-web/compare/v0.2.0...v0.2.1) (2026-08-07)
+
+
+### Bug Fixes
+
+* misc fixes/improvements ([58c8a4a](https://github.com/sudorandom/connect-bidi-web/commit/58c8a4a63d638a64186cc225bf45fc3c5ff581f4))
+
 ## [0.2.0](https://github.com/sudorandom/connect-bidi-web/compare/v0.1.2...v0.2.0) (2026-08-06)
 
 

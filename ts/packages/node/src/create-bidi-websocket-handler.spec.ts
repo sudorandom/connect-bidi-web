@@ -148,7 +148,7 @@ async function connectClient(running: RunningServer): Promise<WebSocket> {
 // those packages for the canonical definition). Every WebSocket message is
 // a 4-byte big-endian stream ID followed by one Connect envelope. ---------
 
-const flagEnvelopeHeaders = 0x07;
+const flagEnvelopeHeaders = 0x06;
 const flagEnvelopeData = 0x00;
 const streamIdLength = 4;
 

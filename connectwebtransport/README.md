@@ -116,14 +116,14 @@ The defined flag values are:
 | `0x00` | data | One uncompressed RPC message encoded with the selected codec |
 | `0x01` | compressed data | One compressed, codec-encoded RPC message |
 | `0x02` | end stream | Empty on requests when used; Connect EndStreamResponse JSON on responses |
-| `0x07` | headers | JSON metadata object (`{"metadata": ...}`) |
+| `0x06` | headers | JSON metadata object (`{"metadata": ...}`) |
 
 These are complete flag-byte values in this protocol. Other values and a
 second headers envelope in the same direction are protocol errors.
 
 ### Control payloads
 
-The headers envelope (`0x07`) uses this JSON object schema:
+The headers envelope (`0x06`) uses this JSON object schema:
 
 ```json
 {

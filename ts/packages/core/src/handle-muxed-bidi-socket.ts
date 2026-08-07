@@ -78,8 +78,8 @@ const idle = Symbol("idle");
  *
  * Every message on the wire is a 4-byte big-endian stream ID followed by
  * one Connect envelope, matching `@sudorandom/connect-bidi-web`'s client
- * transports byte-for-byte. A headers envelope (flag 0x07) with an unknown
- * stream ID starts a new RPC; a reset envelope (flag 0x0F) cancels an
+ * transports byte-for-byte. A headers envelope (flag 0x06) with an unknown
+ * stream ID starts a new RPC; a reset envelope (flag 0x07) cancels an
  * in-flight one; frames for finished streams are dropped. Any number of
  * RPCs run concurrently on one connection.
  *

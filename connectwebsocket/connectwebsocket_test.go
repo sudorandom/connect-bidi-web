@@ -391,7 +391,7 @@ func TestWebSocketClientCancelResetsStream(t *testing.T) {
 // TestWebSocketWireFormat exercises the wire protocol with hand-built
 // frames: every binary message is a 4-byte big-endian stream ID followed by
 // one Connect envelope, request and response frames of an RPC carry the same
-// stream ID, and the headers envelope uses flag 0x07.
+// stream ID, and the headers envelope uses flag 0x06.
 func TestWebSocketWireFormat(t *testing.T) {
 	wsURL, _ := newTestServer(t, testPingServer{})
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -419,7 +419,7 @@ func TestWebSocketWireFormat(t *testing.T) {
 	headersJSON := []byte(`{"metadata":{":path":["` + pingv1connect.PingServicePingProcedure + `"],"content-type":["application/connect+proto"]}}`)
 	// An empty PingRequest encodes to zero bytes, so the data payload is empty.
 	for _, frame := range [][]byte{
-		buildFrame(streamID, 0x07, headersJSON), // headers
+		buildFrame(streamID, 0x06, headersJSON), // headers
 		buildFrame(streamID, 0x00, nil),         // data
 		buildFrame(streamID, 0x02, nil),         // end-stream (half-close)
 	} {
@@ -450,7 +450,7 @@ func TestWebSocketWireFormat(t *testing.T) {
 		name string
 		flag byte
 	}{
-		{name: "headers", flag: 0x07},
+		{name: "headers", flag: 0x06},
 		{name: "data", flag: 0x00},
 		{name: "end-stream", flag: 0x02},
 	} {

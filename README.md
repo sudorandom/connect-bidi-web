@@ -71,7 +71,7 @@ const client = createClient(ElizaService, transport);
 ## Wire protocol
 
 Frames are Connect-style envelopes: a flag byte and a big-endian u32 payload length.
-`0x00` data, `0x01` compressed data, `0x02` end-stream (Connect `EndStreamResponse` JSON), `0x07` headers (JSON metadata, includes `:path`), `0x0F` reset (WebSocket only; aborts one stream). On WebSocket, every frame is additionally prefixed with a 4-byte big-endian stream ID so concurrent RPCs can share the connection; WebTransport needs neither stream IDs nor resets, because each RPC has its own QUIC stream. Compression is negotiated with `connect-content-encoding`/`connect-accept-encoding` metadata. See the per-package READMEs for details.
+`0x00` data, `0x01` compressed data, `0x02` end-stream (Connect `EndStreamResponse` JSON), `0x06` headers (JSON metadata, includes `:path`), `0x07` reset (WebSocket only; aborts one stream). On WebSocket, every frame is additionally prefixed with a 4-byte big-endian stream ID so concurrent RPCs can share the connection; WebTransport needs neither stream IDs nor resets, because each RPC has its own QUIC stream. Compression is negotiated with `connect-content-encoding`/`connect-accept-encoding` metadata. See the per-package READMEs for details.
 
 ## Demo
 

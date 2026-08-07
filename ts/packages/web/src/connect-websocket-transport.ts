@@ -46,8 +46,8 @@ import {
 import { runWebTransportCall } from "./webtransport-helper.js";
 
 const flagEnvelopeData = 0x00;
-const flagEnvelopeHeaders = 0x07;
-const flagEnvelopeReset = 0x0f;
+const flagEnvelopeHeaders = 0x06;
+const flagEnvelopeReset = 0x07;
 const streamIdLength = 4;
 
 /**

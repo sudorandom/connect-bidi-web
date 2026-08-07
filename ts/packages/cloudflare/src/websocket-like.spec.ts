@@ -55,8 +55,8 @@ import { wrapWebSocket } from "./websocket-like.js";
 // than imported, the same way each implementation of the wire protocol keeps
 // its own copy in sync by hand. Every WebSocket message is a 4-byte
 // big-endian stream ID followed by one Connect envelope.
-const flagEnvelopeHeaders = 0x07;
-const flagEnvelopeReset = 0x0f;
+const flagEnvelopeHeaders = 0x06;
+const flagEnvelopeReset = 0x07;
 const flagEnvelopeData = 0x00;
 const streamIdLength = 4;
 

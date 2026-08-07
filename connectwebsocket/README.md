@@ -112,20 +112,19 @@ The defined flag values are:
 | `0x00` | data | One uncompressed RPC message encoded with the selected codec |
 | `0x01` | compressed data | One compressed, codec-encoded RPC message |
 | `0x02` | end stream | Empty on requests; Connect EndStreamResponse JSON on responses |
-| `0x07` | headers | JSON metadata object (`{"metadata": ...}`) |
-| `0x0F` | reset | Empty; aborts the stream |
+| `0x06` | headers | JSON metadata object (`{"metadata": ...}`) |
+| `0x07` | reset | Empty; aborts the stream |
 
 These are complete flag-byte values in this protocol, not bitmasks. Data
 and compressed-data envelopes are byte-for-byte the Connect protocol's
-envelopes; `0x07` and `0x0F` are transport-specific frame types, chosen so
-that no combination of Connect's bitmask flags (`0x01`, `0x02`, and any
-Connect may define later) can collide with them. Other values, and a second
+envelopes; `0x06` and `0x07` are transport-specific frame types. Values
+`0x08` and up are reserved for extended flags. Other values, and a second
 headers envelope in the same direction of the same stream, are protocol
 errors.
 
 ### Control payloads
 
-The headers envelope (`0x07`) uses this JSON object schema:
+The headers envelope (`0x06`) uses this JSON object schema:
 
 ```json
 {
@@ -234,7 +233,7 @@ change the stream ID, Connect flags, or payload semantics.
 ### Cancellation and connection lifetime
 
 Closing the connection cannot cancel one RPC without killing the others, so
-cancellation is a frame: a reset envelope (`0x0F`, empty payload) aborts the
+cancellation is a frame: a reset envelope (`0x07`, empty payload) aborts the
 stream it names. The client sends one when an RPC is canceled or abandoned
 before the response finished; the server cancels that RPC's context,
 stops sending frames for the stream, and keeps the connection and every

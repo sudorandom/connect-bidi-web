@@ -20,7 +20,7 @@ import (
 	"strings"
 )
 
-// HeaderMessage is the JSON payload of a headers envelope (flag 0x07). Like
+// HeaderMessage is the JSON payload of a headers envelope (flag 0x06). Like
 // EndStreamMessage, it is defined directly in code rather than as a protobuf
 // message. On the wire it looks like:
 //

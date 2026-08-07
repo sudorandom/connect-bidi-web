@@ -27,22 +27,20 @@ import (
 	"github.com/sudorandom/connect-bidi-web/internal/connectprotocol"
 )
 
-// Envelope flag constants. Connect's own flags (compressed, end-stream) are
-// bitmasks, so the transport-specific frame types deliberately use values
-// that no combination of Connect bitmask flags could ever produce: 0x07 and
-// 0x0F both set the low two bits alongside bits Connect has not allocated.
+// Envelope flag constants. These are complete flag-byte values, not
+// bitmasks; 0x08 and up are reserved for extended flags.
 const (
 	FlagEnvelopeData       uint8 = 0x00
 	FlagEnvelopeCompressed uint8 = connectprotocol.FlagEnvelopeCompressed
 	FlagEnvelopeEndStream  uint8 = connectprotocol.FlagEnvelopeEndStream
 	// FlagEnvelopeHeaders marks the leading metadata frame of a request or
 	// response, standing in for the HTTP headers a raw socket doesn't have.
-	FlagEnvelopeHeaders uint8 = 0x07
+	FlagEnvelopeHeaders uint8 = 0x06
 	// FlagEnvelopeReset aborts a single stream, with an empty payload. It is
 	// used only by transports that multiplex several streams onto one
 	// connection (WebSocket); transports with one stream per connection
 	// simply close the connection instead.
-	FlagEnvelopeReset uint8 = 0x0F
+	FlagEnvelopeReset uint8 = 0x07
 )
 
 const envelopeLen = 5

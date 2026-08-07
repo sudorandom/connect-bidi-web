@@ -13,7 +13,7 @@
 // limitations under the License.
 
 /**
- * HeadersMessage is the JSON payload of a headers envelope (flag 0x07). Like
+ * HeadersMessage is the JSON payload of a headers envelope (flag 0x06). Like
  * Connect's EndStreamResponse, it is defined directly in code rather than as
  * a protobuf message. On the wire it looks like:
  *

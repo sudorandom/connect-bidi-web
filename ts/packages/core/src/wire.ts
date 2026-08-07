@@ -16,12 +16,10 @@
  * Envelope flag used only by the bidi wire protocol (not part of the
  * Connect-over-HTTP wire format) to mark the leading metadata frame of a
  * request or response. Must match the flag of the same name used by
- * @sudorandom/connect-bidi-web's client transports. Connect's own flags are
- * bitmasks (0x01 compressed, 0x02 end-stream), so the transport-specific
- * frame types use values no combination of Connect bitmask flags could
- * produce: 0x07 and 0x0F set the low two bits alongside unallocated bits.
+ * @sudorandom/connect-bidi-web's client transports. Flags are complete
+ * byte values, not bitmasks; 0x08 and up are reserved for extended flags.
  */
-export const flagEnvelopeHeaders = 0x07;
+export const flagEnvelopeHeaders = 0x06;
 
 /**
  * Envelope flag used only by the WebSocket wire protocol to abort a single
@@ -29,7 +27,7 @@ export const flagEnvelopeHeaders = 0x07;
  * with one stream per connection (WebTransport) simply close the stream
  * instead.
  */
-export const flagEnvelopeReset = 0x0f;
+export const flagEnvelopeReset = 0x07;
 
 /**
  * The "no flags set" value for a data envelope. Not a distinct flag, just

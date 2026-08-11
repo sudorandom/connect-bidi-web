@@ -4,8 +4,8 @@ Full bidirectional streaming for [ConnectRPC](https://connectrpc.com) in the bro
 
 Browsers can't do full bidi streaming with the plain Connect protocol because fetch can't stream request bodies in every browser and network path. This project adds pluggable transports that carry the Connect envelope protocol over:
 
-- **WebSocket** — one shared connection, any number of concurrent RPCs multiplexed by a stream ID on every frame (an option gives each streaming RPC its own connection instead, avoiding head-of-line blocking). Works everywhere, including through Cloudflare Workers.
-- **WebTransport** — one HTTP/3 session, one bidirectional stream per RPC. QUIC streams make multiplexing the transport's job: no stream IDs needed, no head-of-line blocking. Baseline in evergreen browsers (Chrome 97+, Firefox 114+, Safari 26.4+), but not available on Cloudflare Workers.
+- **WebSocket** - one shared connection, any number of concurrent RPCs multiplexed by a stream ID on every frame (an option gives each streaming RPC its own connection instead, avoiding head-of-line blocking). Runs over TCP, so it traverses the proxies, load balancers, gateways, and serverless platforms that already carry HTTP.
+- **WebTransport** - one HTTP/3 session, one bidirectional stream per RPC. QUIC streams make multiplexing the transport's job: no stream IDs needed, no head-of-line blocking. Available in every major browser (Chrome 97+, Firefox 114+, Safari 26.4+), but it needs HTTP/3 over UDP end to end, which most infrastructure between the browser and your handler can't carry today.
 
 A composite transport keeps unary RPCs on plain HTTP (caching, observability, proxies) and routes streaming RPCs over the bidi transport.
 

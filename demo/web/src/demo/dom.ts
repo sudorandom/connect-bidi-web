@@ -62,7 +62,7 @@ export function appendWebTransportHint(container: HTMLElement): void {
   bubble.className = "msg-bubble msg-system";
   bubble.append(
     "WebTransport connection rejected? On a local server, that is usually " +
-      "the browser refusing the demo's locally-trusted certificate — see ",
+      "the browser refusing the demo's locally-trusted certificate. See ",
   );
   const link = document.createElement("a");
   link.href = "#run-it-yourself";

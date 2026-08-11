@@ -115,7 +115,7 @@ export function createDemoTransport(
     transport: createCompositeTransport(unary, streaming),
     description: connectionPerStream
       ? "Each lane below dials its own WebSocket connection " +
-        "(connectionPerStream) — fully isolated, no head-of-line " +
+        "(connectionPerStream): fully isolated, no head-of-line " +
         "blocking, one handshake per stream."
       : "Each lane below is an independent stream, multiplexed onto one " +
         "shared WebSocket connection by the stream ID on every frame.",

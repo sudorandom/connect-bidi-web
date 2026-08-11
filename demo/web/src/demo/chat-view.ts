@@ -54,7 +54,7 @@ export function createChatView(
       appendMessage(
         messages,
         "system",
-        "Disconnected after inactivity — your next message reconnects.",
+        "Disconnected after inactivity. Your next message reconnects.",
       );
       return;
     }

@@ -87,12 +87,12 @@ function main(): void {
       webTransportOption.disabled = !available;
       webTransportOption.innerText = available
         ? webTransportLabel
-        : `${webTransportLabel} — not supported here`;
+        : "WebTransport (unavailable here)";
     }
     unsupportedBadge.classList.toggle("hidden", available);
-    // The "why not supported here?" section (the badge's anchor target)
-    // only appears where WebTransport is actually unavailable — e.g. the
-    // Cloudflare Workers deployment.
+    // The "why is WebTransport not shown?" section (the badge's anchor
+    // target) only appears where WebTransport is actually unavailable, e.g.
+    // the Cloudflare Workers deployment.
     realitySection.classList.toggle("hidden", available);
     if (!available && transportSelect.value === "webtransport") {
       transportSelect.value = "websocket";

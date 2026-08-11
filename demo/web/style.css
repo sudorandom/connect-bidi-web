@@ -257,15 +257,6 @@ h3 {
   display: none;
 }
 
-.reality-list {
-  color: var(--text-muted);
-  max-width: 720px;
-  margin: 0.75rem 0 1.25rem;
-  padding-left: 1.25rem;
-  display: grid;
-  gap: 0.6rem;
-}
-
 .section-alt {
   background: var(--bg-elevated);
   border-top: 1px solid var(--border-color);
@@ -312,6 +303,20 @@ h3 {
   margin: 0;
   color: var(--text-muted);
   font-size: 0.92rem;
+}
+
+/* Deployment warning on the WebTransport card. */
+.feature-card .feature-caveat {
+  margin-top: 0.8rem;
+  padding-left: 0.7rem;
+  border-left: 2px solid var(--danger);
+  font-size: 0.86rem;
+}
+
+/* Spec/reference links at the foot of a feature card. */
+.feature-card .feature-links {
+  margin-top: 0.7rem;
+  font-size: 0.82rem;
 }
 
 /* Install row */

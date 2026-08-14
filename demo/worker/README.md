@@ -42,6 +42,23 @@ the worker:
 | Build command  | `npm run build` |
 | Deploy command | `npx wrangler deploy` (default) |
 
+**Branch control matters.** Workers Builds triggers on every push to any
+branch of the connected repo, and without branch control it runs the same
+deploy command for all of them — a PR branch (or release-please's bot
+branch) would deploy straight to production. Under the worker's
+*Settings → Builds → Branch control*, set:
+
+| Setting | Value |
+|---------|-------|
+| Production branch | `main` |
+| Non-production branch builds | enabled |
+| Non-production deploy command | `npx wrangler versions upload` (default) |
+
+Non-production branches then upload a *preview version* instead of
+deploying: each gets its own `workers.dev` preview URL (enabled by
+`preview_urls` in `wrangler.jsonc`, independent of `workers_dev: false`)
+and a PR comment, while production traffic stays on the custom domain.
+
 The static assets need no dashboard configuration; `wrangler.jsonc` already
 points at `../web/dist`.
 

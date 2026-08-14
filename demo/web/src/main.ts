@@ -99,7 +99,11 @@ function main(): void {
   const webTransportLabel = webTransportOption?.innerText ?? "WebTransport";
   const realitySection = requireElement<HTMLElement>("#webtransport-reality");
 
+  // The /capabilities.json probe's answer; undefined until it lands.
+  let serverWebTransport: boolean | undefined;
+
   function setWebTransportAvailable(available: boolean): void {
+    serverWebTransport = available;
     if (webTransportOption !== null) {
       webTransportOption.disabled = !available;
       webTransportOption.innerText = available
@@ -113,6 +117,11 @@ function main(): void {
     realitySection.classList.toggle("hidden", available);
     if (!available && transportSelect.value === "webtransport") {
       transportSelect.value = "websocket";
+      applyTransportChange();
+    } else if (transportSelect.value === "auto") {
+      // The Auto ladder was built before the probe answered; rebuild it so
+      // a server without WebTransport doesn't cost every RPC a handshake
+      // timeout on a rung that can never work.
       applyTransportChange();
     }
   }
@@ -186,6 +195,7 @@ function main(): void {
 
   const initial = createDemoTransport(currentChoice(), serverUrl, {
     connectionPerStream: connectionPerStream(),
+    serverWebTransport,
   });
   const swappable = new SwappableTransport(initial.transport);
   const client = createClient(ElizaService, swappable);
@@ -210,6 +220,7 @@ function main(): void {
     try {
       const next = createDemoTransport(choice, serverUrl, {
         connectionPerStream: connectionPerStream(),
+        serverWebTransport,
       });
       // Running lanes hold streams on the old transport; stop them rather
       // than leaving them running against a transport that is no longer

@@ -40,6 +40,15 @@ export interface DemoTransportOptions {
    * streams make the question moot.
    */
   connectionPerStream?: boolean;
+  /**
+   * Auto only: the /capabilities.json probe's answer to whether the server
+   * terminates WebTransport. `false` drops the WebTransport rung from the
+   * ladder outright (a Workers deployment, say, would otherwise cost every
+   * fresh visitor a 10-second handshake timeout before degrading);
+   * undefined (probe not yet answered) keeps the rung and lets the ladder
+   * find out.
+   */
+  serverWebTransport?: boolean;
 }
 
 export interface DemoTransport {
@@ -88,13 +97,15 @@ export function createDemoTransport(
   if (choice === "auto") {
     // The degrading ladder: WebTransport first, WebSocket (draft 2) as the
     // fallback. The WebTransport rung is included whenever the API and URL
-    // scheme allow a dial attempt at all — whether it actually works
-    // (HTTP/3 reachability, certificates) is exactly what the ladder finds
-    // out, remembers, and degrades past.
+    // scheme allow a dial attempt and the server hasn't already said no —
+    // whether it actually works beyond that (HTTP/3 reachability,
+    // certificates) is exactly what the ladder finds out, remembers, and
+    // degrades past.
     const rungs: Transport[] = [];
     const webTransportPossible =
       isWebTransportSupported() &&
-      new URL(serverUrl).protocol === "https:";
+      new URL(serverUrl).protocol === "https:" &&
+      options.serverWebTransport !== false;
     if (webTransportPossible) {
       rungs.push(createWebTransportStreaming(serverUrl));
     }
@@ -109,7 +120,8 @@ export function createDemoTransport(
           "connection falls back to WebSocket (draft 2) if it can't be " +
           "established. The rung that works is remembered."
         : "Degrading transport: WebTransport is not available in this " +
-          "browser or host, so the ladder starts at WebSocket (draft 2).",
+          "browser or on this server, so the ladder starts at WebSocket " +
+          "(draft 2).",
     };
   }
 

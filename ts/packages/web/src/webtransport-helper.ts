@@ -24,6 +24,8 @@ import { decodeHeadersFrame, encodeHeadersFrame } from "./headers-frame.js";
 export interface WebTransportSession {
   createBidirectionalStream(): Promise<WebTransportBidirectionalStream>;
   readonly ready: Promise<void>;
+  /** Closes the session; used to dispose one whose handshake stalled. */
+  close?(closeInfo?: { closeCode?: number; reason?: string }): void;
 }
 
 export interface WebTransportBidirectionalStream {

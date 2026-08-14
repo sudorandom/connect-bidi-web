@@ -42,7 +42,18 @@ export async function runWebTransportCall(
   responseHeaders: Headers;
   responseMessages: AsyncIterable<EnvelopedMessage>;
 }> {
-  const stream = await session.createBidirectionalStream();
+  let stream: WebTransportBidirectionalStream;
+  try {
+    stream = await session.createBidirectionalStream();
+  } catch (err) {
+    // Opening a stream on an established session fails only when the
+    // session has died underneath us; classify it as the transport being
+    // unavailable so fallback arrangements can degrade.
+    throw new ConnectError(
+      `failed to open WebTransport stream: ${ConnectError.from(err).rawMessage}`,
+      Code.Unavailable,
+    );
+  }
   const writer = stream.writable.getWriter();
 
   // Write request headers

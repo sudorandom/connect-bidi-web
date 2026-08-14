@@ -15,33 +15,11 @@
 package bidiprotocol
 
 import (
-	"context"
-	"errors"
 	"net/http"
 
 	"connectrpc.com/connect/v2"
 	"github.com/sudorandom/connect-bidi-web/internal/connectprotocol"
 )
-
-// ErrorForWire converts an arbitrary error into a *connect.Error suitable for
-// sending in an end-stream envelope. Errors that arrived from a remote peer
-// are wrapped so they aren't forwarded verbatim.
-func ErrorForWire(err error) *connect.Error {
-	var cerr *connect.Error
-	if errors.As(err, &cerr) {
-		if cerr.IsRemote() {
-			return connect.Errorf(cerr.Code(), "").WithCause(err)
-		}
-		return cerr
-	}
-	switch {
-	case errors.Is(err, context.Canceled):
-		return connect.Errorf(connect.CodeCanceled, "").WithCause(err)
-	case errors.Is(err, context.DeadlineExceeded):
-		return connect.Errorf(connect.CodeDeadlineExceeded, "").WithCause(err)
-	}
-	return connect.Errorf(connect.CodeUnknown, "").WithCause(err)
-}
 
 // MarshalHeaders encodes HTTP-style headers for a headers envelope.
 func MarshalHeaders(header http.Header) ([]byte, error) {

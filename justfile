@@ -8,9 +8,11 @@ default: generate build test lint
 build:
     go build ./...
 
-# Run unit tests
+# Run unit tests. GODEBUG=http2xconnect=1 enables RFC 8441 extended CONNECT
+# in Go's HTTP/2 stack (off by default), which the WebSocket-over-HTTP/2
+# tests need; those tests skip themselves when it's absent.
 test: build
-    go test -race -cover ./connectwebsocket/... ./connectwebtransport/... ./internal/bidiprotocol/... ./internal/connectprotocol/...
+    GODEBUG=http2xconnect=1 go test -race -cover ./connectfallback/... ./connectwebsocket/... ./connectwebtransport/... ./internal/bidiprotocol/... ./internal/connectprotocol/...
 
 # Run end-to-end tests: Go client <-> Go server over WebSocket and
 # WebTransport, plus cross-language interop (Go <-> TypeScript) in both
@@ -20,9 +22,13 @@ e2e: build
     go test -race -count=1 ./internal/e2e/...
     npm --prefix ts run e2e
 
-# Run benchmarks
+# Run benchmarks: per-package micro-benchmarks, the cross-transport
+# comparison (speed + wire bytes per op; see internal/bench), and the
+# TypeScript draft comparison. Requires `npm ci` in ts/ first.
 bench: build
     go test -bench=. -benchmem -run=NONE ./connectwebsocket/... ./connectwebtransport/...
+    go test -bench=. -benchtime=200x -run=NONE ./internal/bench
+    npm --prefix ts run bench -w packages/e2e
 
 # Build the demo site bundle, including the TypeScript API reference at
 # /docs/ (TypeDoc). Order matters: the site build wipes demo/web/dist.
@@ -47,6 +53,16 @@ docs:
 demo: demo-build
     cd demo/go && ([ -f localhost.pem ] || (mkcert -install && mkcert localhost))
     cd demo/go && go run .
+
+# Like `demo`, but with RFC 8441 extended CONNECT enabled in Go's HTTP/2
+# stack, so browsers bootstrap draft 2/3 WebSockets over HTTP/2 (one h2
+# stream per WebSocket on the page's existing connection) instead of an
+# HTTP/1.1 upgrade. Experimental: once the server advertises the setting,
+# browsers route ALL WebSockets to it over h2, and draft 1's handler only
+# speaks the HTTP/1.1 upgrade — the Draft 1 option may fail in this mode.
+demo-h2: demo-build
+    cd demo/go && ([ -f localhost.pem ] || (mkcert -install && mkcert localhost))
+    cd demo/go && GODEBUG=http2xconnect=1 go run .
 
 # Run the Cloudflare Workers demo locally with wrangler (WebSocket only,
 # no WebTransport) at http://localhost:8787

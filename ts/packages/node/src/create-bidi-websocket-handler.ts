@@ -22,17 +22,19 @@ import { WebSocketServer } from "ws";
 import { websocketToDuplexMessageStream } from "./websocket-duplex.js";
 
 /**
- * The path WebSocket upgrades are accepted on by default, when using
- * `BidiWebSocketHandler.upgrade()`. Matches the path used by
- * `@sudorandom/connect-bidi-web`'s client transports and the Go
- * connectwebsocket server.
+ * The path draft 1 WebSocket upgrades are accepted on by default, when
+ * using `BidiWebSocketHandler.upgrade()`. Matches the path used by
+ * `@sudorandom/connect-bidi-web`'s draft 1 client transport and the Go
+ * connectwebsocket server. Distinct from draft 2's "/websocket-draft2":
+ * the two wire protocols are incompatible, so each connection must reach
+ * the handler that speaks its draft.
  */
-export const defaultBidiWebSocketPath = "/websocket";
+export const defaultBidiWebSocketPath = "/websocket-draft1";
 
 export interface BidiWebSocketHandlerOptions {
   /**
    * The path to accept WebSocket upgrades on when using `upgrade()`.
-   * Defaults to "/websocket". Has no effect on `handleConnection()`.
+   * Defaults to "/websocket-draft1". Has no effect on `handleConnection()`.
    */
   path?: string;
 
@@ -62,7 +64,7 @@ export interface BidiWebSocketHandler {
   /**
    * Subscribes to `server`'s `'upgrade'` event and accepts WebSocket
    * upgrade requests whose path matches `path` (or the handler's
-   * configured `path`, default "/websocket"), serving any number of
+   * configured `path`, default "/websocket-draft1"), serving any number of
    * concurrent RPCs per accepted connection, demultiplexed by the stream
    * ID on every frame. Upgrade requests for other paths are left
    * untouched, so multiple `BidiWebSocketHandler`s -- or other `'upgrade'`
@@ -129,13 +131,13 @@ export function createBidiWebSocketHandler(
   };
 }
 
-function isConnectRouter(
+export function isConnectRouter(
   value: ConnectRouter | readonly UniversalHandler[],
 ): value is ConnectRouter {
   return !Array.isArray(value);
 }
 
-function getPathname(url: string | undefined): string {
+export function getPathname(url: string | undefined): string {
   // `request.url` is a path-and-query, not an absolute URL; the base is
   // only needed to satisfy the URL constructor and is never used.
   return new URL(url ?? "/", "http://bidi.invalid").pathname;

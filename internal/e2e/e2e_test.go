@@ -16,17 +16,10 @@ package e2e_test
 
 import (
 	"context"
-	"crypto/ecdsa"
-	"crypto/elliptic"
-	"crypto/rand"
 	"crypto/tls"
-	"crypto/x509"
-	"crypto/x509/pkix"
-	"encoding/pem"
 	"errors"
 	"fmt"
 	"io"
-	"math/big"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -42,9 +35,12 @@ import (
 	"github.com/quic-go/quic-go/http3"
 	"github.com/quic-go/webtransport-go"
 	"github.com/sudorandom/connect-bidi-web/connectwebsocket"
+	"github.com/sudorandom/connect-bidi-web/connectwebsocket/draft2"
+	"github.com/sudorandom/connect-bidi-web/connectwebsocket/draft3"
 	"github.com/sudorandom/connect-bidi-web/connectwebtransport"
 	elizav1 "github.com/sudorandom/connect-bidi-web/internal/gen/connectbidi/eliza/v1"
 	"github.com/sudorandom/connect-bidi-web/internal/gen/connectbidi/eliza/v1/elizav1connect"
+	"github.com/sudorandom/connect-bidi-web/internal/testcert"
 )
 
 // elizaServer is a minimal ElizaService implementation that echoes the
@@ -162,18 +158,22 @@ func startGoServer(t *testing.T) (wsURL, wtURL string) {
 	connectServer := connect.NewServer()
 	elizav1connect.RegisterElizaServiceHandler(connectServer, elizaServer{})
 	websocketHandler := connectwebsocket.NewHandler(connectServer)
+	websocketDraft2Handler := draft2.NewHandler(connectServer)
+	websocketDraft3Handler := draft3.NewHandler(connectServer)
 	webtransportHandler := connectwebtransport.NewHandler(connectServer)
 
 	mux := http.NewServeMux()
-	mux.Handle("/websocket", websocketHandler)
+	mux.Handle("/websocket-draft1", websocketHandler)
+	mux.Handle("/websocket-draft2", websocketDraft2Handler)
+	mux.Handle("/websocket-draft3", websocketDraft3Handler)
 
 	// WebSocket over TLS on TCP.
 	httpServer := httptest.NewTLSServer(mux)
 	t.Cleanup(httpServer.Close)
-	wsURL = strings.Replace(httpServer.URL, "https://", "wss://", 1) + "/websocket"
+	wsURL = strings.Replace(httpServer.URL, "https://", "wss://", 1) + "/websocket-draft1"
 
 	// WebTransport over HTTP/3 on UDP.
-	cert, err := generateSelfSignedCert()
+	cert, err := testcert.GenerateSelfSignedCert()
 	if err != nil {
 		t.Fatalf("failed to generate cert: %v", err)
 	}
@@ -215,6 +215,51 @@ func TestGoClientGoServerWebSocket(t *testing.T) {
 	transport := connectwebsocket.NewTransport(
 		wsURL,
 		connectwebsocket.WithDialOptions(&websocket.DialOptions{
+			HTTPClient: &http.Client{
+				Transport: &http.Transport{
+					TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+				},
+			},
+		}),
+	)
+	client := elizav1connect.NewElizaServiceClient(connect.NewClient(transport))
+	exercise(ctx, t, client)
+}
+
+func TestGoClientGoServerWebSocketDraft2(t *testing.T) {
+	t.Parallel()
+	wsURL, _ := startGoServer(t)
+	wsDraft2URL := strings.TrimSuffix(wsURL, "/websocket-draft1") + "/websocket-draft2"
+
+	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
+	defer cancel()
+
+	transport := draft2.NewTransport(
+		wsDraft2URL,
+		draft2.WithDialOptions(&websocket.DialOptions{
+			HTTPClient: &http.Client{
+				Transport: &http.Transport{
+					TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+				},
+			},
+			CompressionMode: websocket.CompressionNoContextTakeover,
+		}),
+	)
+	client := elizav1connect.NewElizaServiceClient(connect.NewClient(transport))
+	exercise(ctx, t, client)
+}
+
+func TestGoClientGoServerWebSocketDraft3(t *testing.T) {
+	t.Parallel()
+	wsURL, _ := startGoServer(t)
+	wsDraft3URL := strings.TrimSuffix(wsURL, "/websocket-draft1") + "/websocket-draft3"
+
+	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
+	defer cancel()
+
+	transport := draft3.NewTransport(
+		wsDraft3URL,
+		draft3.WithDialOptions(&websocket.DialOptions{
 			HTTPClient: &http.Client{
 				Transport: &http.Transport{
 					TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
@@ -297,9 +342,27 @@ func TestGoClientNodeServerInterop(t *testing.T) {
 		t.Fatalf("interop server did not become ready: %v", err)
 	}
 
-	transport := connectwebsocket.NewTransport(wsURL)
-	client := elizav1connect.NewElizaServiceClient(connect.NewClient(transport))
-	exercise(ctx, t, client)
+	t.Run("Draft1", func(t *testing.T) {
+		transport := connectwebsocket.NewTransport(wsURL)
+		client := elizav1connect.NewElizaServiceClient(connect.NewClient(transport))
+		exercise(ctx, t, client)
+	})
+
+	t.Run("Draft2", func(t *testing.T) {
+		wsDraft2URL := strings.TrimSuffix(wsURL, "/websocket-draft1") + "/websocket-draft2"
+		transport := draft2.NewTransport(wsDraft2URL)
+		client := elizav1connect.NewElizaServiceClient(connect.NewClient(transport))
+		exercise(ctx, t, client)
+	})
+
+	// Go draft 3 client against the TS draft 3 server: exercises the
+	// subprotocol negotiation and per-frame deflate across languages.
+	t.Run("Draft3", func(t *testing.T) {
+		wsDraft3URL := strings.TrimSuffix(wsURL, "/websocket-draft1") + "/websocket-draft3"
+		transport := draft3.NewTransport(wsDraft3URL)
+		client := elizav1connect.NewElizaServiceClient(connect.NewClient(transport))
+		exercise(ctx, t, client)
+	})
 }
 
 // awaitReady reads lines from the fixture server's stdout until it prints
@@ -330,33 +393,4 @@ func skipOrFail(t *testing.T, msg string) {
 		t.Fatalf("%s (E2E_REQUIRE_INTEROP is set)", msg)
 	}
 	t.Skip(msg)
-}
-
-func generateSelfSignedCert() (tls.Certificate, error) {
-	priv, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	if err != nil {
-		return tls.Certificate{}, err
-	}
-	template := x509.Certificate{
-		SerialNumber:          big.NewInt(1),
-		Subject:               pkix.Name{CommonName: "localhost"},
-		NotBefore:             time.Now().Add(-time.Hour),
-		NotAfter:              time.Now().Add(time.Hour),
-		KeyUsage:              x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature,
-		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
-		BasicConstraintsValid: true,
-		DNSNames:              []string{"localhost"},
-		IPAddresses:           []net.IP{net.ParseIP("127.0.0.1")},
-	}
-	derBytes, err := x509.CreateCertificate(rand.Reader, &template, &template, &priv.PublicKey, priv)
-	if err != nil {
-		return tls.Certificate{}, err
-	}
-	privBytes, err := x509.MarshalPKCS8PrivateKey(priv)
-	if err != nil {
-		return tls.Certificate{}, err
-	}
-	keyPEM := pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: privBytes})
-	certPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: derBytes})
-	return tls.X509KeyPair(certPEM, keyPEM)
 }

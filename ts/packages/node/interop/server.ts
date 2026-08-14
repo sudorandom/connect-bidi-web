@@ -26,6 +26,8 @@ import * as http from "node:http";
 import type { ServiceImpl } from "@connectrpc/connect";
 import { createConnectRouter } from "@connectrpc/connect";
 import {
+  createBidiWebSocketDraft2Handler,
+  createBidiWebSocketDraft3Handler,
   createBidiWebSocketHandler,
   defaultBidiWebSocketPath,
 } from "../src/index.js";
@@ -52,6 +54,10 @@ const server = http.createServer((_req, res) => {
   res.end();
 });
 createBidiWebSocketHandler(router).upgrade(server);
+// Draft 2 of the wire protocol, on its own path ("/websocket-draft2").
+createBidiWebSocketDraft2Handler(router).upgrade(server);
+// Draft 3, likewise ("/websocket-draft3").
+createBidiWebSocketDraft3Handler(router).upgrade(server);
 
 const port = Number(process.env.PORT ?? process.argv[2] ?? 8080);
 // Bind on all interfaces: this fixture is meant to be driven by a client

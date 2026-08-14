@@ -459,6 +459,17 @@ h3 {
   margin: 2rem 0;
 }
 
+/* Prose note at the bottom of a wire-format card. The card is always dark
+   (like the code samples), so the color is fixed rather than theme-driven. */
+.wire-format-note {
+  margin: 0;
+  padding: 0 1.5rem 1.25rem;
+  font-size: 0.9rem;
+  line-height: 1.55;
+  color: #94a3b8;
+  max-width: 640px;
+}
+
 /* Wire-format card: frame diagram beside the flag-value table on wide
    screens, stacked on narrow ones. minmax(0, ...) lets the diagram's own
    horizontal scrollbar work instead of overflowing the page. */
@@ -661,6 +672,21 @@ h3 {
   font-weight: 600;
   color: var(--text-muted);
   white-space: nowrap;
+}
+
+/* The connection-per-RPC toggle: a full-sentence label, so it wraps. */
+.demo-toolbar-row label.demo-checkbox {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.45rem;
+  font-weight: 500;
+  white-space: normal;
+  cursor: pointer;
+}
+
+.demo-checkbox:has(input:disabled) {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .demo-toolbar-row select {

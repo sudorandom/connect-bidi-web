@@ -77,6 +77,6 @@ export function createBidiWebSocketHandler(
   };
 }
 
-function isWebSocketUpgrade(request: Request): boolean {
+export function isWebSocketUpgrade(request: Request): boolean {
   return request.headers.get("upgrade")?.toLowerCase() === "websocket";
 }

@@ -31,12 +31,21 @@ function transportLabel(
   choice: StreamingTransportChoice,
   connectionPerStream: boolean,
 ): string {
+  if (choice === "auto") {
+    return "Auto (degrading)";
+  }
   if (choice === "webtransport") {
     return "WebTransport";
   }
+  const draft =
+    choice === "websocket-draft2"
+      ? "WebSocket Draft 2"
+      : choice === "websocket-draft3"
+        ? "WebSocket Draft 3"
+        : "WebSocket Draft 1";
   return connectionPerStream
-    ? "WebSocket (connection per RPC)"
-    : "WebSocket (multiplexed)";
+    ? `${draft} (connection per RPC)`
+    : `${draft} (multiplexed)`;
 }
 
 /** Wires up the live demo: transport/server controls, tabs, and RPC views. */
@@ -50,6 +59,10 @@ function main(): void {
       panelId: "code-panel-ts-websocket",
     },
     {
+      buttonId: "code-tab-btn-ts-websocket-draft2",
+      panelId: "code-panel-ts-websocket-draft2",
+    },
+    {
       buttonId: "code-tab-btn-ts-webtransport",
       panelId: "code-panel-ts-webtransport",
     },
@@ -58,6 +71,10 @@ function main(): void {
     {
       buttonId: "code-tab-btn-go-websocket",
       panelId: "code-panel-go-websocket",
+    },
+    {
+      buttonId: "code-tab-btn-go-websocket-draft2",
+      panelId: "code-panel-go-websocket-draft2",
     },
     {
       buttonId: "code-tab-btn-go-webtransport",
@@ -125,24 +142,45 @@ function main(): void {
   }
 
   function currentChoice(): StreamingTransportChoice {
-    return transportSelect.value === "webtransport"
-      ? "webtransport"
-      : "websocket";
+    switch (transportSelect.value) {
+      case "auto":
+        return "auto";
+      case "webtransport":
+        return "webtransport";
+      case "websocket-draft2":
+        return "websocket-draft2";
+      case "websocket-draft3":
+        return "websocket-draft3";
+      default:
+        return "websocket";
+    }
   }
 
-  // The third dropdown option is still the WebSocket transport, just with
-  // a dedicated connection per streaming RPC instead of multiplexing.
+  // Connection-per-RPC is a separate toggle that applies to whichever
+  // WebSocket draft is selected; WebTransport and Auto ignore it (QUIC
+  // streams make the question moot).
+  const perStreamCheckbox = requireElement<HTMLInputElement>(
+    "#connection-per-stream",
+  );
+
   function connectionPerStream(): boolean {
-    return transportSelect.value === "websocket-per-rpc";
+    return perStreamCheckbox.checked;
+  }
+
+  function refreshPerStreamCheckbox(): void {
+    const choice = currentChoice();
+    perStreamCheckbox.disabled =
+      choice === "auto" || choice === "webtransport";
   }
 
   // Pick a safe initial choice before building any transport: the select
   // may default to WebTransport, and constructing an impossible transport
   // throws synchronously, which would take the whole demo down with it.
-  // The badge and dropdown state are reconciled by the
-  // refreshWebTransportAvailability() call further down, once the swap
-  // machinery it pokes actually exists.
-  if (!webTransportPossible()) {
+  // "auto" needs no such guard — the degrading ladder simply starts at
+  // WebSocket when WebTransport is impossible. The badge and dropdown
+  // state are reconciled by the refreshWebTransportAvailability() call
+  // further down, once the swap machinery it pokes actually exists.
+  if (!webTransportPossible() && transportSelect.value === "webtransport") {
     transportSelect.value = "websocket";
   }
 
@@ -185,9 +223,12 @@ function main(): void {
     } catch (err) {
       console.error("failed to switch transport:", err);
     }
+    refreshPerStreamCheckbox();
   }
 
   transportSelect.addEventListener("change", applyTransportChange);
+  perStreamCheckbox.addEventListener("change", applyTransportChange);
+  refreshPerStreamCheckbox();
 
   // The only request the page makes on load. It never invokes the deployed
   // Worker: /capabilities.json is served from static assets (it isn't in

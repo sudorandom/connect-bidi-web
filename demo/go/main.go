@@ -34,6 +34,8 @@ import (
 	"github.com/quic-go/quic-go/http3"
 	"github.com/quic-go/webtransport-go"
 	"github.com/sudorandom/connect-bidi-web/connectwebsocket"
+	"github.com/sudorandom/connect-bidi-web/connectwebsocket/draft2"
+	"github.com/sudorandom/connect-bidi-web/connectwebsocket/draft3"
 	"github.com/sudorandom/connect-bidi-web/connectwebtransport"
 	elizav1 "github.com/sudorandom/connect-bidi-web/internal/gen/connectbidi/eliza/v1"
 	"github.com/sudorandom/connect-bidi-web/internal/gen/connectbidi/eliza/v1/elizav1connect"
@@ -107,12 +109,23 @@ func main() {
 	websocketHandler := connectwebsocket.NewHandler(connectServer, connectwebsocket.WithAcceptOptions(&websocket.AcceptOptions{
 		InsecureSkipVerify: true,
 	}))
+	// Draft 2 of the WebSocket wire protocol, on its own path.
+	websocketDraft2Handler := draft2.NewHandler(connectServer, draft2.WithAcceptOptions(&websocket.AcceptOptions{
+		InsecureSkipVerify: true,
+	}))
+	// Draft 3 negotiates compression through its subprotocols; the handler
+	// overrides Subprotocols and CompressionMode itself.
+	websocketDraft3Handler := draft3.NewHandler(connectServer, draft3.WithAcceptOptions(&websocket.AcceptOptions{
+		InsecureSkipVerify: true,
+	}))
 
 	// 2. One mux serves Connect over HTTP, the WebSocket endpoint, and the
 	// static demo site.
 	mux := http.NewServeMux()
 	connecthttp.Mount(mux, connectServer)
-	mux.Handle("/websocket", websocketHandler)
+	mux.Handle("/websocket-draft1", websocketHandler)
+	mux.Handle("/websocket-draft2", websocketDraft2Handler)
+	mux.Handle("/websocket-draft3", websocketDraft3Handler)
 	// The demo UI probes this endpoint to decide whether to offer the
 	// WebTransport option; this server terminates HTTP/3, so it does.
 	mux.HandleFunc("/capabilities.json", func(w http.ResponseWriter, _ *http.Request) {

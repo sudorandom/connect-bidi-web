@@ -22,3 +22,10 @@ export type {
   DuplexMessageStream,
   HandleMuxedBidiSocketOptions,
 } from "./handle-muxed-bidi-socket.js";
+export { handleMuxedBidiSocketDraft2 } from "./handle-muxed-bidi-socket-draft2.js";
+export { handleMuxedBidiSocketDraft3 } from "./handle-muxed-bidi-socket-draft3.js";
+export type { HandleMuxedBidiSocketDraft3Options } from "./handle-muxed-bidi-socket-draft3.js";
+export {
+  draft3SubprotocolDeflate,
+  draft3SubprotocolIdentity,
+} from "./wire-draft3.js";

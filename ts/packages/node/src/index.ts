@@ -20,4 +20,12 @@ export type {
   BidiWebSocketHandler,
   BidiWebSocketHandlerOptions,
 } from "./create-bidi-websocket-handler.js";
+export {
+  createBidiWebSocketDraft2Handler,
+  defaultBidiWebSocketDraft2Path,
+} from "./create-bidi-websocket-draft2-handler.js";
+export {
+  createBidiWebSocketDraft3Handler,
+  defaultBidiWebSocketDraft3Path,
+} from "./create-bidi-websocket-draft3-handler.js";
 export { websocketToDuplexMessageStream } from "./websocket-duplex.js";

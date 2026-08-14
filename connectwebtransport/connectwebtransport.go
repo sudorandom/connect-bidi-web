@@ -89,6 +89,19 @@ func WithCompressors(compressors ...connect.Compressor) Option {
 	})
 }
 
+// WithAcceptCompression overrides the compression algorithms the client
+// advertises for responses (Connect-Accept-Encoding). The algorithms must
+// be registered (gzip is by default; WithCompressors adds more), and this
+// option must come after WithCompressors when both are used. Passing no
+// names disables response compression entirely.
+func WithAcceptCompression(names ...string) Option {
+	return optionFunc(func(topts *transportOptions, _ *serverOptions) {
+		if topts != nil {
+			topts.CompressorNames = names
+		}
+	})
+}
+
 // WithReadMaxBytes limits the size of a message that can be read.
 func WithReadMaxBytes(maxBytes int) Option {
 	return optionFunc(func(topts *transportOptions, sopts *serverOptions) {

@@ -8,6 +8,7 @@
   "scripts": {
     "generate": "buf generate ../../../proto",
     "e2e": "tsc --noEmit && node --import tsx --test $(find src -name '*.e2e.spec.ts')",
+    "bench": "tsc --noEmit && node --import tsx src/bench.ts",
     "format": "biome format --write .",
     "lint": "biome lint --error-on-warnings ."
   },

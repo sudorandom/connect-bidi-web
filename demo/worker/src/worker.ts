@@ -22,7 +22,11 @@
 import type { ServiceImpl } from "@connectrpc/connect";
 import { createConnectRouter } from "@connectrpc/connect";
 import { createFetchHandler } from "@connectrpc/connect/protocol";
-import { createBidiWebSocketHandler } from "@sudorandom/connect-bidi-cloudflare";
+import {
+  createBidiWebSocketDraft2Handler,
+  createBidiWebSocketDraft3Handler,
+  createBidiWebSocketHandler,
+} from "@sudorandom/connect-bidi-cloudflare";
 import { ElizaService } from "./gen/connectbidi/eliza/v1/eliza_pb.js";
 
 const elizaImpl: ServiceImpl<typeof ElizaService> = {
@@ -59,14 +63,33 @@ const rpcHandlers = new Map(
   ]),
 );
 
-const handleWebSocketUpgrade = createBidiWebSocketHandler(router.handlers, {
+const bidiSocketOptions = {
   // Cost control: a connection that sends nothing for a minute is torn
   // down instead of pinning this invocation until the platform reaps it
   // (which shows up as a "hung request" error). The demo client re-dials
   // transparently on the next message.
   idleTimeoutMs: 60_000,
-  onError: (error) => console.error("bidi websocket error:", error),
-});
+  onError: (error: unknown) => console.error("bidi websocket error:", error),
+};
+// The WebSocket wire-protocol drafts are incompatible, so each path is
+// served by the handler that speaks its draft.
+const webSocketUpgradeHandlers: Record<
+  string,
+  (request: Request) => Response | null
+> = {
+  "/websocket-draft1": createBidiWebSocketHandler(
+    router.handlers,
+    bidiSocketOptions,
+  ),
+  "/websocket-draft2": createBidiWebSocketDraft2Handler(
+    router.handlers,
+    bidiSocketOptions,
+  ),
+  "/websocket-draft3": createBidiWebSocketDraft3Handler(
+    router.handlers,
+    bidiSocketOptions,
+  ),
+};
 
 // WebTransport is not available on Cloudflare Workers; the demo UI probes
 // this endpoint and offers WebSocket only.
@@ -94,8 +117,11 @@ function withCors(res: Response): Response {
 
 export default {
   async fetch(request: Request): Promise<Response> {
-    // Bidi streaming: one WebSocket connection, RPCs multiplexed by stream ID.
-    const upgraded = handleWebSocketUpgrade(request);
+    // Bidi streaming: one WebSocket connection, RPCs multiplexed by stream
+    // ID. The path selects the wire-protocol draft.
+    const upgradePath = new URL(request.url).pathname;
+    const upgraded =
+      webSocketUpgradeHandlers[upgradePath]?.(request) ?? null;
     if (upgraded !== null) {
       return upgraded;
     }

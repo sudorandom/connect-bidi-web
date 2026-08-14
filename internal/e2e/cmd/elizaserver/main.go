@@ -15,7 +15,7 @@
 // Interop fixture for the TypeScript e2e tests in ts/packages/web/e2e.
 // Serves ElizaService over plain HTTP (standard Connect protocol) and over a
 // plain ws:// WebSocket (no TLS) using connectwebsocket. Prints
-// "READY ws://<host>:<port>/websocket" on stdout once listening.
+// "READY ws://<host>:<port>/websocket-draft1" on stdout once listening.
 package main
 
 import (
@@ -32,6 +32,8 @@ import (
 	connect "connectrpc.com/connect/v2"
 	"connectrpc.com/connect/v2/connecthttp"
 	"github.com/sudorandom/connect-bidi-web/connectwebsocket"
+	"github.com/sudorandom/connect-bidi-web/connectwebsocket/draft2"
+	"github.com/sudorandom/connect-bidi-web/connectwebsocket/draft3"
 	elizav1 "github.com/sudorandom/connect-bidi-web/internal/gen/connectbidi/eliza/v1"
 	"github.com/sudorandom/connect-bidi-web/internal/gen/connectbidi/eliza/v1/elizav1connect"
 )
@@ -81,13 +83,15 @@ func main() {
 
 	mux := http.NewServeMux()
 	connecthttp.Mount(mux, connectServer)
-	mux.Handle("/websocket", connectwebsocket.NewHandler(connectServer))
+	mux.Handle("/websocket-draft1", connectwebsocket.NewHandler(connectServer))
+	mux.Handle("/websocket-draft2", draft2.NewHandler(connectServer))
+	mux.Handle("/websocket-draft3", draft3.NewHandler(connectServer))
 
 	listener, err := net.Listen("tcp", *addr)
 	if err != nil {
 		log.Fatalf("failed to listen: %v", err)
 	}
-	fmt.Printf("READY ws://%s/websocket\n", listener.Addr())
+	fmt.Printf("READY ws://%s/websocket-draft1\n", listener.Addr())
 
 	server := &http.Server{
 		Handler:           mux,

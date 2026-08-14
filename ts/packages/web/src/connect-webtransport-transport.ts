@@ -71,6 +71,29 @@ export interface ConnectWebTransportTransportOptions {
 }
 
 /**
+ * Resolves the configured session and waits for its handshake. Failures —
+ * a throwing session factory (e.g. the WebTransport constructor on an
+ * unsupported host), a rejected handshake, a dead session — surface as
+ * Code.Unavailable: the transport could not be established, which is the
+ * signal createFallbackTransport degrades on.
+ */
+async function resolveReadySession(
+  session: ConnectWebTransportTransportOptions["session"],
+): Promise<WebTransportSession> {
+  try {
+    const resolved =
+      typeof session === "function" ? await session() : await session;
+    await resolved.ready;
+    return resolved;
+  } catch (error) {
+    throw new ConnectError(
+      `failed to establish WebTransport session: ${ConnectError.from(error).rawMessage}`,
+      Code.Unavailable,
+    );
+  }
+}
+
+/**
  * Create a Transport for the Connect protocol running over WebTransport.
  */
 export function createConnectWebTransportTransport(
@@ -120,13 +143,8 @@ export function createConnectWebTransportTransport(
           message,
         },
         next: async (req: UnaryRequest<I, O>): Promise<UnaryResponse<I, O>> => {
-          const resolvedSession =
-            typeof options.session === "function"
-              ? await options.session()
-              : await options.session;
+          const resolvedSession = await resolveReadySession(options.session);
           const path = `/${method.parent.typeName}/${method.name}`;
-
-          await resolvedSession.ready;
 
           const requestMessageBytes = serialize(req.message);
 
@@ -247,13 +265,8 @@ export function createConnectWebTransportTransport(
         next: async (
           req: StreamRequest<I, O>,
         ): Promise<StreamResponse<I, O>> => {
-          const resolvedSession =
-            typeof options.session === "function"
-              ? await options.session()
-              : await options.session;
+          const resolvedSession = await resolveReadySession(options.session);
           const path = `/${method.parent.typeName}/${method.name}`;
-
-          await resolvedSession.ready;
 
           async function* serializeRequestMessages() {
             for await (const msg of req.message) {

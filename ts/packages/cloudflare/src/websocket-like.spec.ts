@@ -229,7 +229,10 @@ function encodeDataFrame(streamId: number, payload: Uint8Array): Uint8Array {
 }
 
 function encodeEndStreamFrame(streamId: number): Uint8Array {
-  return prefixStreamId(streamId, encodeEnvelope(endStreamFlag, new Uint8Array()));
+  return prefixStreamId(
+    streamId,
+    encodeEnvelope(endStreamFlag, new Uint8Array()),
+  );
 }
 
 function encodeResetFrame(streamId: number): Uint8Array {
@@ -303,7 +306,11 @@ function parseResponse(
   const [headers, ...rest] = envelopes;
   assert.strictEqual(headers.flags, flagEnvelopeHeaders);
   const last = rest[rest.length - 1];
-  assert.strictEqual(last.flags, endStreamFlag, "expected a trailing end-stream envelope");
+  assert.strictEqual(
+    last.flags,
+    endStreamFlag,
+    "expected a trailing end-stream envelope",
+  );
   return {
     headers,
     dataEnvelopes: rest.slice(0, -1),
@@ -375,7 +382,10 @@ describe("wrapWebSocket() + handleMuxedBidiSocket()", () => {
 
     const response = parseResponse(socket.sentFrames, 1);
     assert.strictEqual(response.dataEnvelopes.length, 0);
-    assert.ok(response.end.error, "expected an error in the end-stream envelope");
+    assert.ok(
+      response.end.error,
+      "expected an error in the end-stream envelope",
+    );
     assert.strictEqual(response.end.error?.code, Code.InvalidArgument);
   });
 
@@ -423,9 +433,7 @@ describe("wrapWebSocket() + handleMuxedBidiSocket()", () => {
     socket.emit(
       encodeHeadersFrame(1, countUp.requestPath, contentTypeStreamProto),
     );
-    socket.emit(
-      encodeHeadersFrame(2, ping.requestPath, contentTypeUnaryProto),
-    );
+    socket.emit(encodeHeadersFrame(2, ping.requestPath, contentTypeUnaryProto));
     socket.emit(
       encodeDataFrame(
         2,
@@ -491,9 +499,7 @@ describe("wrapWebSocket() + handleMuxedBidiSocket()", () => {
       ),
     );
     socket.emit(encodeResetFrame(1));
-    socket.emit(
-      encodeHeadersFrame(2, ping.requestPath, contentTypeUnaryProto),
-    );
+    socket.emit(encodeHeadersFrame(2, ping.requestPath, contentTypeUnaryProto));
     socket.emit(
       encodeDataFrame(
         2,
@@ -559,7 +565,10 @@ describe("wrapWebSocket() + handleMuxedBidiSocket()", () => {
 
     const response = parseResponse(socket.sentFrames, 1);
     assert.strictEqual(response.dataEnvelopes.length, 0);
-    assert.ok(response.end.error, "expected an error in the end-stream envelope");
+    assert.ok(
+      response.end.error,
+      "expected an error in the end-stream envelope",
+    );
     assert.strictEqual(response.end.error?.code, Code.Unimplemented);
   });
 

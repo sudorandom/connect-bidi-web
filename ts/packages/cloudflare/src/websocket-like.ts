@@ -51,9 +51,7 @@ export interface BidiWebSocketLike {
  * browser transports, which always send binary frames but whose peer could
  * in principle be any WebSocket client.
  */
-export function wrapWebSocket(
-  socket: BidiWebSocketLike,
-): DuplexMessageStream {
+export function wrapWebSocket(socket: BidiWebSocketLike): DuplexMessageStream {
   // Receive binary frames as ArrayBuffer, not the spec-default Blob.
   socket.binaryType = "arraybuffer";
   // The socket keeps firing events after the consumer cancels the stream

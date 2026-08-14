@@ -305,7 +305,7 @@ export function createConnectWebSocketTransport(
   options: ConnectWebSocketTransportOptions,
 ): ConnectWebSocketTransport {
   const useBinaryFormat = options.useBinaryFormat ?? false;
-  const url = new URL("/websocket", options.baseUrl);
+  const url = new URL("/websocket-draft1", options.baseUrl);
   url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
   const wsUrl = url.toString();
   const connectionPerStream = options.connectionPerStream ?? false;

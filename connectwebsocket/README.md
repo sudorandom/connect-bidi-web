@@ -1,5 +1,11 @@
 # connectwebsocket
 
+This package implements **draft 1** of the WebSocket wire protocol.
+**Draft 2** — a wire-incompatible revision that delegates payload length and
+compression to the WebSocket itself — lives in [`draft2/`](draft2/README.md).
+The drafts coexist, each with its own constructors and default path, so
+their designs and implementations can be compared.
+
 ## Design strategy
 
 This transport reuses as much of the [Connect protocol](https://connectrpc.com/docs/protocol/) as possible. RPC
@@ -26,7 +32,7 @@ Server:
 connectServer := connect.NewServer()
 pingv1connect.RegisterPingServiceHandler(connectServer, pingServer{})
 
-http.Handle("/websocket", connectwebsocket.NewHandler(connectServer))
+http.Handle("/websocket-draft1", connectwebsocket.NewHandler(connectServer))
 ```
 
 Use `WithAcceptOptions` to configure the WebSocket upgrade, including origin
@@ -35,7 +41,7 @@ checks and WebSocket-level compression.
 Client:
 
 ```go
-transport := connectwebsocket.NewTransport("wss://example.com/websocket")
+transport := connectwebsocket.NewTransport("wss://example.com/websocket-draft1")
 client := pingv1connect.NewPingServiceClient(connect.NewClient(transport))
 
 resp, err := client.Ping(ctx, &pingv1.PingRequest{Text: "hello"})

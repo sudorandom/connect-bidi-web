@@ -9,12 +9,32 @@ Browsers can't do full bidi streaming with the plain Connect protocol because fe
 
 A composite transport keeps unary RPCs on plain HTTP (caching, observability, proxies) and routes streaming RPCs over the bidi transport.
 
+A fallback transport degrades through a ladder of transports, best-first,
+remembering the rung that works. In Go the full ladder is WebTransport →
+WebSocket over HTTP/2 (RFC 8441 extended CONNECT) → WebSocket over
+HTTP/1.1 → fail:
+
+```go
+transport := connectfallback.New(
+	connectwebtransport.NewDialTransport(wtURL, nil),
+	draft2.NewH2Transport(wsURL, nil),
+	draft2.NewTransport(wsURL),
+)
+```
+
+In the browser (`createFallbackTransport`) the ladder is WebTransport →
+WebSocket → fail: the browser privately chooses HTTP/2 or HTTP/1.1 for a
+WebSocket — it bootstraps over an existing HTTP/2 connection when the
+server advertises extended CONNECT support — so that rung cannot be split
+from JavaScript.
+
 ## Packages
 
 | Package | What it is |
 |---|---|
 | [`github.com/sudorandom/connect-bidi-web/connectwebsocket`](https://pkg.go.dev/github.com/sudorandom/connect-bidi-web/connectwebsocket) | Go client transport + `http.Handler` server |
 | [`github.com/sudorandom/connect-bidi-web/connectwebtransport`](https://pkg.go.dev/github.com/sudorandom/connect-bidi-web/connectwebtransport) | Go client transport + WebTransport session handler |
+| [`github.com/sudorandom/connect-bidi-web/connectfallback`](https://pkg.go.dev/github.com/sudorandom/connect-bidi-web/connectfallback) | Go degrading transport: tries a ladder of transports, best-first |
 | [`@sudorandom/connect-bidi-web`](https://www.npmjs.com/package/@sudorandom/connect-bidi-web) | Browser client transports (WebSocket, WebTransport, composite) |
 | [`@sudorandom/connect-bidi-core`](https://www.npmjs.com/package/@sudorandom/connect-bidi-core) | Runtime-neutral server bridge to `@connectrpc/connect` handlers |
 | [`@sudorandom/connect-bidi-node`](https://www.npmjs.com/package/@sudorandom/connect-bidi-node) | Node.js WebSocket server adapter |
@@ -41,13 +61,13 @@ server := connect.NewServer()
 elizav1connect.RegisterElizaServiceHandler(server, &elizaServer{})
 
 // Serve Connect RPCs over WebSocket alongside regular HTTP handlers:
-http.Handle("/websocket", connectwebsocket.NewHandler(server))
+http.Handle("/websocket-draft1", connectwebsocket.NewHandler(server))
 ```
 
 ### Go client
 
 ```go
-transport := connectwebsocket.NewTransport("wss://api.example.com/websocket")
+transport := connectwebsocket.NewTransport("wss://api.example.com/websocket-draft1")
 client := elizav1connect.NewElizaServiceClient(connect.NewClient(transport))
 ```
 
@@ -70,8 +90,41 @@ const client = createClient(ElizaService, transport);
 
 ## Wire protocol
 
-Frames are Connect-style envelopes: a flag byte and a big-endian u32 payload length.
-`0x00` data, `0x01` compressed data, `0x02` end-stream (Connect `EndStreamResponse` JSON), `0x06` headers (JSON metadata, includes `:path`), `0x07` reset (WebSocket only; aborts one stream). On WebSocket, every frame is additionally prefixed with a 4-byte big-endian stream ID so concurrent RPCs can share the connection; WebTransport needs neither stream IDs nor resets, because each RPC has its own QUIC stream. Compression is negotiated with `connect-content-encoding`/`connect-accept-encoding` metadata. See the per-package READMEs for details.
+The WebSocket transport exists in two wire-incompatible drafts, served on
+different paths so their designs and implementations can be compared;
+WebTransport has a single protocol.
+
+**WebSocket draft 1** (`connectwebsocket`, `/websocket-draft1`) and **WebTransport**
+(`connectwebtransport`) share Connect-style envelopes: a flag byte and a
+big-endian u32 payload length. `0x00` data, `0x01` compressed data, `0x02`
+end-stream (Connect `EndStreamResponse` JSON), `0x06` headers (JSON metadata,
+includes `:path`), `0x07` reset (WebSocket only; aborts one stream). On
+WebSocket, every frame is additionally prefixed with a 4-byte big-endian
+stream ID so concurrent RPCs can share the connection; WebTransport needs
+neither stream IDs nor resets, because each RPC has its own QUIC stream.
+Compression is negotiated with
+`connect-content-encoding`/`connect-accept-encoding` metadata.
+
+**WebSocket draft 2** (`connectwebsocket/draft2`, `/websocket-draft2`)
+delegates the envelope's two jobs to the WebSocket itself — permessage-deflate
+for compression, message boundaries for length — so a frame is just a 4-byte
+big-endian stream ID, one frame type byte (`0x00` data, `0x01` headers,
+`0x02` end-stream, `0x03` reset), and the payload. Draft 2 can also be
+bootstrapped over **HTTP/2 extended CONNECT**
+([RFC 8441](https://datatracker.ietf.org/doc/html/rfc8441)) instead of an
+HTTP/1.1 upgrade — one WebSocket per h2 stream on a shared connection —
+via `draft2.NewH2Transport`; the handler serves both bootstraps. The
+server process must run with `GODEBUG=http2xconnect=1`.
+
+**WebSocket draft 3** (`connectwebsocket/draft3`, `/websocket-draft3`)
+keeps draft 2's framing and moves compression into the protocol: a
+`connect.bidi.d3.deflate` WebSocket subprotocol negotiates per-frame raw
+DEFLATE, signaled by one bit in the frame type byte — so compression
+behaves identically over both bootstraps (including HTTP/2 extended
+CONNECT, where draft 2 has none) and both directions, without relying on
+permessage-deflate support along the path.
+
+See the per-package READMEs for details.
 
 ## Demo
 

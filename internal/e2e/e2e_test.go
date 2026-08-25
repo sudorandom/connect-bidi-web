@@ -35,7 +35,6 @@ import (
 	"github.com/quic-go/quic-go/http3"
 	"github.com/quic-go/webtransport-go"
 	"github.com/sudorandom/connect-bidi-web/connectwebsocket/draft1"
-	"github.com/sudorandom/connect-bidi-web/connectwebsocket/draft2"
 	"github.com/sudorandom/connect-bidi-web/connectwebsocket/draft3"
 	"github.com/sudorandom/connect-bidi-web/connectwebsocket/draft4"
 	"github.com/sudorandom/connect-bidi-web/connectwebtransport"
@@ -159,14 +158,12 @@ func startGoServer(t *testing.T) (wsURL, wtURL string) {
 	connectServer := connect.NewServer()
 	elizav1connect.RegisterElizaServiceHandler(connectServer, elizaServer{})
 	websocketHandler := draft1.NewHandler(connectServer)
-	websocketDraft2Handler := draft2.NewHandler(connectServer)
 	websocketDraft3Handler := draft3.NewHandler(connectServer)
 	websocketDraft4Handler := draft4.NewHandler(connectServer)
 	webtransportHandler := connectwebtransport.NewHandler(connectServer)
 
 	mux := http.NewServeMux()
 	mux.Handle("/websocket-draft1", websocketHandler)
-	mux.Handle("/websocket-draft2", websocketDraft2Handler)
 	mux.Handle("/websocket-draft3", websocketDraft3Handler)
 	mux.Handle("/websocket-draft4", websocketDraft4Handler)
 
@@ -223,29 +220,6 @@ func TestGoClientGoServerWebSocket(t *testing.T) {
 					TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
 				},
 			},
-		}),
-	)
-	client := elizav1connect.NewElizaServiceClient(connect.NewClient(transport))
-	exercise(ctx, t, client)
-}
-
-func TestGoClientGoServerWebSocketDraft2(t *testing.T) {
-	t.Parallel()
-	wsURL, _ := startGoServer(t)
-	wsDraft2URL := strings.TrimSuffix(wsURL, "/websocket-draft1") + "/websocket-draft2"
-
-	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
-	defer cancel()
-
-	transport := draft2.NewTransport(
-		wsDraft2URL,
-		draft2.WithDialOptions(&websocket.DialOptions{
-			HTTPClient: &http.Client{
-				Transport: &http.Transport{
-					TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
-				},
-			},
-			CompressionMode: websocket.CompressionNoContextTakeover,
 		}),
 	)
 	client := elizav1connect.NewElizaServiceClient(connect.NewClient(transport))
@@ -395,13 +369,6 @@ func TestGoClientNodeServerInterop(t *testing.T) {
 
 	t.Run("Draft1", func(t *testing.T) {
 		transport := draft1.NewTransport(wsURL)
-		client := elizav1connect.NewElizaServiceClient(connect.NewClient(transport))
-		exercise(ctx, t, client)
-	})
-
-	t.Run("Draft2", func(t *testing.T) {
-		wsDraft2URL := strings.TrimSuffix(wsURL, "/websocket-draft1") + "/websocket-draft2"
-		transport := draft2.NewTransport(wsDraft2URL)
 		client := elizav1connect.NewElizaServiceClient(connect.NewClient(transport))
 		exercise(ctx, t, client)
 	})

@@ -32,9 +32,11 @@ import (
 // frames. gobwas/ws provides the frame codec; this type adds message
 // assembly, control-frame handling, and write serialization.
 //
-// No extensions exist on this bootstrap, so nothing here is ever
-// compressed. Text and binary messages are both accepted, as on the
-// HTTP/1.1 bootstrap: draft 4 treats the opcode as a legibility hint.
+// permessage-deflate is implemented here rather than inherited, because
+// coder/websocket — which provides it on the HTTP/1.1 path — cannot accept
+// over HTTP/2. See compress.go. Text and binary messages are both accepted,
+// as on the HTTP/1.1 bootstrap: draft 4 treats the opcode as a legibility
+// hint.
 type h2Conn struct {
 	reader *bufio.Reader
 	// closeRead unblocks a pending read: the request body on servers, the
@@ -46,19 +48,26 @@ type h2Conn struct {
 	flush func() error
 	// client marks the client side, which must mask every frame it sends.
 	client bool
+	// deflater is non-nil when permessage-deflate was negotiated. Guarded
+	// by writeMu, like every other write-side resource.
+	deflater *messageDeflater
 
 	writeMu   sync.Mutex
 	closeOnce sync.Once
 }
 
-func newH2Conn(reader io.Reader, closeRead func(), writer io.Writer, flush func() error, client bool) *h2Conn {
-	return &h2Conn{
+func newH2Conn(reader io.Reader, closeRead func(), writer io.Writer, flush func() error, client, deflate bool) *h2Conn {
+	conn := &h2Conn{
 		reader:    bufio.NewReader(reader),
 		closeRead: closeRead,
 		writer:    writer,
 		flush:     flush,
 		client:    client,
 	}
+	if deflate {
+		conn.deflater = newMessageDeflater()
+	}
+	return conn
 }
 
 // ReadMessage reads frames until one complete message has been assembled,
@@ -68,13 +77,20 @@ func newH2Conn(reader io.Reader, closeRead func(), writer io.Writer, flush func(
 func (c *h2Conn) ReadMessage(_ context.Context) ([]byte, error) {
 	var message []byte
 	assembling := false
+	// RSV1 on the first frame of a message marks the whole message as one
+	// deflated stream (RFC 7692 §6.2).
+	compressed := false
 	for {
 		header, err := ws.ReadHeader(c.reader)
 		if err != nil {
 			return nil, err
 		}
-		if header.Rsv != 0 {
-			return nil, fmt.Errorf("frame uses reserved bits 0b%03b, but no extension was negotiated", header.Rsv)
+		rsv1, rsv2, rsv3 := ws.RsvBits(header.Rsv)
+		if rsv2 || rsv3 {
+			return nil, fmt.Errorf("frame uses reserved bits 0b%03b, but no such extension was negotiated", header.Rsv)
+		}
+		if rsv1 && c.deflater == nil {
+			return nil, errors.New("frame is marked compressed, but permessage-deflate was not negotiated")
 		}
 		payload := make([]byte, header.Length)
 		if _, err := io.ReadFull(c.reader, payload); err != nil {
@@ -102,16 +118,21 @@ func (c *h2Conn) ReadMessage(_ context.Context) ([]byte, error) {
 			}
 			message = payload
 			assembling = true
+			compressed = rsv1
 			if header.Fin {
-				return message, nil
+				return c.finishMessage(message, compressed)
 			}
 		case ws.OpContinuation:
 			if !assembling {
 				return nil, errors.New("continuation frame without a message")
 			}
+			if rsv1 {
+				// RSV1 belongs to the first frame of a message only.
+				return nil, errors.New("continuation frame sets RSV1")
+			}
 			message = append(message, payload...)
 			if header.Fin {
-				return message, nil
+				return c.finishMessage(message, compressed)
 			}
 		default:
 			return nil, fmt.Errorf("unknown frame opcode 0x%x", byte(header.OpCode))
@@ -119,13 +140,41 @@ func (c *h2Conn) ReadMessage(_ context.Context) ([]byte, error) {
 	}
 }
 
-// WriteMessage sends one message as a single unfragmented frame, with a
-// text opcode if text is set and a binary one otherwise.
-func (c *h2Conn) WriteMessage(_ context.Context, message []byte, text bool) error {
-	if text {
-		return c.writeFrame(ws.NewTextFrame(message))
+// finishMessage inflates an assembled message when the sender marked it
+// compressed.
+func (c *h2Conn) finishMessage(message []byte, compressed bool) ([]byte, error) {
+	if !compressed {
+		return message, nil
 	}
-	return c.writeFrame(ws.NewBinaryFrame(message))
+	return inflate(message)
+}
+
+// WriteMessage sends one message as a single unfragmented frame, with a
+// text opcode if text is set and a binary one otherwise. When
+// permessage-deflate was negotiated the payload is compressed and RSV1 set,
+// unless compressing it would not shrink it.
+func (c *h2Conn) WriteMessage(_ context.Context, message []byte, text bool) error {
+	opcode := ws.OpBinary
+	if text {
+		opcode = ws.OpText
+	}
+	// One lock for compress-and-send: the deflater is shared state, and
+	// splitting the two would let another writer slip a frame between a
+	// message's compression and its write.
+	c.writeMu.Lock()
+	defer c.writeMu.Unlock()
+	compressed := false
+	if c.deflater != nil {
+		if deflated, ok := c.deflater.deflate(message); ok {
+			message = deflated
+			compressed = true
+		}
+	}
+	frame := ws.NewFrame(opcode, true, message)
+	if compressed {
+		frame.Header.Rsv = ws.Rsv(true, false, false)
+	}
+	return c.writeFrameLocked(frame)
 }
 
 // writeFrame masks (on clients), writes, and flushes one frame. The lock
@@ -134,6 +183,11 @@ func (c *h2Conn) WriteMessage(_ context.Context, message []byte, text bool) erro
 func (c *h2Conn) writeFrame(frame ws.Frame) error {
 	c.writeMu.Lock()
 	defer c.writeMu.Unlock()
+	return c.writeFrameLocked(frame)
+}
+
+// writeFrameLocked is writeFrame's body; callers already hold writeMu.
+func (c *h2Conn) writeFrameLocked(frame ws.Frame) error {
 	if c.client {
 		frame = ws.MaskFrameInPlace(frame)
 	}

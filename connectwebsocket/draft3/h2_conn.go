@@ -34,7 +34,7 @@ import (
 //
 // No extensions exist on this bootstrap, and none are needed: draft 3's
 // compression is a subprotocol above this layer, so it works over HTTP/2
-// exactly as over HTTP/1.1 — the gap that draft 2 has here.
+// exactly as over HTTP/1.1 — the gap that draft 4 has here.
 type h2Conn struct {
 	reader *bufio.Reader
 	// closeRead unblocks a pending read: the request body on servers, the

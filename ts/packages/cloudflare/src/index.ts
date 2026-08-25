@@ -14,7 +14,6 @@
 
 export type { CreateBidiWebSocketHandlerOptions } from "./bidi-websocket-handler-common.js";
 export { createBidiWebSocketDraft1Handler } from "./bidi-websocket-draft1-handler.js";
-export { createBidiWebSocketDraft2Handler } from "./bidi-websocket-draft2-handler.js";
 export { createBidiWebSocketDraft3Handler } from "./bidi-websocket-draft3-handler.js";
 export type { CreateBidiWebSocketDraft3HandlerOptions } from "./bidi-websocket-draft3-handler.js";
 export { createBidiWebSocketDraft4Handler } from "./bidi-websocket-draft4-handler.js";

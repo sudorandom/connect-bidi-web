@@ -17,8 +17,8 @@ HTTP/1.1 → fail:
 ```go
 transport := connectfallback.New(
 	connectwebtransport.NewDialTransport(wtURL, nil),
-	draft2.NewH2Transport(wsURL, nil),
-	draft2.NewTransport(wsURL),
+	draft3.NewH2Transport(wsURL, nil),
+	draft3.NewTransport(wsURL),
 )
 ```
 
@@ -90,7 +90,7 @@ const client = createClient(ElizaService, transport);
 
 ## Wire protocol
 
-The WebSocket transport exists in four wire-incompatible drafts, served on
+The WebSocket transport exists in three wire-incompatible drafts, served on
 different paths so their designs and implementations can be compared;
 WebTransport has a single protocol.
 
@@ -105,12 +105,6 @@ neither stream IDs nor resets, because each RPC has its own QUIC stream.
 Compression is negotiated with
 `connect-content-encoding`/`connect-accept-encoding` metadata.
 
-**WebSocket draft 2** (`connectwebsocket/draft2`, `/websocket-draft2`)
-delegates the envelope's two jobs to the WebSocket itself — permessage-deflate
-for compression, message boundaries for length — so a frame is just a 4-byte
-big-endian stream ID, one frame type byte (`0x00` data, `0x01` headers,
-`0x02` end-stream, `0x03` reset), and the payload.
-
 Every draft runs over two bootstraps carrying identical frames: the
 classic HTTP/1.1 upgrade, and **HTTP/2 extended CONNECT**
 ([RFC 8441](https://datatracker.ietf.org/doc/html/rfc8441)) — one
@@ -120,24 +114,34 @@ process must run with `GODEBUG=http2xconnect=1` for HTTP/2 bootstrapping,
 which is how browsers pick it too.
 
 **WebSocket draft 3** (`connectwebsocket/draft3`, `/websocket-draft3`)
-keeps draft 2's framing and moves compression into the protocol: a
+packs the frame head into a 4-byte big-endian stream ID plus one byte
+carrying the frame type (`0x00` data, `0x01` headers, `0x02` end-stream,
+`0x03` reset) and a compressed bit, with the payload delimited by the
+WebSocket message. Compression is the protocol's own: a
 `connect.bidi.d3.deflate` WebSocket subprotocol negotiates per-frame raw
-DEFLATE, signaled by one bit in the frame type byte — so compression
-behaves identically over both bootstraps (including HTTP/2 extended
-CONNECT, where draft 2 has none) and both directions, without relying on
-permessage-deflate support along the path.
+DEFLATE. Because that sits above the connection rather than inside it, it
+behaves identically over both bootstraps and in both directions, without
+depending on an extension being implemented on the path — or on the client
+choosing to use it, which under permessage-deflate is the client's call
+alone.
 
 **WebSocket draft 4** (`connectwebsocket/draft4`, `/websocket-draft4`)
-trades frame economy for legibility: the head is ASCII text,
+optimizes for the browser, which is the primary WebSocket client and the
+place this traffic actually gets read: drafts 1 and 3 render as opaque hex in
+the Network tab. The head is ASCII text,
 `<stream ID>|<flags>|<payload>`, so a frame reads as
-`7|1|{"metadata":…}` in a browser's Network tab with no decoder. Control
-payloads are always JSON, frames whose payload is UTF-8 travel as *text*
-WebSocket messages, and compression goes back to permessage-deflate (a
-text head can't cheaply carry a compressed bit). Parsers split on the
-first two `|` only, so payloads are never escaped.
+`7|1|{"metadata":…}` with no decoder, and frames whose payload is UTF-8
+travel as *text* WebSocket messages so devtools renders them as text.
+Control payloads are always JSON; parsers split on the first two `|` only,
+so payloads are never escaped; and compression goes back to
+permessage-deflate, since a text head can't cheaply carry a compressed
+bit.
 
-See the per-package READMEs for details, and [CONCLUSIONS.md](CONCLUSIONS.md)
-for the generalized findings and recommendations the drafts produced.
+See the per-package READMEs for each draft's protocol reference, the
+[benchmarks](https://connect-bidi-web.kmcd.dev/#benchmarks) for what each
+choice costs, and the demo site's
+[conclusions](https://connect-bidi-web.kmcd.dev/#conclusions) for what the
+drafts settled.
 
 ## Demo
 

@@ -23,7 +23,7 @@
  * Parsers split on the first two "|" bytes only, so the payload is never
  * escaped: a "|" inside JSON or protobuf bytes is just a payload byte.
  * Compression is left to the WebSocket's permessage-deflate extension, as
- * in draft 2 — there is no compression flag. Must match the Go
+ * there is no compression flag. Must match the Go
  * connectwebsocket/draft4 package and @sudorandom/connect-bidi-web's draft
  * 4 client transport.
  */

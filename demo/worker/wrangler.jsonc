@@ -21,7 +21,6 @@
     // reach the worker (WebSocket upgrades for each protocol draft, and RPCs)
     "run_worker_first": [
       "/websocket-draft1",
-      "/websocket-draft2",
       "/websocket-draft3",
       "/websocket-draft4",
       "/connectbidi.eliza.v1.ElizaService/*"

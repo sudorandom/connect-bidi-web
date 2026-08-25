@@ -17,15 +17,17 @@
 // bidirectional streaming from environments such as web browsers.
 //
 // This is draft 3 of the WebSocket wire protocol, wire-incompatible with
-// drafts 1 and 2 (the parent connectwebsocket package and its draft2
-// subpackage). It keeps draft 2's framing — a stream ID, one descriptor
-// byte, the payload, delimited by the WebSocket message — and moves
-// compression into the protocol: a WebSocket subprotocol
+// drafts 1 and 4 in the sibling packages. Its framing is a stream ID, one
+// descriptor byte, and the payload, delimited by the WebSocket message; it
+// moves compression into the protocol: a WebSocket subprotocol
 // (connect.bidi.d3.deflate) negotiates per-frame raw DEFLATE once per
-// connection, signaled by one bit in the descriptor. Compression
-// therefore behaves identically over every bootstrap, including HTTP/2
-// extended CONNECT, where draft 2's permessage-deflate doesn't exist. All
-// drafts coexist so their implementations can be compared; serve them on
+// connection, signaled by one bit in the descriptor.
+//
+// Compression therefore behaves identically over every bootstrap, and in
+// both directions, without depending on the WebSocket's permessage-deflate
+// extension being implemented on the path — or on the peer choosing to use
+// it, which that extension leaves entirely to the sender. All drafts
+// coexist so their implementations can be compared; serve them on
 // different paths.
 //
 // Every frame carries a stream ID, so any number of concurrent RPCs are

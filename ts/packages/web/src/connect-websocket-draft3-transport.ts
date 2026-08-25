@@ -42,7 +42,7 @@ import {
 } from "@connectrpc/connect/protocol-connect";
 import { decodeHeadersFrame, encodeHeadersFrame } from "./headers-frame.js";
 
-// Draft 3 of the WebSocket wire protocol: draft 2's framing
+// Draft 3 of the WebSocket wire protocol: a packed binary head
 // ([4-byte stream ID][1-byte descriptor][payload], no length) with
 // compression moved into the protocol. The handshake negotiates it once
 // per connection through the subprotocols below, and descriptor bit 7
@@ -114,7 +114,7 @@ export interface ConnectWebSocketDraft3TransportOptions {
   defaultTimeoutMs?: number;
   /**
    * Dial a dedicated WebSocket connection for each streaming RPC instead of
-   * multiplexing all RPCs onto one shared connection; see the draft 1 and 2
+   * multiplexing all RPCs onto one shared connection; see the draft 1 and 4
    * transports.
    */
   connectionPerStream?: boolean;

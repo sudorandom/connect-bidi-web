@@ -22,7 +22,6 @@ export type {
   HandleMuxedBidiSocketOptions,
 } from "./muxed-bidi-socket.js";
 export { handleMuxedBidiSocketDraft1 } from "./handle-muxed-bidi-socket-draft1.js";
-export { handleMuxedBidiSocketDraft2 } from "./handle-muxed-bidi-socket-draft2.js";
 export { handleMuxedBidiSocketDraft3 } from "./handle-muxed-bidi-socket-draft3.js";
 export type { HandleMuxedBidiSocketDraft3Options } from "./handle-muxed-bidi-socket-draft3.js";
 export {

@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>connect-bidi-web: full bidirectional streaming for ConnectRPC in the browser</title>
+    <title>connect-bidi-web: a testbed for ConnectRPC over WebSockets</title>
     <meta
       name="description"
       content="WebSocket and WebTransport transports for connect-go and connect-es, bringing full bidirectional streaming to ConnectRPC in the browser."
@@ -35,7 +35,7 @@
           <span class="brand-name">connect-bidi-web</span>
         </a>
         <nav class="site-nav">
-          <a href="#what-it-is">What it is</a>
+          <a href="#what-it-is">What this is</a>
           <a href="#code-examples">connect-es</a>
           <a href="#code-examples-go">connect-go</a>
           <a href="#live-demo">Live demo</a>
@@ -57,14 +57,13 @@
       <section id="top" class="hero">
         <div class="section-inner hero-inner">
           <p class="eyebrow">connect-bidi-web</p>
-          <h1>
-            Full bidirectional streaming for connect-go and connect-es, over
-            WebSockets and WebTransport.
-          </h1>
+          <h1>A testbed for ConnectRPC over WebSockets.</h1>
           <p class="hero-tagline">
             Connect's HTTP protocol can't carry full-duplex streams in the
-            browser. These transports can, and they plug into the server and
-            client you already have.
+            browser. A WebSocket can. This is where that protocol gets
+            designed: competing drafts, each fully implemented in Go and
+            TypeScript, running side by side so they can be measured against
+            each other.
           </p>
           <div class="hero-actions">
             <a
@@ -75,6 +74,7 @@
             <a class="btn-secondary-lg" href="#live-demo">Try the live demo</a>
           </div>
           <p class="hero-note">
+            The code is real and published:
             <a href="https://pkg.go.dev/github.com/sudorandom/connect-bidi-web"
               ><code>github.com/sudorandom/connect-bidi-web</code></a
             >
@@ -90,29 +90,36 @@
       <!-- What it is -->
       <section id="what-it-is" class="section">
         <div class="section-inner">
-          <h2>What it is</h2>
+          <h2>What this is</h2>
           <p>
-            Transports for
+            An experiment in progress, not a finished product. Three wire
+            protocol drafts for carrying Connect RPCs over a WebSocket, each
+            implemented end to end in Go and TypeScript and served side by
+            side, so the designs can be measured rather than argued about.
+          </p>
+          <p>
+            They are real transports for
             <a href="https://github.com/connectrpc/connect-go">connect-go</a>
             and
-            <a href="https://github.com/connectrpc/connect-es">connect-es</a>
-            that carry the Connect envelope protocol over a full-duplex
-            connection instead of HTTP. They use connect-go v2's
+            <a href="https://github.com/connectrpc/connect-es">connect-es</a>,
+            built on connect-go v2's
             <a href="https://github.com/connectrpc/connect-go/pull/951"
               ><code>Transport</code> API</a
             >
-            and the connect-es transport interface, so they go where the HTTP
-            transport would.
+            and the connect-es transport interface, so they drop in where the
+            HTTP transport would. WebTransport is here too, as the comparison
+            that shows what the WebSocket drafts are working around.
           </p>
-          <div class="feature-grid">
-            <div class="feature-card">
-              <h3>WebSocket</h3>
+          <div class="findings findings-2col">
+            <div class="finding">
+              <h3>WebSocket over HTTP/1.1</h3>
               <p>
-                One shared connection, any number of concurrent RPCs. Every
-                frame carries a stream ID so responses find their caller.
-                Runs over TCP, so it goes through the proxies, load
-                balancers, gateways, and serverless platforms that already
-                carry your HTTP traffic.
+                The classic <code>Upgrade</code> handshake, on its own TCP
+                connection. One connection carries any number of concurrent
+                RPCs; a stream ID on every frame tells responses which caller
+                they belong to. This is the one that works nearly everywhere:
+                it goes through the proxies, load balancers, gateways, and
+                serverless platforms that already carry HTTP.
               </p>
               <p class="feature-links">
                 <a
@@ -125,20 +132,42 @@
                 >
               </p>
             </div>
-            <div class="feature-card">
-              <h3>WebTransport</h3>
+            <div class="finding">
+              <h3>WebSocket over HTTP/2</h3>
               <p>
-                One HTTP/3 session per client, one QUIC stream per RPC.
-                Multiple concurrent streams share a single session with no
-                head-of-line blocking between them.
+                The same frames, bootstrapped with extended
+                <code>CONNECT</code> instead. Each WebSocket becomes one
+                stream on a connection the browser already has, so it costs
+                no extra TCP or TLS handshake.
               </p>
               <p class="feature-caveat">
-                You probably can't rely on this 'just working'. WebTransport needs
-                HTTP/3 over UDP all the way to your handler, which rules out most
-                L7 load balancers, gateways, and serverless platforms. Use
-                WebSocket unless you control the whole path and have tested
-                it. See
-                <a href="#support-matrix">where each transport works</a>.
+                Both ends must opt in. Go gates it behind
+                <code>GODEBUG=http2xconnect=1</code>. Browsers pick this
+                bootstrap on their own when the server advertises it;
+                JavaScript cannot force or observe the choice. The Go
+                library that handles the HTTP/1.1 path cannot accept over
+                HTTP/2, so the framing and the permessage-deflate extension
+                are implemented directly here.
+              </p>
+              <p class="feature-links">
+                <a href="https://datatracker.ietf.org/doc/html/rfc8441"
+                  >RFC 8441</a
+                >
+              </p>
+            </div>
+            <div class="finding">
+              <h3>WebTransport</h3>
+              <p>
+                One HTTP/3 session per client, one QUIC stream per RPC. The
+                streams are independently flow-controlled, so there is no
+                head-of-line blocking between them and the protocol needs no
+                stream IDs at all.
+              </p>
+              <p class="feature-caveat">
+                You probably can't rely on this 'just working'. It needs
+                HTTP/3 over UDP all the way to your handler, which rules out
+                most L7 load balancers, gateways, and serverless platforms.
+                See <a href="#support-matrix">where each transport works</a>.
               </p>
               <p class="feature-links">
                 <a
@@ -154,14 +183,23 @@
                 >
               </p>
             </div>
-            <div class="feature-card">
-              <h3>Composite transport</h3>
+            <div class="finding">
+              <h3>Composite and fallback</h3>
               <p>
-                Keeps unary RPCs on plain HTTP for caching, observability, and
-                proxy support, and routes only streaming RPCs over the bidi
-                transport.
+                Two ways to combine the above. A composite transport keeps
+                unary RPCs on plain HTTP — for caching, observability, and
+                proxy support — and sends only streaming RPCs over the bidi
+                transport. A fallback transport tries a ladder of them,
+                best first, and remembers which rung worked.
+              </p>
+              <p class="feature-caveat">
+                In Go the ladder is WebTransport, then WebSocket over
+                HTTP/2, then HTTP/1.1. In the browser it collapses to
+                WebTransport then WebSocket: the browser chooses the
+                WebSocket bootstrap itself.
               </p>
             </div>
+          </div>
           </div>
         </div>
       </section>
@@ -198,11 +236,11 @@
                 WebSocket Draft 1
               </button>
               <button
-                id="code-tab-btn-ts-websocket-draft2"
+                id="code-tab-btn-ts-websocket-draft4"
                 class="code-tab-btn"
                 type="button"
               >
-                WebSocket Draft 2
+                WebSocket Draft 4
               </button>
               <button
                 id="code-tab-btn-ts-webtransport"
@@ -246,7 +284,7 @@ for await (const res of client.converse(requests())) {
             </div>
 
             <div
-              id="code-panel-ts-websocket-draft2"
+              id="code-panel-ts-websocket-draft4"
               class="code-tab-panel"
             >
             <article class="code-card">
@@ -256,15 +294,15 @@ for await (const res of client.converse(requests())) {
               </header>
               <pre><code class="language-typescript">import {
   createCompositeTransport,
-  createConnectWebSocketDraft2Transport,
+  createConnectWebSocketDraft4Transport,
 } from &quot;@sudorandom/connect-bidi-web&quot;;
 
 const transport = createCompositeTransport(
   createConnectTransport({ baseUrl: &quot;https://localhost:4433&quot; }),
-  // Draft 2 wire protocol: same API, leaner framing. Payload length
-  // and compression (permessage-deflate) are the WebSocket's job, so
-  // a frame is just a stream ID, a type byte, and the payload.
-  createConnectWebSocketDraft2Transport({
+  // Draft 4 wire protocol: same API, readable wire. The frame head is
+  // ASCII (&quot;7|1|{...}&quot;) and frames go out as text WebSocket messages,
+  // so the Network tab shows the conversation as text.
+  createConnectWebSocketDraft4Transport({
     baseUrl: &quot;https://localhost:4433&quot;,
   }),
 );</code></pre>
@@ -329,11 +367,11 @@ const transport = createCompositeTransport(
                 WebSocket Draft 1
               </button>
               <button
-                id="code-tab-btn-go-websocket-draft2"
+                id="code-tab-btn-go-websocket-draft4"
                 class="code-tab-btn"
                 type="button"
               >
-                WebSocket Draft 2
+                WebSocket Draft 4
               </button>
               <button
                 id="code-tab-btn-go-webtransport"
@@ -371,7 +409,7 @@ stream := client.Converse(ctx)
             </div>
 
             <div
-              id="code-panel-go-websocket-draft2"
+              id="code-panel-go-websocket-draft4"
               class="code-tab-panel"
             >
             <article class="code-card">
@@ -379,14 +417,15 @@ stream := client.Converse(ctx)
                 <span class="code-lang">Go</span>
                 <span class="code-title">Server</span>
               </header>
-              <pre><code class="language-go">// import &quot;github.com/sudorandom/connect-bidi-web/connectwebsocket/draft2&quot;
+              <pre><code class="language-go">// import &quot;github.com/sudorandom/connect-bidi-web/connectwebsocket/draft4&quot;
 server := connect.NewServer()
 elizav1connect.RegisterElizaServiceHandler(server, elizaServer{})
 
-// Draft 2 wire protocol; permessage-deflate is offered by default.
-// The same handler also accepts WebSocket over HTTP/2 (RFC 8441)
-// when the process runs with GODEBUG=http2xconnect=1.
-http.Handle(&quot;/websocket-draft2&quot;, draft2.NewHandler(server))</code></pre>
+// Draft 4 wire protocol; permessage-deflate is offered by default.
+// WithoutCompression() keeps the frames readable in devtools. The same
+// handler also accepts WebSocket over HTTP/2 (RFC 8441) when the
+// process runs with GODEBUG=http2xconnect=1.
+http.Handle(&quot;/websocket-draft4&quot;, draft4.NewHandler(server))</code></pre>
             </article>
 
             <article class="code-card">
@@ -395,11 +434,11 @@ http.Handle(&quot;/websocket-draft2&quot;, draft2.NewHandler(server))</code></pr
                 <span class="code-title">Client</span>
               </header>
               <pre><code class="language-go">// HTTP/1.1 upgrade bootstrap:
-transport := draft2.NewTransport(&quot;wss://api.example.com/websocket-draft2&quot;)
+transport := draft4.NewTransport(&quot;wss://api.example.com/websocket-draft4&quot;)
 
 // ...or HTTP/2 extended CONNECT: one WebSocket per h2 stream on a
 // shared connection (the server needs GODEBUG=http2xconnect=1).
-transport = draft2.NewH2Transport(&quot;https://api.example.com/websocket-draft2&quot;, nil)
+transport = draft4.NewH2Transport(&quot;https://api.example.com/websocket-draft4&quot;, nil)
 
 client := elizav1connect.NewElizaServiceClient(connect.NewClient(transport))</code></pre>
             </article>
@@ -465,7 +504,6 @@ client := elizav1connect.NewElizaServiceClient(connect.NewClient(transport))</co
                     WebTransport (HTTP/3 session)
                   </option>
                   <option value="websocket">WebSocket Draft 1</option>
-                  <option value="websocket-draft2">WebSocket Draft 2</option>
                   <option value="websocket-draft3">WebSocket Draft 3</option>
                   <option value="websocket-draft4">WebSocket Draft 4</option>
                 </select>
@@ -656,73 +694,53 @@ just demo-worker   # Cloudflare workerd: http://localhost:8787
             provide itself.
           </p>
           <p>
-            On the wire, a streaming Connect RPC is a sequence of messages
-            plus one <code>EndStreamResponse</code> JSON at the end.
-            connect-bidi-web keeps the Connect semantics everywhere: the
-            same codecs, the same error codes and details, the same
-            trailers.
+            Connect semantics stay intact: the same codecs, the same error
+            codes and details, the same trailers. What cannot survive the
+            upgrade is what Connect borrows from HTTP — per-request headers,
+            a way to tell concurrent RPCs apart, half-close, and
+            <code>RST_STREAM</code>. Four small frames replace them.
           </p>
-          <p>
-            What it can't keep is everything Connect quietly inherits from
-            HTTP. Once a WebSocket finishes its upgrade, HTTP leaves the
-            room: there are no more per-request headers, no way to tell
-            concurrent RPCs apart, no half-close, and no
-            <code>RST_STREAM</code> to cancel one call without killing the
-            rest. Each of those gaps becomes one small, explicit piece of
-            protocol:
-          </p>
-          <div class="feature-grid">
-            <div class="feature-card">
+          <div class="findings">
+            <div class="finding">
               <h3>Headers frame</h3>
               <p>
-                A dedicated frame type opens every stream, carrying what
-                would have been the HTTP headers as JSON metadata: the
-                <code>:path</code> of the procedure, the content type
-                (which can legitimately differ per RPC), deadlines.
+                Opens every stream, carrying what would have been the HTTP
+                headers as JSON: the <code>:path</code>, the content type,
+                the deadline.
               </p>
             </div>
-            <div class="feature-card">
+            <div class="finding">
               <h3>Stream ID</h3>
               <p>
-                Every WebSocket frame is prefixed with a 4-byte stream ID so
-                many RPCs can share one connection. The receiver uses it to
-                match each message to the appropriate caller. Clients assign
-                IDs starting at 1 and never reuse them, exactly the job
-                HTTP/2 stream IDs do for Connect over HTTP.
+                A 4-byte prefix on every frame, so many RPCs share one
+                connection. Clients count up from 1 and never reuse an ID —
+                the job HTTP/2 stream IDs do for Connect over HTTP.
               </p>
             </div>
-            <div class="feature-card">
+            <div class="finding">
               <h3>End-stream frame</h3>
               <p>
-                Straight from Connect: the response stream ends with the
-                standard <code>EndStreamResponse</code> JSON. Requests reuse
-                it with an empty payload as an explicit half-close
-                (&ldquo;done sending, still listening&rdquo;), since neither
-                the stream nor the WebSocket has one of its own.
+                Ends a response with Connect's own
+                <code>EndStreamResponse</code> JSON. Requests reuse it empty
+                as a half-close: done sending, still listening.
               </p>
             </div>
-            <div class="feature-card">
+            <div class="finding">
               <h3>Reset frame</h3>
               <p>
-                Cancellation. Closing a shared connection would kill every
-                RPC on it, and a client that already half-closed has no
-                other frame left to send. So, like HTTP/2's
-                <code>RST_STREAM</code>, a reset aborts exactly one stream
-                and the server cancels that handler's context.
+                Cancels one stream without killing the others, like HTTP/2's
+                <code>RST_STREAM</code>. The server cancels that handler's
+                context.
               </p>
             </div>
           </div>
           <h3 id="protocol-drafts">Three drafts, side by side</h3>
           <p>
-            The WebSocket wire protocol exists in three deliberately
-            coexisting, wire-incompatible <strong>drafts</strong>, served on
+            Three wire-incompatible <strong>drafts</strong> coexist, on
             different paths (<code>/websocket-draft1</code>,
-            <code>/websocket-draft2</code>, <code>/websocket-draft3</code>,
-            <code>/websocket-draft4</code>)
-            and all selectable in the live demo above, so their designs can
-            be measured against each other. They differ in one idea: where
-            the framing and compression jobs live &mdash; in the protocol,
-            in the WebSocket layer, or negotiated between the two.
+            <code>/websocket-draft3</code>, <code>/websocket-draft4</code>),
+            all selectable in the demo above. They disagree about one thing:
+            where framing and compression belong.
           </p>
           <article class="code-card wire-format-card">
             <header class="code-card-header">
@@ -732,11 +750,7 @@ just demo-worker   # Cloudflare workerd: http://localhost:8787
               >
             </header>
             <div class="wire-format">
-              <pre><code class="nohighlight">&#9484;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9488;&#9484;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9488;&#9484;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9488;&#9484;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9488;
-&#9474; stream ID &#9474;&#9474; flag &#9474;&#9474; length     &#9474;&#9474; payload &#8230;      &#9474;
-&#9474; (4 bytes) &#9474;&#9474; (1)  &#9474;&#9474; (4 bytes)  &#9474;&#9474;                &#9474;
-&#9492;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9496;&#9492;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9496;&#9492;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9496;&#9492;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9496;
-             &#9492;&#9472;&#9472;&#9472;&#9472; a standard Connect envelope &#9472;&#9472;&#9472;&#9472;&#9472;&#9496;</code></pre>
+              <div class="wire-svg-scroll"><svg class="wire-svg" viewBox="0 0 640 139" role="img" aria-label="Draft 1 frame layout. A 4-byte stream ID followed by one standard Connect envelope: a 1-byte flag, a 4-byte big-endian payload length, and the payload." preserveAspectRatio="xMidYMid meet"><title>Draft 1 frame layout</title><desc>A 4-byte stream ID followed by one standard Connect envelope: a 1-byte flag, a 4-byte big-endian payload length, and the payload.</desc><rect class="cell id" x="8" y="22" width="148" height="52" rx="7"/><text class="lbl t-id" x="82" y="53" text-anchor="middle">stream ID</text><text class="sub" x="82" y="91" text-anchor="middle">4 bytes</text><rect class="cell flag" x="162" y="22" width="60" height="52" rx="7"/><text class="lbl t-flag" x="192" y="53" text-anchor="middle">flag</text><text class="sub" x="192" y="91" text-anchor="middle">1 byte</text><rect class="cell len" x="228" y="22" width="148" height="52" rx="7"/><text class="lbl t-len" x="302" y="53" text-anchor="middle">length</text><text class="sub" x="302" y="91" text-anchor="middle">4 bytes</text><rect class="cell payload" x="382" y="22" width="250" height="52" rx="7"/><text class="lbl t-payload" x="507" y="53" text-anchor="middle">payload …</text><text class="sub" x="507" y="91" text-anchor="middle">declared by length</text><path class="brace" d="M162 101 v6 H390 l7 8 l7 -8 H632 V101"/><text class="sub" x="397" y="131" text-anchor="middle">one standard Connect envelope</text></svg></div>
               <table class="flag-table">
                 <thead>
                   <tr>
@@ -778,98 +792,24 @@ just demo-worker   # Cloudflare workerd: http://localhost:8787
               </table>
             </div>
             <p class="wire-format-note">
-              Everything after the stream ID is byte-for-byte the Connect
-              protocol's envelope: a flag, a 4-byte payload length, and the
-              payload. Flags are complete byte values, not bitmasks;
-              <code>0x06</code> and <code>0x07</code> are
-              transport-specific additions, and <code>0x08</code> and up
-              are reserved. Compression is Connect's per-message kind,
-              negotiated inside the headers frame's metadata: the client
-              lists the algorithms it accepts in
-              <code>connect-accept-encoding</code> (gzip by default), the
-              server picks one and names it in
-              <code>connect-content-encoding</code> on its response headers
-              frame, and every compressed message is flagged
-              <code>0x01</code>. Requests work symmetrically when the
-              client configures a send compressor. Headers and end-stream
-              JSON are never compressed. Served on
-              <code>/websocket-draft1</code>.
-            </p>
-          </article>
-          <article class="code-card wire-format-card">
-            <header class="code-card-header">
-              <span class="code-lang">Draft 2</span>
-              <span class="code-title"
-                >Stream ID + frame type; the WebSocket does the rest</span
-              >
-            </header>
-            <div class="wire-format">
-              <pre><code class="nohighlight">&#9484;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9488;&#9484;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9488;&#9484;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9488;
-&#9474; stream ID &#9474;&#9474; type &#9474;&#9474; payload &#8230;          &#9474;
-&#9474; (4 bytes) &#9474;&#9474; (1)  &#9474;&#9474; (rest of message)  &#9474;
-&#9492;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9496;&#9492;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9496;&#9492;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9496;</code></pre>
-              <table class="flag-table">
-                <thead>
-                  <tr>
-                    <th scope="col">Type</th>
-                    <th scope="col">Frame</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr>
-                    <td><code>0x00</code></td>
-                    <td>data &mdash; one RPC message, always uncompressed</td>
-                  </tr>
-                  <tr>
-                    <td><code>0x01</code></td>
-                    <td>
-                      headers &mdash; opens every stream; JSON metadata with
-                      <code>:path</code>, <code>content-type</code>, &hellip;
-                    </td>
-                  </tr>
-                  <tr>
-                    <td><code>0x02</code></td>
-                    <td>
-                      end-stream &mdash; empty on requests (half-close);
-                      EndStreamResponse JSON on responses
-                    </td>
-                  </tr>
-                  <tr>
-                    <td><code>0x03</code></td>
-                    <td>reset &mdash; empty; aborts one stream</td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-            <p class="wire-format-note">
-              No payload length and no compressed-data type: the WebSocket
-              already does both jobs. Types are complete byte values, not
-              bitmasks; <code>0x04</code> and up are reserved. Message
-              boundaries delimit the payload (one message = one frame,
-              always), and the protocol carries <em>no</em> compression
-              headers &mdash; <code>connect-content-encoding</code> and
-              <code>connect-accept-encoding</code> are unused. Compression
-              is the WebSocket's own permessage-deflate extension instead,
-              negotiated at the HTTP/1.1 upgrade via
-              <code>Sec-WebSocket-Extensions</code> and applied
-              transparently to every frame, headers and end-stream JSON
-              included. The HTTP/2 bootstrap has no extension negotiation,
-              so draft 2 travels uncompressed there. Served on
-              <code>/websocket-draft2</code>.
+              Everything after the stream ID is the Connect protocol's own
+              envelope: a flag byte, a 4-byte length, and the payload.
+              Compression is Connect's, per message. The client lists what
+              it accepts in <code>connect-accept-encoding</code>, the
+              server picks one, and compressed messages carry flag
+              <code>0x01</code>. Headers and end-stream JSON are never
+              compressed. Served on <code>/websocket-draft1</code>.
             </p>
           </article>
           <article class="code-card wire-format-card">
             <header class="code-card-header">
               <span class="code-lang">Draft 3</span>
               <span class="code-title"
-                >Draft 2's framing + compression as a protocol option</span
+                >A packed 5-byte head + compression as a protocol option</span
               >
             </header>
             <div class="wire-format">
-              <pre><code class="nohighlight">&#9484;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9488;&#9484;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9488;&#9484;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9488;
-&#9474; stream ID &#9474;&#9474; descriptor &#9474;&#9474; payload &#8230;          &#9474;
-&#9474; (4 bytes) &#9474;&#9474; (C + type) &#9474;&#9474; (rest of message)  &#9474;
-&#9492;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9496;&#9492;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9496;&#9492;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9496;</code></pre>
+              <div class="wire-svg-scroll"><svg class="wire-svg" viewBox="0 0 640 103" role="img" aria-label="Draft 3 frame layout. A 4-byte stream ID, a descriptor byte carrying a compressed flag in bit 7 and the frame type in bits 0-6, and the payload." preserveAspectRatio="xMidYMid meet"><title>Draft 3 frame layout</title><desc>A 4-byte stream ID, a descriptor byte carrying a compressed flag in bit 7 and the frame type in bits 0-6, and the payload.</desc><rect class="cell id" x="8" y="22" width="148" height="52" rx="7"/><text class="lbl t-id" x="82" y="53" text-anchor="middle">stream ID</text><text class="sub" x="82" y="91" text-anchor="middle">4 bytes</text><rect class="cell flag" x="162" y="22" width="128" height="52" rx="7"/><line class="divider" x1="202" y1="22" x2="202" y2="74"/><text class="lbl t-flag" x="182" y="53" text-anchor="middle">C</text><text class="lbl t-flag" x="246" y="53" text-anchor="middle">type</text><text class="sub" x="226" y="91" text-anchor="middle">1 byte — 1 bit + 7 bits</text><rect class="cell payload" x="296" y="22" width="336" height="52" rx="7"/><text class="lbl t-payload" x="464" y="53" text-anchor="middle">payload …</text><text class="sub" x="464" y="91" text-anchor="middle">rest of the WebSocket message</text></svg></div>
               <table class="flag-table">
                 <thead>
                   <tr>
@@ -911,26 +851,15 @@ just demo-worker   # Cloudflare workerd: http://localhost:8787
               </table>
             </div>
             <p class="wire-format-note">
-              The descriptor byte is a bitfield: the frame type in bits
-              0&ndash;6 (values <code>0x04</code> and up reserved) plus the
-              compressed flag in bit&nbsp;7 &mdash; so
-              <code>0x80</code> is compressed data and <code>0x81</code>
-              compressed headers. Compression is negotiated once per
-              connection through WebSocket subprotocols
-              (<code>Sec-WebSocket-Protocol</code>): the client offers
-              <code>connect.bidi.d3.deflate</code> and
-              <code>connect.bidi.d3</code>, most preferred first; the
-              server echoes its pick, and a handshake that settles on
-              neither is refused. With the deflate token, either side may
-              deflate any frame's payload (each frame is an independent
-              RFC&nbsp;1951 stream, no shared window) &mdash; senders skip
-              payloads under 512&nbsp;bytes and ones deflate can't shrink.
-              <code>connect-content-encoding</code> /
-              <code>connect-accept-encoding</code> are unused, and
-              permessage-deflate is never accepted (it would compress
-              twice). Because subprotocols travel on both bootstraps,
-              draft&nbsp;3 compresses identically over HTTP/1.1 and
-              HTTP/2. Served on <code>/websocket-draft3</code>.
+              The descriptor byte packs the frame type into bits 0&ndash;6
+              and a compressed flag into bit 7, so <code>0x80</code> is
+              compressed data. Compression is negotiated once per
+              connection, by WebSocket subprotocol: the client offers
+              <code>connect.bidi.d3.deflate</code>, the server echoes its
+              pick. Each frame deflates independently, and senders skip
+              payloads under 512 bytes. Subprotocols travel on both
+              bootstraps, so this works over HTTP/1.1 and HTTP/2 alike.
+              Served on <code>/websocket-draft3</code>.
             </p>
           </article>
           <article class="code-card wire-format-card">
@@ -941,14 +870,7 @@ just demo-worker   # Cloudflare workerd: http://localhost:8787
               >
             </header>
             <div class="wire-format">
-              <pre><code class="nohighlight">7|1|{&quot;metadata&quot;:{&quot;:path&quot;:[&quot;/connectrpc.eliza.v1.ElizaService/Converse&quot;]}}
-&#9474; &#9474; &#9474;
-&#9474; &#9474; &#9492;&#9472; payload &mdash; everything after the second &quot;|&quot;, never escaped
-&#9474; &#9492;&#9472;&#9472;&#9472; flags &mdash; 1 = headers  (0 data, 2 end-stream, 3 reset)
-&#9492;&#9472;&#9472;&#9472;&#9472;&#9472; stream ID &mdash; unpadded decimal ASCII, assigned by the client
-
-7|0|{&quot;sentence&quot;:&quot;hello&quot;}     one data frame, JSON codec
-7|2|                         end-stream: the head, with no payload</code></pre>
+              <div class="wire-svg-scroll"><svg class="wire-svg" viewBox="0 0 457 166" role="img" aria-label="Draft 4 frame layout. The literal bytes of a draft 4 frame: the stream ID in decimal ASCII, a pipe, the flags field in decimal, a pipe, then the payload. The flags byte holds the frame type in its low 3 bits and five undefined flag bits above it." preserveAspectRatio="xMidYMid meet"><title>Draft 4 frame layout</title><desc>The literal bytes of a draft 4 frame: the stream ID in decimal ASCII, a pipe, the flags field in decimal, a pipe, then the payload. The flags byte holds the frame type in its low 3 bits and five undefined flag bits above it.</desc><text class="mono lit t-id" x="0" y="20" textLength="9" lengthAdjust="spacing" font-size="15">7</text><text class="mono lit t-sep" x="9" y="20" textLength="9" lengthAdjust="spacing" font-size="15">|</text><text class="mono lit t-flag" x="18" y="20" textLength="9" lengthAdjust="spacing" font-size="15">1</text><text class="mono lit t-sep" x="27" y="20" textLength="9" lengthAdjust="spacing" font-size="15">|</text><text class="mono lit t-payload" x="36" y="20" textLength="405" lengthAdjust="spacing" font-size="15">{&quot;metadata&quot;:{&quot;:path&quot;:[&quot;/eliza.v1/Converse&quot;]}}</text><path class="leader" d="M40 28 V46 H57"/><text class="sub t-payload" x="63" y="50">payload — the rest of the message, never escaped</text><path class="leader" d="M22 28 V68 H57"/><text class="sub t-flag" x="63" y="72">flags — 1 = headers</text><path class="leader" d="M4 28 V90 H57"/><text class="sub t-id" x="63" y="94">stream ID — decimal ASCII</text><text class="sub dim" x="0" y="132">the flags byte</text><text class="mono lit t-bits" x="90" y="132" textLength="99" lengthAdjust="spacing" font-size="15">0b00000 001</text><path class="rule" d="M108 140 H153"/><path class="rule t-flag-s" d="M162 140 H189"/><text class="sub" x="130" y="155" text-anchor="middle">flags</text><text class="sub t-flag" x="176" y="155" text-anchor="middle">type</text></svg></div>
               <table class="flag-table">
                 <thead>
                   <tr>
@@ -984,49 +906,30 @@ just demo-worker   # Cloudflare workerd: http://localhost:8787
               </table>
             </div>
             <p class="wire-format-note">
-              Both head fields are unpadded decimal ASCII, so a frame reads
-              as text with no decoder ring &mdash; pick this transport
-              above, open the Network tab, and watch the RPCs go by.
-              Parsers split on the first two <code>|</code> bytes only, so
+              Both head fields are plain decimal ASCII, so a frame reads as
+              text. Parsers split on the first two <code>|</code> only, so
               a payload containing <code>|</code> needs no escaping. Frames
-              whose payload is UTF&#8209;8 are sent as <em>text</em>
-              WebSocket messages, which is what makes devtools render them
-              as text; with the default JSON codec that is every frame on
-              the connection, and with protobuf only the data frames fall
-              back to binary. The flags field is a bitfield: the frame type
-              in the low 3 bits (types <code>4</code>&ndash;<code>7</code>
-              reserved), five undefined flag bits above it. Receivers mask
-              with <code>&amp; 7</code> and <em>ignore</em> unknown flags,
-              so a later revision can OR one in &mdash;
-              <code>7|8|&hellip;</code> is a data frame carrying flag 8
-              &mdash; without a coordinated upgrade. Compression goes back to
-              permessage-deflate as in draft&nbsp;2 &mdash; a text head
-              can't cheaply carry a compressed bit &mdash; which means
-              draft&nbsp;4 has no compression over the HTTP/2 bootstrap
-              either. The head is <em>variable width</em>: 4&nbsp;bytes at
-              <code>7|1|</code>, 6 once the stream counter passes 100, so
-              its overhead grows with a connection's age rather than
-              staying fixed at draft&nbsp;2's 5. Served on
+              whose payload is UTF&#8209;8 go out as text WebSocket
+              messages, which is what makes devtools show them as text.
+              The flags field holds the frame type in its low 3 bits;
+              receivers ignore the five bits above it, so a later revision
+              can add a flag without breaking anyone. Compression is
+              permessage-deflate, negotiated in the handshake and working
+              over both bootstraps. Served on
               <code>/websocket-draft4</code>.
             </p>
           </article>
           <p>
-            The result: drafts 2 and 3 spend 5 bytes of protocol per
-            message where draft 1 spends 9, and all three skip or shrink
-            differently. Draft 1's gzip compresses <em>everything</em>,
-            making small messages bigger and slower, but works end-to-end
-            through any intermediary. Draft 2's permessage-deflate skips
-            small messages and covers control payloads, but is best-effort
-            (hop-dependent) and simply absent over HTTP/2 &mdash; and
-            browsers never compress what they <em>send</em> with it.
-            Draft 3 keeps draft 2's frame economy while making compression
-            the protocol's own: it works on both bootstraps, in both
-            directions, from every client. Draft 4 spends that hard-won
-            frame economy back deliberately, buying a wire a human can
-            read at the price of a head that grows as a connection ages.
-            All four carry identical Connect semantics; see the
-            <a href="#benchmarks">benchmarks</a> for what each choice
-            costs and buys.
+            The trade-offs: draft 1's gzip compresses everything, which
+            makes small messages bigger and slower, but it survives any
+            intermediary. Draft 3 owns its compression, so it works the same
+            on both bootstraps and in both directions no matter which client
+            connects. Draft 4 hands that to permessage-deflate — which works
+            in a browser, but leaves the upload direction up to the client —
+            in exchange for a wire you can read in the browser's Network
+            tab, and pays with a frame head that grows as a connection ages. All three carry
+            identical Connect semantics; the
+            <a href="#benchmarks">benchmarks</a> show what each costs.
           </p>
           <p>
             WebTransport needs almost none of this. QUIC already gives every
@@ -1037,16 +940,14 @@ just demo-worker   # Cloudflare workerd: http://localhost:8787
             exist only where the transport can't do that job itself.
           </p>
           <p>
-            Sharing one ordered TCP connection has a real cost, though:
-            <strong>head-of-line blocking</strong>. A huge message on one
-            stream, or a stalled consumer, delays every frame queued behind
-            it, and unlike HTTP/2 there is no per-stream flow control. For RPCs that can't tolerate that, both clients take an
-            option (<code>connectionPerStream</code> in TypeScript,
-            <code>WithConnectionPerStream()</code> in Go) that dials a
-            dedicated WebSocket connection per streaming RPC instead. It's
-            purely a client-side choice: the protocol is identical either
-            way, and a dedicated connection is just a multiplexed connection
-            that happens to carry one stream.
+            Sharing one TCP connection costs
+            <strong>head-of-line blocking</strong>: a huge message, or a
+            stalled consumer, delays everything queued behind it, and there
+            is no per-stream flow control. Both clients can dial a
+            dedicated connection per streaming RPC instead
+            (<code>connectionPerStream</code> in TypeScript,
+            <code>WithConnectionPerStream()</code> in Go). It is a client
+            choice only; the protocol is identical either way.
           </p>
         </div>
       </section>
@@ -1070,14 +971,26 @@ just demo-worker   # Cloudflare workerd: http://localhost:8787
           <div id="bench-ts-tables"></div>
 
           <p>
-            Highlights worth noticing: draft 2 and 3 spend 5 bytes of
+            Highlights worth noticing: draft 3 spends 5 bytes of
             protocol per message where draft 1 spends 9; draft 1's
             per-message gzip compresses <em>everything</em>, which makes
-            small messages larger and slower; and draft 3 is the only
-            variant where a JavaScript client compresses what it
-            <em>sends</em> — permessage-deflate never compresses browser or
-            Node uploads, while draft 3's protocol-level deflate shrinks the
-            16&nbsp;KiB upload to a few hundred bytes.
+            small messages larger and slower; and in this suite draft 3 is
+            the only variant that compresses what the client
+            <em>sends</em>, taking the compressible 16&nbsp;KiB upload down
+            to about 140 bytes. On incompressible text every deflate row
+            lands at the same ~12.4&nbsp;KB, which is what honest
+            compression looks like.
+          </p>
+          <p>
+            That upload column deserves a caveat, because it is measured
+            with a Node client. Under permessage-deflate, compressing an
+            outgoing message is each endpoint's own choice — RSV1 is set per
+            message — and Node's built&#8209;in WebSocket declines: it
+            negotiates the extension, inflates what it receives, then
+            uploads everything in full. Browsers do not behave that way. The
+            same 16&nbsp;KiB upload leaves Chrome at 106 bytes and Firefox
+            at 168. So drafts 1 and 4 compress both directions in a browser;
+            what draft 3 buys is not needing to care which client you get.
           </p>
         </div>
       </section>
@@ -1087,79 +1000,63 @@ just demo-worker   # Cloudflare workerd: http://localhost:8787
         <div class="section-inner">
           <h2>Conclusions</h2>
           <p class="section-lede">
-            What three coexisting drafts and a byte-counting benchmark
-            suite settled. The full write-up lives in
-            <a
-              href="https://github.com/sudorandom/connect-bidi-web/blob/main/CONCLUSIONS.md"
-              >CONCLUSIONS.md</a
-            >.
+            What four coexisting drafts and a byte-counting benchmark suite
+            settled.
           </p>
-          <div class="feature-grid">
-            <div class="feature-card">
+          <div class="findings">
+            <div class="finding">
               <h3>Don't duplicate the layer below</h3>
               <p>
-                A WebSocket message is already length-delimited, so an
-                in-band payload length is pure redundancy: dropping it
-                saved 4 bytes per frame and deleted an error class. The
-                9-byte&rarr;5-byte prefix shows up directly in the
-                small-message numbers.
+                A WebSocket message already carries its own length. Draft 1
+                states it again inside the frame. Dropping that saved 4
+                bytes per message and removed a whole class of error.
               </p>
             </div>
-            <div class="feature-card">
-              <h3>Where compression is negotiated matters most</h3>
+            <div class="finding">
+              <h3>A feature below your abstraction can vanish silently</h3>
               <p>
-                Per-message metadata (draft 1) is end-to-end but
-                threshold-less and unimplemented in JS clients. The
-                WebSocket extension (draft 2) is an environment property:
-                absent over HTTP/2, platform-dependent, and never applied
-                to browser uploads. Protocol-negotiated (draft 3) is
-                deterministic everywhere, in both directions, and
-                configurable on either side.
+                Draft 4 leaves compression to the WebSocket layer. Swapping
+                that layer for the HTTP/2 one dropped it entirely — the same
+                16 KiB payload went out at 16.8&nbsp;KiB instead of
+                327&nbsp;B, with no error and no failing test. Draft 3 owns
+                its compression, above that boundary, and was never
+                affected. We since implemented the extension on the HTTP/2
+                path too; the bug was the lesson.
               </p>
             </div>
-            <div class="feature-card">
-              <h3>Compressing everything is worse than nothing</h3>
+            <div class="finding">
+              <h3>Optimize for the client that reads it</h3>
               <p>
-                Draft 1's threshold-less gzip makes tiny messages ~50%
-                larger and doubles roundtrip latency. A size threshold
-                plus &ldquo;send raw if it didn't shrink&rdquo; costs one
-                bit and removes the pathology. The one thing per-frame
-                compression can't match: permessage-deflate's shared
-                window on long runs of tiny, similar messages.
+                Browsers are the main WebSocket client, and their Network
+                tab is where this traffic gets read. Drafts 1 and 3 show up
+                there as hex. Draft 4's frames read as text.
               </p>
             </div>
-            <div class="feature-card">
-              <h3>Bootstraps expose hidden couplings</h3>
+            <div class="finding">
+              <h3>Text framing is cheap; the codec is not</h3>
               <p>
-                One wire protocol runs cleanly over both the HTTP/1.1
-                upgrade and HTTP/2 extended CONNECT &mdash; unless it
-                depends on something optional below it, like draft 2's
-                permessage-deflate, which simply doesn't exist on HTTP/2.
-                And the h2 advertisement is origin-wide: every WebSocket
-                endpoint must accept extended CONNECT before it can be
-                enabled.
+                Draft 4 with protobuf costs 3 bytes more than draft 3 on a
+                16 KiB message. Switching to JSON, so the payloads are
+                readable too, is what costs: about 2&times; the time.
               </p>
             </div>
-            <div class="feature-card">
+            <div class="finding">
               <h3>Fallback needs three contracts</h3>
               <p>
-                Transports must distinguish establishment failures from
-                RPC failures; every dial needs a timeout (the worst
-                failure is a handshake that never settles); and retrying
-                a streaming call needs a replayable view of the request
-                iterable. All three were learned the hard way.
+                Transports must report connection failures differently from
+                RPC failures. Every dial needs a timeout. A retried stream
+                needs a replayable request iterator.
               </p>
             </div>
-            <div class="feature-card">
+            <div class="finding finding-recommendation">
               <h3>Recommendation</h3>
               <p>
-                <strong>Draft 3 by default</strong>: draft 2's frame
-                economy with compression that behaves identically
-                everywhere. Draft 2 for maximum JS throughput on trusted
-                HTTP/1.1 infrastructure or tiny-repetitive streams; draft
-                1 for pluggable algorithms or extension-stripping
-                middleboxes; WebTransport when you control the UDP path;
-                the Auto ladder when the environment is unknown.
+                <strong>Draft 4</strong> for browser-facing services: you
+                can read it in devtools, and it costs a frame head that
+                grows with connection age. <strong>Draft 3</strong> when
+                bytes matter, or when you need compression over HTTP/2.
+                Draft 1 for pluggable algorithms. WebTransport when you
+                control the UDP path.
               </p>
             </div>
           </div>

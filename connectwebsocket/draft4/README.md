@@ -1,14 +1,20 @@
 # connectwebsocket/draft4
 
-Draft 4 of the WebSocket wire protocol. Drafts [1](../draft1/README.md),
-[2](../draft2/README.md), and [3](../draft3/README.md) coexist with it, each
-with its own constructors and default path (`/websocket-draft4`), so the
-designs can be compared.
+Draft 4 of the WebSocket wire protocol. Drafts [1](../draft1/README.md)
+and [3](../draft3/README.md) coexist with it, each with its own
+constructors and default path (`/websocket-draft4`), so the designs can be
+compared. Everything the drafts share — connection mapping, control payload
+JSON, request and response sequences, cancellation, half-close — is
+documented once in the [parent README](../README.md#shared-protocol).
 
-Draft 4 asks a different question than its predecessors. Drafts 2 and 3
-optimized the frame head down to five packed binary bytes and then argued
-about where to negotiate compression. Draft 4 gives up those bytes on
-purpose, to find out what a **legible** wire protocol costs:
+Draft 4 optimizes for the client that actually matters. This transport
+exists because **browsers** can't do bidirectional streaming over `fetch` —
+browsers are the primary WebSocket client, and the browser's own Network
+tab is where this traffic gets read. Drafts 1 through 3 are opaque there:
+binary frames render as hex or as a blob, so the one debugging surface
+every web developer already has is useless on them.
+
+Draft 4 fixes that, by making the frame text:
 
 ```text
 7|1|{"metadata":{":path":["/connectrpc.eliza.v1.ElizaService/Converse"]}}
@@ -18,22 +24,39 @@ purpose, to find out what a **legible** wire protocol costs:
 
 That is the whole framing. A stream ID, a flags field, and a payload, all
 separated by `|`, with no length fields, no bit packing, and no
-compression flag. Open the Network tab in a browser, or point `tcpdump` at
-the socket, and the conversation reads as text — which is exactly what
-drafts 1 through 3 cannot do.
+compression flag. Frames whose payload is UTF-8 are sent as *text*
+WebSocket messages, so devtools renders them as text rather than as bytes.
+Open the Network tab, click the connection, and read the conversation —
+no extension, no proxy, no decoder, no `tcpdump`.
 
 Two other things follow from that goal:
 
 - **Control payloads are always JSON.** The headers and end-stream frames
   were already JSON in every draft; draft 4 makes it a rule rather than a
   default, so no future revision can make the metadata unreadable.
-- **Compression is the WebSocket's job again**, as in draft 2. Draft 3's
-  per-frame DEFLATE needed a signal bit in the frame head, and a bit is
-  exactly what a text head can't carry cheaply. permessage-deflate needs
-  no protocol surface at all. The cost is draft 2's cost, measured in
-  [CONCLUSIONS.md](../../CONCLUSIONS.md): the extension does not exist over
-  the HTTP/2 bootstrap, and browsers never compress what they *send* with
-  it.
+- **Compression is the WebSocket's job.** Draft 3's per-frame DEFLATE
+  needs a signal bit in the frame head, and a bit is exactly what a text
+  head can't carry cheaply; permessage-deflate needs no protocol surface
+  at all. It is negotiated in the handshake and works over both
+  bootstraps: RFC 8441 §5 keeps `Sec-WebSocket-Extensions`, so the HTTP/2
+  path negotiates it in the CONNECT exchange. Because coder/websocket
+  cannot accept over HTTP/2, that path implements the extension itself
+  (see `compress.go`), with no context takeover.
+
+  It did not always. For a while the HTTP/2 path had no deflate at all, and
+  a 16 KiB compressible payload went out at 16841 B there against 327 B
+  over HTTP/1.1 — same code, same options, no error and no failing test.
+  That is the hazard of putting a feature *below* your connection
+  abstraction: swap the connection and the feature leaves with it. Draft 3
+  keeps compression above that line and was never affected.
+
+  The other thing the extension leaves to someone else is whether a client
+  compresses what it *sends*: RSV1 is a per-message choice, so each endpoint
+  decides on its own. Browsers do — Chrome sends a 16 KiB compressible
+  upload as ~106 B, Firefox as ~168 B. Node's global WebSocket does not: it
+  negotiates the extension, inflates what it receives, and uploads every
+  message in full. Draft 3, which compresses in the protocol, is the same in
+  both directions everywhere.
 
 ## Usage
 
@@ -117,7 +140,7 @@ stream:
   the same rule HTTP/2 applies to its own frame flags. It is the reason
   this field is called `flags` rather than `type`.
 - `payload` is everything after the second `|`, delimited by the WebSocket
-  message itself. There is no length field, exactly as in drafts 2 and 3.
+  message itself. There is no length field, exactly as in draft 3.
 
 **The payload is never escaped.** Parsers split on the first two `|` bytes
 and treat the rest as opaque, so a `|` inside a JSON string or a protobuf
@@ -139,12 +162,12 @@ data payload is not UTF-8, so its frame is binary; its head is still ASCII
 and still readable in a hex view.
 
 Everything else — connection mapping, stream IDs, control payload JSON,
-request and response sequences, cancellation, half-close — is identical to
-[draft 2](../draft2/README.md#protocol).
+request and response sequences, cancellation, half-close — is the
+[shared protocol](../README.md#shared-protocol).
 
 ## Negotiation
 
-Draft 4 defines no WebSocket subprotocol; like drafts 1 and 2, it is
+Draft 4 defines no WebSocket subprotocol; like draft 1, it is
 identified by the path it is served on. Compression is negotiated purely as
 the permessage-deflate extension, which the handler accepts by default
 (`websocket.CompressionNoContextTakeover`) and `WithoutCompression()`
@@ -155,12 +178,12 @@ custom options can't silently disable it.
 ## The trade
 
 The measured cost is stranger than "text is bigger". Draft 4's head is
-*variable width* — 4 bytes for `"1|0|"`, 6 for `"201|0|"` — where drafts 2
-and 3 spend a fixed 5. So it depends entirely on how far a connection's
+*variable width* — 4 bytes for `"1|0|"`, 6 for `"201|0|"` — where draft 3
+spends a fixed 5. So it depends entirely on how far a connection's
 stream counter has climbed (`internal/bench`, 100-roundtrip bidi stream,
 identity):
 
-| Stream ID | Head | rxB/op vs draft 2 |
+| Stream ID | Head | rxB/op vs draft 3 |
 | --- | --- | --- |
 | 1 digit | 4 bytes | 1331 vs 1433 — **draft 4 wins by 102 B** |
 | 2 digits | 5 bytes | parity |
@@ -181,18 +204,24 @@ bytes.
 
 What the variable head buys is not performance:
 
-| | Draft 1 | Draft 2 | Draft 3 | Draft 4 |
-| --- | --- | --- | --- | --- |
-| Frame head | 9 bytes | 5 bytes | 5 bytes | 4–15 bytes ASCII, growing with the stream counter |
-| Readable without a decoder | no | no | no | **yes** |
-| Payload length | explicit u32 | message boundary | message boundary | message boundary |
-| Compression unit | per message (Connect gzip) | per message (permessage-deflate) | per frame (protocol deflate) | per message (permessage-deflate) |
-| Negotiated via | Connect metadata headers | WebSocket extension | WebSocket subprotocol | WebSocket extension |
-| Covers control payloads | no | yes | yes | yes |
-| Works over HTTP/2 bootstrap | yes | **no** | yes | **no** |
-| Control payloads guaranteed JSON | no | no | no | **yes** |
+| | Draft 1 | Draft 3 | Draft 4 |
+| --- | --- | --- | --- |
+| Frame head | 9 bytes | 5 bytes | 4–15 bytes ASCII, growing with the stream counter |
+| Readable without a decoder | no | no | **yes** |
+| Payload length | explicit u32 | message boundary | message boundary |
+| Compression unit | per message (Connect gzip) | per frame (protocol deflate) | per message (permessage-deflate) |
+| Negotiated via | Connect metadata headers | WebSocket subprotocol | WebSocket extension |
+| Covers control payloads | no | yes | yes |
+| Compression needs a per-bootstrap implementation | no | no | **yes** |
+| Control payloads guaranteed JSON | no | no | **yes** |
 
-The honest summary: draft 4 is the draft to reach for while *debugging* a
-bidi protocol, or when the operators of a system will spend more time
-reading its traffic than paying for its bytes. For everything else, draft 3
-remains the recommendation in [CONCLUSIONS.md](../../CONCLUSIONS.md).
+The summary: for a browser-facing service, draft 4 is a reasonable
+*default*. Its cost is real but narrow — a head that grows with a
+connection's age — while what it buys applies to every debugging session in
+the client this transport was built for. Legibility in the primary client is not a developer luxury; it
+is the difference between a protocol your users can support and one only
+its authors can.
+
+Draft 3 remains the pick where wire bytes are the binding constraint:
+metered links, high-rate streams of tiny messages, or deployments that need
+compression over the HTTP/2 bootstrap.

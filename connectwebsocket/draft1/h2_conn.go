@@ -32,9 +32,13 @@ import (
 // frames. gobwas/ws provides the frame codec; this type adds message
 // assembly, control-frame handling, and write serialization.
 //
-// No extensions are negotiated on this bootstrap, so unlike the HTTP/1.1
-// one there is no permessage-deflate: draft 2 messages travel
-// uncompressed over HTTP/2.
+// This bootstrap negotiates no extensions, so unlike the HTTP/1.1 one it
+// has no permessage-deflate and messages travel uncompressed. That is a
+// gap in this implementation, not a rule: RFC 8441 §5 keeps
+// Sec-WebSocket-Extensions in the CONNECT exchange, and draft 4 implements
+// the extension over HTTP/2 on exactly that basis (see
+// draft4/compress.go). Draft 1's own per-message Connect compression is
+// unaffected either way — it sits above the connection.
 type h2Conn struct {
 	reader *bufio.Reader
 	// closeRead unblocks a pending read: the request body on servers, the

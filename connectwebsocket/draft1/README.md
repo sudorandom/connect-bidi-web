@@ -3,10 +3,10 @@
 Draft 1 of the WebSocket wire protocol, the one that stays closest to the
 Connect HTTP protocol: RPC messages travel in standard Connect envelopes,
 compressed per message and negotiated through `connect-*-encoding`
-metadata. Drafts [2](../draft2/README.md), [3](../draft3/README.md), and
-[4](../draft4/README.md) coexist with it, each wire-incompatible with the
-others, each with its own constructors and default path
-(`/websocket-draft1` here), so the designs can be compared.
+metadata. Drafts [3](../draft3/README.md) and [4](../draft4/README.md)
+coexist with it, each wire-incompatible with the others, each with its own
+constructors and default path (`/websocket-draft1` here), so the designs
+can be compared.
 
 Like the other drafts, draft 1 runs over two bootstraps carrying identical
 frames: the HTTP/1.1 Upgrade handshake (`NewTransport`), and RFC 8441

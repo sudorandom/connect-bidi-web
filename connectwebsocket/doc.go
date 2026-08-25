@@ -21,11 +21,9 @@
 //
 //   - [github.com/sudorandom/connect-bidi-web/connectwebsocket/draft1]:
 //     Connect envelopes and connect-*-encoding compression metadata.
-//   - [github.com/sudorandom/connect-bidi-web/connectwebsocket/draft2]:
-//     a 5-byte binary frame head, compression delegated to the WebSocket's
-//     permessage-deflate extension.
 //   - [github.com/sudorandom/connect-bidi-web/connectwebsocket/draft3]:
-//     draft 2's framing with per-frame DEFLATE negotiated by subprotocol.
+//     a 5-byte binary frame head, with per-frame DEFLATE negotiated by
+//     a WebSocket subprotocol.
 //   - [github.com/sudorandom/connect-bidi-web/connectwebsocket/draft4]:
 //     an ASCII text frame head ("id|type|payload") and JSON-only control
 //     payloads, for tool visibility.

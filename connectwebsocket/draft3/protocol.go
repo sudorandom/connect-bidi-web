@@ -39,7 +39,7 @@ const (
 
 // Frame type constants, carried in bits 0-6 of the frame descriptor byte;
 // values 0x04 and up are reserved for future frame types. Bit 7 is the
-// frameCompressed flag. Unlike draft 2, compression is an option of this
+// frameCompressed flag. Unlike draft 4, compression is an option of this
 // protocol (negotiated by subprotocol, applied per frame), not the
 // WebSocket extension's job.
 const (

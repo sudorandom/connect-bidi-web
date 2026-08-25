@@ -16,7 +16,6 @@ import type { Transport } from "@connectrpc/connect";
 import { createConnectTransport } from "@connectrpc/connect-web";
 import {
   createCompositeTransport,
-  createConnectWebSocketDraft2Transport,
   createConnectWebSocketDraft3Transport,
   createConnectWebSocketDraft4Transport,
   createConnectWebSocketDraft1Transport,
@@ -30,7 +29,6 @@ export type StreamingTransportChoice =
   | "auto"
   | "webtransport"
   | "websocket"
-  | "websocket-draft2"
   | "websocket-draft3"
   | "websocket-draft4";
 
@@ -97,7 +95,7 @@ export function createDemoTransport(
   }
 
   if (choice === "auto") {
-    // The degrading ladder: WebTransport first, WebSocket (draft 2) as the
+    // The degrading ladder: WebTransport first, WebSocket (draft 3) as the
     // fallback. The WebTransport rung is included whenever the API and URL
     // scheme allow a dial attempt and the server hasn't already said no —
     // whether it actually works beyond that (HTTP/3 reachability,
@@ -111,7 +109,7 @@ export function createDemoTransport(
     if (webTransportPossible) {
       rungs.push(createWebTransportStreaming(serverUrl));
     }
-    rungs.push(createConnectWebSocketDraft2Transport({ baseUrl: serverUrl }));
+    rungs.push(createConnectWebSocketDraft3Transport({ baseUrl: serverUrl }));
     return {
       transport: createCompositeTransport(
         unary,
@@ -119,11 +117,11 @@ export function createDemoTransport(
       ),
       description: webTransportPossible
         ? "Degrading transport: WebTransport is tried first, and the " +
-          "connection falls back to WebSocket (draft 2) if it can't be " +
+          "connection falls back to WebSocket (draft 3) if it can't be " +
           "established. The rung that works is remembered."
         : "Degrading transport: WebTransport is not available in this " +
           "browser or on this server, so the ladder starts at WebSocket " +
-          "(draft 2).",
+          "(draft 3).",
     };
   }
 
@@ -138,21 +136,6 @@ export function createDemoTransport(
     : "Each lane below is an independent stream, multiplexed onto one " +
       "shared connection.";
 
-  if (choice === "websocket-draft2") {
-    const streaming = createConnectWebSocketDraft2Transport({
-      baseUrl: serverUrl,
-      connectionPerStream,
-    });
-    return {
-      transport: createCompositeTransport(unary, streaming),
-      description:
-        "Draft 2 wire protocol: inside each WebSocket message, a frame is " +
-        "just a stream ID and a type byte — payload length and compression " +
-        "are left to the WebSocket layer itself. " +
-        lanes,
-    };
-  }
-
   if (choice === "websocket-draft3") {
     const streaming = createConnectWebSocketDraft3Transport({
       baseUrl: serverUrl,
@@ -161,7 +144,7 @@ export function createDemoTransport(
     return {
       transport: createCompositeTransport(unary, streaming),
       description:
-        "Draft 3 wire protocol: draft 2's framing inside each WebSocket " +
+        "Draft 3 wire protocol: a packed head inside each WebSocket " +
         "message (stream ID, descriptor byte, payload), with compression " +
         "as a protocol option — a subprotocol negotiates per-frame raw " +
         "DEFLATE, signaled by one bit in that descriptor, independent of " +

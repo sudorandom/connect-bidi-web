@@ -4,322 +4,465 @@
   "rows": [
     {
       "case": "ws-draft1/identity",
+      "bootstrap": "HTTP/1.1",
       "workload": "unary_small",
-      "nsPerOp": 71969,
+      "nsPerOp": 94761,
       "rxBytesPerOp": 186,
       "txBytesPerOp": 143
     },
     {
       "case": "ws-draft1/identity",
+      "bootstrap": "HTTP/1.1",
       "workload": "unary_16KiB_repetitive",
-      "nsPerOp": 107645,
+      "nsPerOp": 113481,
       "rxBytesPerOp": 16576,
       "txBytesPerOp": 16533
     },
     {
       "case": "ws-draft1/identity",
+      "bootstrap": "HTTP/1.1",
       "workload": "unary_16KiB_random",
-      "nsPerOp": 84122,
+      "nsPerOp": 93852,
       "rxBytesPerOp": 16576,
       "txBytesPerOp": 16533
     },
     {
       "case": "ws-draft1/identity",
+      "bootstrap": "HTTP/1.1",
       "workload": "bidi_100_roundtrips",
-      "nsPerOp": 3106945,
-      "nsPerRoundtrip": 31069,
+      "nsPerOp": 2965201,
+      "nsPerRoundtrip": 29652,
       "rxBytesPerOp": 3059,
       "txBytesPerOp": 1911
     },
     {
       "case": "ws-draft1/gzip",
+      "bootstrap": "HTTP/1.1",
       "workload": "unary_small",
-      "nsPerOp": 79079,
+      "nsPerOp": 80250,
       "rxBytesPerOp": 283,
       "txBytesPerOp": 205
     },
     {
       "case": "ws-draft1/gzip",
+      "bootstrap": "HTTP/1.1",
       "workload": "unary_16KiB_repetitive",
-      "nsPerOp": 176595,
+      "nsPerOp": 180464,
       "rxBytesPerOp": 396,
       "txBytesPerOp": 318
     },
     {
       "case": "ws-draft1/gzip",
+      "bootstrap": "HTTP/1.1",
       "workload": "unary_16KiB_random",
-      "nsPerOp": 522780,
+      "nsPerOp": 521607,
       "rxBytesPerOp": 12635,
       "txBytesPerOp": 12557
     },
     {
       "case": "ws-draft1/gzip",
+      "bootstrap": "HTTP/1.1",
       "workload": "bidi_100_roundtrips",
-      "nsPerOp": 5743552,
-      "nsPerRoundtrip": 57436,
+      "nsPerOp": 5694809,
+      "nsPerRoundtrip": 56948,
       "rxBytesPerOp": 5532,
       "txBytesPerOp": 4349
     },
     {
-      "case": "ws-draft2/identity",
-      "workload": "unary_small",
-      "nsPerOp": 44095,
-      "rxBytesPerOp": 144,
-      "txBytesPerOp": 84
-    },
-    {
-      "case": "ws-draft2/identity",
-      "workload": "unary_16KiB_repetitive",
-      "nsPerOp": 91881,
-      "rxBytesPerOp": 16534,
-      "txBytesPerOp": 16474
-    },
-    {
-      "case": "ws-draft2/identity",
-      "workload": "unary_16KiB_random",
-      "nsPerOp": 89895,
-      "rxBytesPerOp": 16534,
-      "txBytesPerOp": 16474
-    },
-    {
-      "case": "ws-draft2/identity",
-      "workload": "bidi_100_roundtrips",
-      "nsPerOp": 2980065,
-      "nsPerRoundtrip": 29801,
-      "rxBytesPerOp": 1433,
-      "txBytesPerOp": 1060
-    },
-    {
-      "case": "ws-draft2/deflate",
-      "workload": "unary_small",
-      "nsPerOp": 46329,
-      "rxBytesPerOp": 144,
-      "txBytesPerOp": 84
-    },
-    {
-      "case": "ws-draft2/deflate",
-      "workload": "unary_16KiB_repetitive",
-      "nsPerOp": 122435,
-      "rxBytesPerOp": 321.2,
-      "txBytesPerOp": 261.2
-    },
-    {
-      "case": "ws-draft2/deflate",
-      "workload": "unary_16KiB_random",
-      "nsPerOp": 361177,
-      "rxBytesPerOp": 12499,
-      "txBytesPerOp": 12439
-    },
-    {
-      "case": "ws-draft2/deflate",
-      "workload": "bidi_100_roundtrips",
-      "nsPerOp": 2961249,
-      "nsPerRoundtrip": 29612,
-      "rxBytesPerOp": 1433,
-      "txBytesPerOp": 1060
-    },
-    {
       "case": "ws-draft3/identity",
+      "bootstrap": "HTTP/1.1",
       "workload": "unary_small",
-      "nsPerOp": 44832,
+      "nsPerOp": 44605,
       "rxBytesPerOp": 144,
       "txBytesPerOp": 84
     },
     {
       "case": "ws-draft3/identity",
+      "bootstrap": "HTTP/1.1",
       "workload": "unary_16KiB_repetitive",
-      "nsPerOp": 99580,
+      "nsPerOp": 90364,
       "rxBytesPerOp": 16534,
       "txBytesPerOp": 16474
     },
     {
       "case": "ws-draft3/identity",
+      "bootstrap": "HTTP/1.1",
       "workload": "unary_16KiB_random",
-      "nsPerOp": 92070,
+      "nsPerOp": 90536,
       "rxBytesPerOp": 16534,
       "txBytesPerOp": 16474
     },
     {
       "case": "ws-draft3/identity",
+      "bootstrap": "HTTP/1.1",
       "workload": "bidi_100_roundtrips",
-      "nsPerOp": 2938555,
-      "nsPerRoundtrip": 29386,
+      "nsPerOp": 2716466,
+      "nsPerRoundtrip": 27165,
       "rxBytesPerOp": 1433,
       "txBytesPerOp": 1060
     },
     {
       "case": "ws-draft3/deflate",
+      "bootstrap": "HTTP/1.1",
       "workload": "unary_small",
-      "nsPerOp": 45932,
+      "nsPerOp": 44208,
       "rxBytesPerOp": 144,
       "txBytesPerOp": 84
     },
     {
       "case": "ws-draft3/deflate",
+      "bootstrap": "HTTP/1.1",
       "workload": "unary_16KiB_repetitive",
-      "nsPerOp": 161878,
+      "nsPerOp": 154530,
       "rxBytesPerOp": 261,
       "txBytesPerOp": 201
     },
     {
       "case": "ws-draft3/deflate",
+      "bootstrap": "HTTP/1.1",
       "workload": "unary_16KiB_random",
-      "nsPerOp": 563645,
+      "nsPerOp": 513228,
       "rxBytesPerOp": 12502,
       "txBytesPerOp": 12442
     },
     {
       "case": "ws-draft3/deflate",
+      "bootstrap": "HTTP/1.1",
       "workload": "bidi_100_roundtrips",
-      "nsPerOp": 2900963,
-      "nsPerRoundtrip": 29010,
+      "nsPerOp": 2696997,
+      "nsPerRoundtrip": 26970,
       "rxBytesPerOp": 1433,
       "txBytesPerOp": 1060
     },
     {
       "case": "ws-draft4/identity",
+      "bootstrap": "HTTP/1.1",
       "workload": "unary_small",
-      "nsPerOp": 42941,
+      "nsPerOp": 44138,
       "rxBytesPerOp": 145.5,
       "txBytesPerOp": 85.47
     },
     {
       "case": "ws-draft4/identity",
+      "bootstrap": "HTTP/1.1",
       "workload": "unary_16KiB_repetitive",
-      "nsPerOp": 99711,
+      "nsPerOp": 97940,
       "rxBytesPerOp": 16537,
       "txBytesPerOp": 16477
     },
     {
       "case": "ws-draft4/identity",
+      "bootstrap": "HTTP/1.1",
       "workload": "unary_16KiB_random",
-      "nsPerOp": 100886,
+      "nsPerOp": 91695,
       "rxBytesPerOp": 16537,
       "txBytesPerOp": 16477
     },
     {
       "case": "ws-draft4/identity",
+      "bootstrap": "HTTP/1.1",
       "workload": "bidi_100_roundtrips",
-      "nsPerOp": 3014411,
-      "nsPerRoundtrip": 30144,
+      "nsPerOp": 2691630,
+      "nsPerRoundtrip": 26916,
       "rxBytesPerOp": 1535,
       "txBytesPerOp": 1162
     },
     {
       "case": "ws-draft4/deflate",
+      "bootstrap": "HTTP/1.1",
       "workload": "unary_small",
-      "nsPerOp": 42844,
+      "nsPerOp": 44535,
       "rxBytesPerOp": 145.5,
       "txBytesPerOp": 85.47
     },
     {
       "case": "ws-draft4/deflate",
+      "bootstrap": "HTTP/1.1",
       "workload": "unary_16KiB_repetitive",
-      "nsPerOp": 124440,
+      "nsPerOp": 112240,
       "rxBytesPerOp": 326.8,
       "txBytesPerOp": 266.8
     },
     {
       "case": "ws-draft4/deflate",
+      "bootstrap": "HTTP/1.1",
       "workload": "unary_16KiB_random",
-      "nsPerOp": 390034,
+      "nsPerOp": 360629,
       "rxBytesPerOp": 12500,
       "txBytesPerOp": 12440
     },
     {
       "case": "ws-draft4/deflate",
+      "bootstrap": "HTTP/1.1",
       "workload": "bidi_100_roundtrips",
-      "nsPerOp": 4296907,
-      "nsPerRoundtrip": 42969,
+      "nsPerOp": 2663250,
+      "nsPerRoundtrip": 26632,
       "rxBytesPerOp": 1535,
       "txBytesPerOp": 1162
     },
     {
       "case": "ws-draft4/json",
+      "bootstrap": "HTTP/1.1",
       "workload": "unary_small",
-      "nsPerOp": 63975,
+      "nsPerOp": 46339,
       "rxBytesPerOp": 157.5,
       "txBytesPerOp": 97.47
     },
     {
       "case": "ws-draft4/json",
+      "bootstrap": "HTTP/1.1",
       "workload": "unary_16KiB_repetitive",
-      "nsPerOp": 208751,
-      "rxBytesPerOp": 16556,
-      "txBytesPerOp": 16496
+      "nsPerOp": 138280,
+      "rxBytesPerOp": 16555,
+      "txBytesPerOp": 16495
     },
     {
       "case": "ws-draft4/json",
+      "bootstrap": "HTTP/1.1",
       "workload": "unary_16KiB_random",
-      "nsPerOp": 208774,
-      "rxBytesPerOp": 16556,
-      "txBytesPerOp": 16496
+      "nsPerOp": 137817,
+      "rxBytesPerOp": 16555,
+      "txBytesPerOp": 16495
     },
     {
       "case": "ws-draft4/json",
+      "bootstrap": "HTTP/1.1",
       "workload": "bidi_100_roundtrips",
-      "nsPerOp": 3276901,
-      "nsPerRoundtrip": 32769,
+      "nsPerOp": 2966240,
+      "nsPerRoundtrip": 29662,
       "rxBytesPerOp": 2826,
       "txBytesPerOp": 2216
     },
     {
-      "case": "webtransport/identity",
+      "case": "ws-draft1/h2-gzip",
+      "bootstrap": "HTTP/2",
       "workload": "unary_small",
-      "nsPerOp": 85715,
-      "rxBytesPerOp": 207.1,
-      "txBytesPerOp": 163.5
+      "nsPerOp": 91012,
+      "rxBytesPerOp": 441.2,
+      "txBytesPerOp": 289.9
     },
     {
-      "case": "webtransport/identity",
+      "case": "ws-draft1/h2-gzip",
+      "bootstrap": "HTTP/2",
       "workload": "unary_16KiB_repetitive",
-      "nsPerOp": 358692,
-      "rxBytesPerOp": 17048,
-      "txBytesPerOp": 17006
+      "nsPerOp": 175703,
+      "rxBytesPerOp": 555.6,
+      "txBytesPerOp": 404.8
     },
     {
-      "case": "webtransport/identity",
+      "case": "ws-draft1/h2-gzip",
+      "bootstrap": "HTTP/2",
       "workload": "unary_16KiB_random",
-      "nsPerOp": 331690,
-      "rxBytesPerOp": 17050,
-      "txBytesPerOp": 17000
+      "nsPerOp": 544808,
+      "rxBytesPerOp": 12887,
+      "txBytesPerOp": 12745
+    },
+    {
+      "case": "ws-draft1/h2-gzip",
+      "bootstrap": "HTTP/2",
+      "workload": "bidi_100_roundtrips",
+      "nsPerOp": 6403258,
+      "nsPerRoundtrip": 64033,
+      "rxBytesPerOp": 10684,
+      "txBytesPerOp": 7176
+    },
+    {
+      "case": "ws-draft3/h2-deflate",
+      "bootstrap": "HTTP/2",
+      "workload": "unary_small",
+      "nsPerOp": 64440,
+      "rxBytesPerOp": 331,
+      "txBytesPerOp": 179.3
+    },
+    {
+      "case": "ws-draft3/h2-deflate",
+      "bootstrap": "HTTP/2",
+      "workload": "unary_16KiB_repetitive",
+      "nsPerOp": 174263,
+      "rxBytesPerOp": 449.2,
+      "txBytesPerOp": 297.6
+    },
+    {
+      "case": "ws-draft3/h2-deflate",
+      "bootstrap": "HTTP/2",
+      "workload": "unary_16KiB_random",
+      "nsPerOp": 559915,
+      "rxBytesPerOp": 12784,
+      "txBytesPerOp": 12641
+    },
+    {
+      "case": "ws-draft3/h2-deflate",
+      "bootstrap": "HTTP/2",
+      "workload": "bidi_100_roundtrips",
+      "nsPerOp": 3494534,
+      "nsPerRoundtrip": 34945,
+      "rxBytesPerOp": 7769,
+      "txBytesPerOp": 4240
+    },
+    {
+      "case": "ws-draft4/h2-identity",
+      "bootstrap": "HTTP/2",
+      "workload": "unary_small",
+      "nsPerOp": 61411,
+      "rxBytesPerOp": 332.4,
+      "txBytesPerOp": 180.8
+    },
+    {
+      "case": "ws-draft4/h2-identity",
+      "bootstrap": "HTTP/2",
+      "workload": "unary_16KiB_repetitive",
+      "nsPerOp": 135057,
+      "rxBytesPerOp": 16841,
+      "txBytesPerOp": 16660
+    },
+    {
+      "case": "ws-draft4/h2-identity",
+      "bootstrap": "HTTP/2",
+      "workload": "unary_16KiB_random",
+      "nsPerOp": 139286,
+      "rxBytesPerOp": 16841,
+      "txBytesPerOp": 16660
+    },
+    {
+      "case": "ws-draft4/h2-identity",
+      "bootstrap": "HTTP/2",
+      "workload": "bidi_100_roundtrips",
+      "nsPerOp": 3526114,
+      "nsPerRoundtrip": 35261,
+      "rxBytesPerOp": 7873,
+      "txBytesPerOp": 4343
+    },
+    {
+      "case": "ws-draft4/h2-deflate",
+      "bootstrap": "HTTP/2",
+      "workload": "unary_small",
+      "nsPerOp": 131645,
+      "rxBytesPerOp": 322.4,
+      "txBytesPerOp": 180.6
+    },
+    {
+      "case": "ws-draft4/h2-deflate",
+      "bootstrap": "HTTP/2",
+      "workload": "unary_16KiB_repetitive",
+      "nsPerOp": 227840,
+      "rxBytesPerOp": 440.3,
+      "txBytesPerOp": 299.1
+    },
+    {
+      "case": "ws-draft4/h2-deflate",
+      "bootstrap": "HTTP/2",
+      "workload": "unary_16KiB_random",
+      "nsPerOp": 573911,
+      "rxBytesPerOp": 12774,
+      "txBytesPerOp": 12647
+    },
+    {
+      "case": "ws-draft4/h2-deflate",
+      "bootstrap": "HTTP/2",
+      "workload": "bidi_100_roundtrips",
+      "nsPerOp": 6524937,
+      "nsPerRoundtrip": 65249,
+      "rxBytesPerOp": 7863,
+      "txBytesPerOp": 4350
+    },
+    {
+      "case": "ws-draft4/h2-json",
+      "bootstrap": "HTTP/2",
+      "workload": "unary_small",
+      "nsPerOp": 67502,
+      "rxBytesPerOp": 344.4,
+      "txBytesPerOp": 192.9
+    },
+    {
+      "case": "ws-draft4/h2-json",
+      "bootstrap": "HTTP/2",
+      "workload": "unary_16KiB_repetitive",
+      "nsPerOp": 189098,
+      "rxBytesPerOp": 16859,
+      "txBytesPerOp": 16691
+    },
+    {
+      "case": "ws-draft4/h2-json",
+      "bootstrap": "HTTP/2",
+      "workload": "unary_16KiB_random",
+      "nsPerOp": 193327,
+      "rxBytesPerOp": 16859,
+      "txBytesPerOp": 16691
+    },
+    {
+      "case": "ws-draft4/h2-json",
+      "bootstrap": "HTTP/2",
+      "workload": "bidi_100_roundtrips",
+      "nsPerOp": 3926668,
+      "nsPerRoundtrip": 39267,
+      "rxBytesPerOp": 9176,
+      "txBytesPerOp": 5413
     },
     {
       "case": "webtransport/identity",
-      "workload": "bidi_100_roundtrips",
-      "nsPerOp": 4713108,
-      "nsPerRoundtrip": 47131,
-      "rxBytesPerOp": 4406,
-      "txBytesPerOp": 4065
-    },
-    {
-      "case": "webtransport/gzip",
+      "bootstrap": "HTTP/3",
       "workload": "unary_small",
-      "nsPerOp": 105649,
-      "rxBytesPerOp": 300,
-      "txBytesPerOp": 240.5
+      "nsPerOp": 72422,
+      "rxBytesPerOp": 200,
+      "txBytesPerOp": 163.1
+    },
+    {
+      "case": "webtransport/identity",
+      "bootstrap": "HTTP/3",
+      "workload": "unary_16KiB_repetitive",
+      "nsPerOp": 312448,
+      "rxBytesPerOp": 17047,
+      "txBytesPerOp": 17003
+    },
+    {
+      "case": "webtransport/identity",
+      "bootstrap": "HTTP/3",
+      "workload": "unary_16KiB_random",
+      "nsPerOp": 307824,
+      "rxBytesPerOp": 17057,
+      "txBytesPerOp": 17005
+    },
+    {
+      "case": "webtransport/identity",
+      "bootstrap": "HTTP/3",
+      "workload": "bidi_100_roundtrips",
+      "nsPerOp": 4544596,
+      "nsPerRoundtrip": 45446,
+      "rxBytesPerOp": 4406,
+      "txBytesPerOp": 4066
     },
     {
       "case": "webtransport/gzip",
+      "bootstrap": "HTTP/3",
+      "workload": "unary_small",
+      "nsPerOp": 103266,
+      "rxBytesPerOp": 300.5,
+      "txBytesPerOp": 241.5
+    },
+    {
+      "case": "webtransport/gzip",
+      "bootstrap": "HTTP/3",
       "workload": "unary_16KiB_repetitive",
-      "nsPerOp": 189590,
-      "rxBytesPerOp": 419.2,
+      "nsPerOp": 180054,
+      "rxBytesPerOp": 418.6,
       "txBytesPerOp": 372.7
     },
     {
       "case": "webtransport/gzip",
+      "bootstrap": "HTTP/3",
       "workload": "unary_16KiB_random",
-      "nsPerOp": 762895,
-      "rxBytesPerOp": 13004,
-      "txBytesPerOp": 12944
+      "nsPerOp": 736091,
+      "rxBytesPerOp": 13013,
+      "txBytesPerOp": 12951
     },
     {
       "case": "webtransport/gzip",
+      "bootstrap": "HTTP/3",
       "workload": "bidi_100_roundtrips",
-      "nsPerOp": 7136938,
-      "nsPerRoundtrip": 71369,
-      "rxBytesPerOp": 6851,
-      "txBytesPerOp": 6475
+      "nsPerOp": 6935005,
+      "nsPerRoundtrip": 69350,
+      "rxBytesPerOp": 6850,
+      "txBytesPerOp": 6478
     }
   ]
 }

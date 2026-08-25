@@ -93,11 +93,12 @@ function frameTypeForEnvelopeFlag(flag: number): number {
 /**
  * Bridges a multiplexed bidi connection (a WebSocket) speaking draft 3 of
  * the wire protocol to UniversalHandlers from `@connectrpc/connect`.
- * Draft 3 is draft 2's framing plus protocol-level compression: the
+ * Draft 3 is a packed binary head plus protocol-level compression: the
  * handshake negotiates it by subprotocol (see `options.compression`), and
  * each frame's descriptor bit 7 marks a raw-DEFLATE payload. The draft 1
  * and 2 equivalents are `handleMuxedBidiSocketDraft1` and
- * `handleMuxedBidiSocketDraft2`; the wire protocols are incompatible, so
+ * `handleMuxedBidiSocketDraft1` and `handleMuxedBidiSocketDraft4`; the wire
+ * protocols are incompatible, so
  * a connection must be served by the matching bridge.
  *
  * The returned promise settles once the connection's read side has ended

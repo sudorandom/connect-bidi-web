@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Package bench compares the bidi transports — WebSocket draft 1, WebSocket
-// draft 2, and WebTransport — on speed and wire-size efficiency. Every
+// Package bench compares the bidi transports — WebSocket drafts 1, 3, and
+// 4, and WebTransport — on speed and wire-size efficiency. Every
 // benchmark reports the standard ns/op plus rxB/op and txB/op: bytes read
 // and written on the server's socket per operation, counted below the
 // transport (TCP payload bytes for the WebSocket drafts, UDP datagram bytes
@@ -30,6 +30,8 @@ import (
 	mathrand "math/rand"
 	"net"
 	"net/http"
+	"net/http/httptest"
+	"os"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -39,13 +41,13 @@ import (
 	"github.com/quic-go/quic-go/http3"
 	"github.com/quic-go/webtransport-go"
 	"github.com/sudorandom/connect-bidi-web/connectwebsocket/draft1"
-	"github.com/sudorandom/connect-bidi-web/connectwebsocket/draft2"
 	"github.com/sudorandom/connect-bidi-web/connectwebsocket/draft3"
 	"github.com/sudorandom/connect-bidi-web/connectwebsocket/draft4"
 	"github.com/sudorandom/connect-bidi-web/connectwebtransport"
 	pingv1 "github.com/sudorandom/connect-bidi-web/internal/gen/connectbidi/ping/v1"
 	pingv1connect "github.com/sudorandom/connect-bidi-web/internal/gen/connectbidi/ping/v1/pingv1connect"
 	"github.com/sudorandom/connect-bidi-web/internal/testcert"
+	"golang.org/x/net/http2"
 )
 
 // -- Wire byte counting -------------------------------------------------------
@@ -161,26 +163,120 @@ func startWebSocketServer(b *testing.B, handler http.Handler) (string, *wireCoun
 	return "ws://" + listener.Addr().String(), counter
 }
 
+// -- WebSocket over HTTP/2 (RFC 8441 extended CONNECT) ------------------------
+//
+// The HTTP/1.1 rows above run on a plaintext socket, so their byte counts
+// are TCP payload. Extended CONNECT needs HTTP/2, and Go's HTTP/2 server
+// only negotiates over TLS here, so these rows count *ciphertext*: TLS
+// record overhead is included, exactly as the WebTransport rows include
+// QUIC + TLS. They are therefore comparable to each other, not to the
+// HTTP/1.1 rows.
+//
+// What they are for is the comparison the HTTP/1.1 rows cannot make: this
+// path negotiates permessage-deflate in the CONNECT exchange (RFC 8441 §5
+// keeps Sec-WebSocket-Extensions), so draft 4 compresses here as well as
+// over HTTP/1.1. It did not always: these rows caught the gap, which is
+// why they exist.
+
+// requireExtendedConnect skips a benchmark unless the process was started
+// with extended CONNECT enabled. Go reads this GODEBUG once at init, so it
+// cannot be set per benchmark; the justfile sets it for the whole run.
+func requireExtendedConnect(b *testing.B) {
+	b.Helper()
+	if !strings.Contains(os.Getenv("GODEBUG"), "http2xconnect=1") {
+		b.Skip("extended CONNECT disabled; run with GODEBUG=http2xconnect=1")
+	}
+}
+
+// startWebSocketH2Server serves handler over HTTP/2 (TLS, ALPN) on a
+// listener whose bytes are counted, and returns the https:// URL.
+func startWebSocketH2Server(b *testing.B, handler http.Handler) (string, *wireCounter) {
+	b.Helper()
+	counter := &wireCounter{}
+	server := httptest.NewUnstartedServer(handler)
+	// Wrap before StartTLS, which layers its own TLS listener on top: the
+	// counter therefore sees encrypted bytes, which is what actually
+	// crosses the wire.
+	server.Listener = &countingListener{Listener: server.Listener, counter: counter}
+	server.EnableHTTP2 = true
+	server.StartTLS()
+	b.Cleanup(server.Close)
+	return server.URL, counter
+}
+
+// newH2Transport builds the HTTP/2 client the extended CONNECT dial needs.
+// A plain *http.Client cannot send the :protocol pseudo-header.
+func newH2Transport(b *testing.B) *http2.Transport {
+	b.Helper()
+	h2 := &http2.Transport{
+		TLSClientConfig: &tls.Config{
+			InsecureSkipVerify: true,
+			NextProtos:         []string{http2.NextProtoTLS},
+		},
+	}
+	b.Cleanup(h2.CloseIdleConnections)
+	return h2
+}
+
+// closeTransport releases the shared CONNECT stream at the end of a
+// benchmark. Unlike a hijacked HTTP/1.1 upgrade, that stream is an active
+// request which httptest.Server.Close waits on.
+func closeTransport(b *testing.B, transport connect.Transport) {
+	b.Helper()
+	b.Cleanup(func() {
+		if closer, ok := transport.(io.Closer); ok {
+			_ = closer.Close()
+		}
+	})
+}
+
+func setupDraft1H2(clientOpts ...draft1.Option) func(b *testing.B) (pingv1connect.PingServiceClient, *wireCounter) {
+	return func(b *testing.B) (pingv1connect.PingServiceClient, *wireCounter) {
+		b.Helper()
+		requireExtendedConnect(b)
+		url, counter := startWebSocketH2Server(b, draft1.NewHandler(newConnectServer()))
+		transport := draft1.NewH2Transport(url, newH2Transport(b), clientOpts...)
+		closeTransport(b, transport)
+		return pingv1connect.NewPingServiceClient(connect.NewClient(transport)), counter
+	}
+}
+
+func setupDraft3H2() func(b *testing.B) (pingv1connect.PingServiceClient, *wireCounter) {
+	return func(b *testing.B) (pingv1connect.PingServiceClient, *wireCounter) {
+		b.Helper()
+		requireExtendedConnect(b)
+		url, counter := startWebSocketH2Server(b, draft3.NewHandler(newConnectServer()))
+		transport := draft3.NewH2Transport(url, newH2Transport(b))
+		closeTransport(b, transport)
+		return pingv1connect.NewPingServiceClient(connect.NewClient(transport)), counter
+	}
+}
+
+func setupDraft4H2(compression bool, json bool) func(b *testing.B) (pingv1connect.PingServiceClient, *wireCounter) {
+	return func(b *testing.B) (pingv1connect.PingServiceClient, *wireCounter) {
+		b.Helper()
+		requireExtendedConnect(b)
+		var serverOpts []draft4.Option
+		var clientOpts []draft4.Option
+		if !compression {
+			serverOpts = append(serverOpts, draft4.WithoutCompression())
+			clientOpts = append(clientOpts, draft4.WithoutCompression())
+		}
+		if json {
+			clientOpts = append(clientOpts, draft4.WithSendCodec(connect.CodecNameJSON))
+		}
+		url, counter := startWebSocketH2Server(b, draft4.NewHandler(newConnectServer(), serverOpts...))
+		transport := draft4.NewH2Transport(url, newH2Transport(b), clientOpts...)
+		closeTransport(b, transport)
+		return pingv1connect.NewPingServiceClient(connect.NewClient(transport)), counter
+	}
+}
+
 func setupDraft1(clientOpts ...draft1.Option) func(b *testing.B) (pingv1connect.PingServiceClient, *wireCounter) {
 	return func(b *testing.B) (pingv1connect.PingServiceClient, *wireCounter) {
 		b.Helper()
 		url, counter := startWebSocketServer(b, draft1.NewHandler(newConnectServer()))
 		transport := draft1.NewTransport(url, clientOpts...)
-		return pingv1connect.NewPingServiceClient(connect.NewClient(transport)), counter
-	}
-}
-
-func setupDraft2(compression bool) func(b *testing.B) (pingv1connect.PingServiceClient, *wireCounter) {
-	return func(b *testing.B) (pingv1connect.PingServiceClient, *wireCounter) {
-		b.Helper()
-		var serverOpts []draft2.Option
-		var clientOpts []draft2.Option
-		if !compression {
-			serverOpts = append(serverOpts, draft2.WithoutCompression())
-			clientOpts = append(clientOpts, draft2.WithoutCompression())
-		}
-		url, counter := startWebSocketServer(b, draft2.NewHandler(newConnectServer(), serverOpts...))
-		transport := draft2.NewTransport(url, clientOpts...)
 		return pingv1connect.NewPingServiceClient(connect.NewClient(transport)), counter
 	}
 }
@@ -305,7 +401,7 @@ func BenchmarkTransports(b *testing.B) {
 	// Each transport runs in two variants: identity (no compression
 	// anywhere) and compressed (that transport's compression mechanism in
 	// both directions — per-message gzip for draft 1 and WebTransport,
-	// permessage-deflate for draft 2).
+	// subprotocol DEFLATE for draft 3, permessage-deflate for draft 4).
 	cases := []struct {
 		name  string
 		setup func(b *testing.B) (pingv1connect.PingServiceClient, *wireCounter)
@@ -316,8 +412,6 @@ func BenchmarkTransports(b *testing.B) {
 		{name: "ws-draft1/gzip", setup: setupDraft1(
 			draft1.WithSendCompressor(connect.CompressionNameGzip),
 		)},
-		{name: "ws-draft2/identity", setup: setupDraft2(false)},
-		{name: "ws-draft2/deflate", setup: setupDraft2(true)},
 		// Draft 3: compression is the protocol's own — negotiated by
 		// subprotocol, applied per frame as raw DEFLATE above the 512-byte
 		// threshold.
@@ -330,6 +424,18 @@ func BenchmarkTransports(b *testing.B) {
 		{name: "ws-draft4/identity", setup: setupDraft4(false, false)},
 		{name: "ws-draft4/deflate", setup: setupDraft4(true, false)},
 		{name: "ws-draft4/json", setup: setupDraft4(false, true)},
+		// The same drafts over the HTTP/2 extended CONNECT bootstrap, each
+		// configured like its HTTP/1.1 namesake above: a row called
+		// deflate compresses, a row called json does not. Byte counts
+		// include TLS, so compare these rows with each other rather than
+		// with the HTTP/1.1 rows above.
+		{name: "ws-draft1/h2-gzip", setup: setupDraft1H2(
+			draft1.WithSendCompressor(connect.CompressionNameGzip),
+		)},
+		{name: "ws-draft3/h2-deflate", setup: setupDraft3H2()},
+		{name: "ws-draft4/h2-identity", setup: setupDraft4H2(false, false)},
+		{name: "ws-draft4/h2-deflate", setup: setupDraft4H2(true, false)},
+		{name: "ws-draft4/h2-json", setup: setupDraft4H2(false, true)},
 		// WebTransport wire bytes include QUIC and TLS overhead, unlike the
 		// plaintext TCP the WebSocket drafts run on here.
 		{name: "webtransport/identity", setup: setupWebTransport(

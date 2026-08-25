@@ -34,7 +34,6 @@ import (
 	"github.com/quic-go/quic-go/http3"
 	"github.com/quic-go/webtransport-go"
 	"github.com/sudorandom/connect-bidi-web/connectwebsocket/draft1"
-	"github.com/sudorandom/connect-bidi-web/connectwebsocket/draft2"
 	"github.com/sudorandom/connect-bidi-web/connectwebsocket/draft3"
 	"github.com/sudorandom/connect-bidi-web/connectwebsocket/draft4"
 	"github.com/sudorandom/connect-bidi-web/connectwebtransport"
@@ -123,10 +122,6 @@ func main() {
 	websocketHandler := draft1.NewHandler(connectServer, draft1.WithAcceptOptions(&websocket.AcceptOptions{
 		InsecureSkipVerify: true,
 	}))
-	// Draft 2 of the WebSocket wire protocol, on its own path.
-	websocketDraft2Handler := draft2.NewHandler(connectServer, draft2.WithAcceptOptions(&websocket.AcceptOptions{
-		InsecureSkipVerify: true,
-	}))
 	// Draft 3 negotiates compression through its subprotocols; the handler
 	// overrides Subprotocols and CompressionMode itself.
 	websocketDraft3Handler := draft3.NewHandler(connectServer, draft3.WithAcceptOptions(&websocket.AcceptOptions{
@@ -147,7 +142,6 @@ func main() {
 	mux := http.NewServeMux()
 	connecthttp.Mount(mux, connectServer)
 	mux.Handle("/websocket-draft1", websocketHandler)
-	mux.Handle("/websocket-draft2", websocketDraft2Handler)
 	mux.Handle("/websocket-draft3", websocketDraft3Handler)
 	mux.Handle("/websocket-draft4", websocketDraft4Handler)
 	// The demo UI probes this endpoint to decide whether to offer the

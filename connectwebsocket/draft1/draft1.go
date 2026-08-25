@@ -17,7 +17,7 @@
 // bidirectional streaming from environments such as web browsers.
 //
 // This is draft 1 of the WebSocket wire protocol, wire-incompatible with
-// the draft2, draft3, and draft4 subpackages alongside it. Draft 1 reuses
+// the draft3 and draft4 subpackages alongside it. Draft 1 reuses
 // as much of the Connect protocol as it can: RPC messages travel in
 // standard 5-byte Connect envelopes, with Connect per-message compression
 // negotiated through connect-*-encoding metadata. All drafts coexist so

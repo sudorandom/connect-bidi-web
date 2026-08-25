@@ -1,28 +1,32 @@
 # connectwebsocket/draft3
 
-Draft 3 of the WebSocket wire protocol. Drafts
-[1](../draft1/README.md), [2](../draft2/README.md), and
-[4](../draft4/README.md) coexist with it, each with its own constructors
-and default path (`/websocket-draft3`), so the designs can be compared.
+Draft 3 of the WebSocket wire protocol. Drafts [1](../draft1/README.md)
+and [4](../draft4/README.md) coexist with it, each with its own
+constructors and default path (`/websocket-draft3`), so the designs can be
+compared. Everything the drafts share — connection mapping, control payload
+JSON, request and response sequences, cancellation, half-close — is
+documented once in the [parent README](../README.md#shared-protocol).
 
-Draft 3 keeps draft 2's framing and adds one idea: **compression is an
-option of the protocol itself**, negotiated once per connection through
-the WebSocket handshake and signaled per frame with one bit. Draft 1 made
-compression Connect metadata (`connect-*-encoding` headers, a compressed
-envelope flag); draft 2 delegated it entirely to the WebSocket's
-permessage-deflate extension. Both have measured problems that draft 3
-exists to fix:
+Draft 3 pairs a minimal binary frame head with one idea: **compression is
+an option of the protocol itself**, negotiated once per connection through
+the WebSocket handshake and signaled per frame with one bit. The two
+alternatives both have measured problems that draft 3 exists to fix:
 
-- **Draft 1's per-message gzip compresses everything**, including tiny
-  messages, which the benchmarks show makes them ~50% *larger* and bidi
-  round trips ~2× slower. It also never covers the headers or end-stream
-  JSON.
-- **Draft 2's permessage-deflate is best-effort and bootstrap-bound.** It
-  does not exist on the HTTP/2 extended-CONNECT bootstrap (RFC 8441
-  carries no extension negotiation), is disabled by default in common
-  server runtimes (`ws`), is gated by a compatibility flag on Cloudflare
-  Workers, and browser/undici clients never compress what they send even
-  when it is negotiated.
+- **Connect-metadata compression** (draft 1's `connect-*-encoding` headers
+  and compressed envelope flag) has no size threshold, so per-message gzip
+  compresses everything — the benchmarks show that makes tiny messages
+  ~50% *larger* and bidi round trips ~2× slower. It also never covers the
+  headers or end-stream JSON.
+- **The WebSocket's own permessage-deflate** (draft 4's choice) is
+  best-effort and environment-bound. It is disabled by default in common
+  server runtimes (`ws`), gated by a compatibility flag on Cloudflare
+  Workers, has to be implemented separately for every bootstrap, and
+  whether a client compresses what it *sends* is up to that client. Chrome
+  and Firefox do (a 16 KiB compressible upload leaves as ~106 B and ~168 B
+  respectively); Node's global WebSocket negotiates the extension, inflates
+  what it receives, and then sends every message uncompressed. Nothing in
+  the protocol can require otherwise: RSV1 is a per-message choice each
+  endpoint makes on its own.
 
 Draft 3's compression is negotiated by the protocol, so it behaves
 identically over every bootstrap — HTTP/1.1 upgrade and HTTP/2 extended
@@ -82,7 +86,7 @@ selection applies to both directions for the connection's lifetime.
 
 A response without one of these tokens is a failed negotiation: the
 client must close the connection and report the RPCs as failed. This also
-makes draft 3 connections self-identifying, where drafts 1 and 2 are
+makes draft 3 connections self-identifying, where drafts 1 and 4 are
 distinguished only by path.
 
 Compression is connection-scoped by design. It is not per-RPC metadata:
@@ -92,7 +96,7 @@ per-frame applicability is already covered by the compressed bit below.
 
 ## Frame format
 
-As draft 2, with the frame type byte split into a type and one flag bit:
+A 4-byte stream ID and one byte split into a frame type and one flag bit:
 
 ```text
   0                   1                   2                   3
@@ -104,18 +108,16 @@ As draft 2, with the frame type byte split into a type and one flag bit:
  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 ```
 
-- `Stream ID` is an unsigned 32-bit big-endian integer, exactly as in
-  draft 2.
+- `Stream ID` is an unsigned 32-bit big-endian integer.
 - `C` (bit 7 of the second-header byte) marks the payload as compressed.
-- `Frame type` (bits 0–6) is one of draft 2's values: `0x00` data, `0x01`
-  headers, `0x02` end-stream, `0x03` reset. Values `0x04` and up are
-  reserved.
-- The payload is the remainder of the WebSocket message, exactly as in
-  draft 2: no length field.
+- `Frame type` (bits 0–6) is `0x00` data, `0x01` headers, `0x02`
+  end-stream, or `0x03` reset. Values `0x04` and up are reserved.
+- The payload is the remainder of the WebSocket message: no length
+  field.
 
 Everything else — connection mapping, stream IDs, control payload JSON,
-request and response sequences, cancellation, half-close — is identical
-to [draft 2](../draft2/README.md#protocol).
+request and response sequences, cancellation, half-close — is the
+[shared protocol](../README.md#shared-protocol).
 
 ## Compression rules
 
@@ -129,7 +131,8 @@ to [draft 2](../draft2/README.md#protocol).
   flush at message boundaries and therefore cannot share a window.
 - Either peer may set `C` on any frame type with a non-empty payload —
   data, headers, and response end-stream alike (covering the JSON control
-  payloads is a measured draft 2 win that draft 1 never had). Empty
+  payloads is a measured win that draft 1's per-message scheme never
+  had). Empty
   payloads (request end-stream, reset) are never compressed.
 - Senders decide per frame. They SHOULD leave payloads below ~512 bytes
   uncompressed: the benchmarks show compressing tiny messages costs both
@@ -138,24 +141,26 @@ to [draft 2](../draft2/README.md#protocol).
   subprotocol MUST NOT accept the permessage-deflate WebSocket extension
   on the same connection (browsers offer it unconditionally; the server
   simply declines it). The `connect-content-encoding` and
-  `connect-accept-encoding` headers are not used, as in draft 2.
+  `connect-accept-encoding` headers are not used.
 
 ## Relationship to the other drafts
 
-| | Draft 1 | Draft 2 | Draft 3 |
+| | Draft 1 | Draft 3 | Draft 4 |
 | --- | --- | --- | --- |
-| Frame prefix | 9 bytes (ID + Connect envelope) | 5 bytes (ID + type) | 5 bytes (ID + C/type) |
+| Frame head | 9 bytes (ID + Connect envelope) | 5 bytes (ID + C/type) | 4–15 bytes, ASCII |
 | Payload length | explicit u32 | message boundary | message boundary |
-| Compression unit | per message (Connect gzip) | per message (permessage-deflate) | per frame (protocol deflate) |
-| Negotiated via | Connect metadata headers | WebSocket extension | WebSocket subprotocol |
+| Compression unit | per message (Connect gzip) | per frame (protocol deflate) | per message (permessage-deflate) |
+| Negotiated via | Connect metadata headers | WebSocket subprotocol | WebSocket extension |
 | Covers control payloads | no | yes | yes |
-| Small-message opt-out | no | yes (extension threshold) | yes (sender's choice) |
-| Works over HTTP/2 bootstrap | yes (metadata) | **no** | yes |
-| Works when intermediaries lack extensions | yes | no | yes |
-| Shared compression window | no | optional (context takeover) | no |
+| Small-message opt-out | no | yes (sender's choice) | yes (extension threshold) |
+| Compression needs a per-bootstrap implementation | no (metadata) | no (protocol) | **yes** (one per WebSocket stack) |
+| Works when intermediaries lack extensions | yes | yes | no |
+| Shared compression window | no | no | optional (context takeover) |
+| Readable without a decoder | no | no | **yes** |
 
-The cost draft 3 accepts: like draft 2's no-context-takeover mode, every
-frame carries a fresh DEFLATE stream, so long runs of small, similar
-messages compress worse than permessage-deflate with context takeover
-could. The benchmark suite (internal/bench, and `npm run bench` for the
-TypeScript packages) includes draft 3 cases to quantify that trade.
+The cost draft 3 accepts: every frame carries a fresh DEFLATE stream with
+no shared window, so long runs of small, similar messages compress worse
+than permessage-deflate with context takeover could — which is the one
+thing draft 4 keeps and draft 3 gives up. The benchmark suite
+(`internal/bench`, and `npm run bench` for the TypeScript packages)
+quantifies that trade.

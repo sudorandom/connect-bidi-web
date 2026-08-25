@@ -39,13 +39,11 @@ function transportLabel(
     return "WebTransport";
   }
   const draft =
-    choice === "websocket-draft2"
-      ? "WebSocket Draft 2"
-      : choice === "websocket-draft3"
-        ? "WebSocket Draft 3"
-        : choice === "websocket-draft4"
-          ? "WebSocket Draft 4"
-          : "WebSocket Draft 1";
+    choice === "websocket-draft3"
+      ? "WebSocket Draft 3"
+      : choice === "websocket-draft4"
+        ? "WebSocket Draft 4"
+        : "WebSocket Draft 1";
   return connectionPerStream
     ? `${draft} (connection per RPC)`
     : `${draft} (multiplexed)`;
@@ -63,8 +61,8 @@ function main(): void {
       panelId: "code-panel-ts-websocket",
     },
     {
-      buttonId: "code-tab-btn-ts-websocket-draft2",
-      panelId: "code-panel-ts-websocket-draft2",
+      buttonId: "code-tab-btn-ts-websocket-draft4",
+      panelId: "code-panel-ts-websocket-draft4",
     },
     {
       buttonId: "code-tab-btn-ts-webtransport",
@@ -77,8 +75,8 @@ function main(): void {
       panelId: "code-panel-go-websocket",
     },
     {
-      buttonId: "code-tab-btn-go-websocket-draft2",
-      panelId: "code-panel-go-websocket-draft2",
+      buttonId: "code-tab-btn-go-websocket-draft4",
+      panelId: "code-panel-go-websocket-draft4",
     },
     {
       buttonId: "code-tab-btn-go-webtransport",
@@ -160,8 +158,6 @@ function main(): void {
         return "auto";
       case "webtransport":
         return "webtransport";
-      case "websocket-draft2":
-        return "websocket-draft2";
       case "websocket-draft3":
         return "websocket-draft3";
       case "websocket-draft4":

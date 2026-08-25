@@ -32,7 +32,6 @@ import (
 	connect "connectrpc.com/connect/v2"
 	"connectrpc.com/connect/v2/connecthttp"
 	"github.com/sudorandom/connect-bidi-web/connectwebsocket/draft1"
-	"github.com/sudorandom/connect-bidi-web/connectwebsocket/draft2"
 	"github.com/sudorandom/connect-bidi-web/connectwebsocket/draft3"
 	"github.com/sudorandom/connect-bidi-web/connectwebsocket/draft4"
 	elizav1 "github.com/sudorandom/connect-bidi-web/internal/gen/connectbidi/eliza/v1"
@@ -85,7 +84,6 @@ func main() {
 	mux := http.NewServeMux()
 	connecthttp.Mount(mux, connectServer)
 	mux.Handle("/websocket-draft1", draft1.NewHandler(connectServer))
-	mux.Handle("/websocket-draft2", draft2.NewHandler(connectServer))
 	mux.Handle("/websocket-draft3", draft3.NewHandler(connectServer))
 	mux.Handle("/websocket-draft4", draft4.NewHandler(connectServer))
 

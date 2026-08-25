@@ -85,7 +85,7 @@ function replayableIterable<T>(source: AsyncIterable<T>): {
  * ```ts
  * const transport = createFallbackTransport(
  *   createConnectWebTransportTransport({ baseUrl, session }),
- *   createConnectWebSocketDraft2Transport({ baseUrl }),
+ *   createConnectWebSocketDraft3Transport({ baseUrl }),
  * );
  * ```
  *

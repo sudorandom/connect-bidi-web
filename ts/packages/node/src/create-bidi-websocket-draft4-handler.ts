@@ -42,7 +42,7 @@ export const defaultBidiWebSocketDraft4Path = "/websocket-draft4";
  * plain `UniversalHandler[]` array (`router.handlers`).
  *
  * Draft 4 has no compression of its own, so `upgrade()` enables `ws`'s
- * permessage-deflate by default, as draft 2 does; set
+ * permessage-deflate by default; set
  * `webSocketServerOptions.perMessageDeflate` to configure or disable it.
  * Disabling it is worth considering here: draft 4's whole point is a wire
  * you can read, and a compressed text frame is no more readable than a

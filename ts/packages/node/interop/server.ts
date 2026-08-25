@@ -26,7 +26,6 @@ import * as http from "node:http";
 import type { ServiceImpl } from "@connectrpc/connect";
 import { createConnectRouter } from "@connectrpc/connect";
 import {
-  createBidiWebSocketDraft2Handler,
   createBidiWebSocketDraft3Handler,
   createBidiWebSocketDraft4Handler,
   createBidiWebSocketDraft1Handler,
@@ -55,8 +54,6 @@ const server = http.createServer((_req, res) => {
   res.end();
 });
 createBidiWebSocketDraft1Handler(router).upgrade(server);
-// Draft 2 of the wire protocol, on its own path ("/websocket-draft2").
-createBidiWebSocketDraft2Handler(router).upgrade(server);
 // Draft 3, likewise ("/websocket-draft3").
 createBidiWebSocketDraft3Handler(router).upgrade(server);
 // Draft 4, likewise ("/websocket-draft4").

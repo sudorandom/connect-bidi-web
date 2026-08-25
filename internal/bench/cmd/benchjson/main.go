@@ -34,7 +34,12 @@ import (
 // measurements. Metric fields are omitted when the benchmark didn't report
 // them.
 type row struct {
-	Case           string  `json:"case"`
+	Case string `json:"case"`
+	// Bootstrap groups rows that are measured comparably. Byte counts are
+	// plaintext TCP on HTTP/1.1, but include TLS on HTTP/2 and QUIC + TLS
+	// on HTTP/3, so a reader (and the demo's best-value highlighting) must
+	// not rank rows across groups.
+	Bootstrap      string  `json:"bootstrap"`
 	Workload       string  `json:"workload"`
 	NsPerOp        float64 `json:"nsPerOp"`
 	NsPerRoundtrip float64 `json:"nsPerRoundtrip,omitempty"`
@@ -52,6 +57,20 @@ type output struct {
 //
 //	BenchmarkTransports/ws-draft1/identity/unary_small-18  200  99773 ns/op  186.0 rxB/op  143.0 txB/op
 var benchLine = regexp.MustCompile(`^BenchmarkTransports/(.+)-\d+\s+\d+\s+(.*)$`)
+
+// bootstrapFor classifies a case by how its connection was established,
+// which is what decides whether two rows can be compared.
+func bootstrapFor(benchCase string) string {
+	if strings.HasPrefix(benchCase, "webtransport") {
+		return "HTTP/3"
+	}
+	// Cases are "<transport>/<variant>"; the HTTP/2 variants are the ones
+	// dialed with NewH2Transport, named h2-*.
+	if _, variant, ok := strings.Cut(benchCase, "/"); ok && strings.HasPrefix(variant, "h2") {
+		return "HTTP/2"
+	}
+	return "HTTP/1.1"
+}
 
 func main() {
 	out := output{GeneratedAt: time.Now().UTC().Format("2006-01-02")}
@@ -74,7 +93,12 @@ func main() {
 		if lastSlash < 0 {
 			continue
 		}
-		parsed := row{Case: name[:lastSlash], Workload: name[lastSlash+1:]}
+		benchCase := name[:lastSlash]
+		parsed := row{
+			Case:      benchCase,
+			Bootstrap: bootstrapFor(benchCase),
+			Workload:  name[lastSlash+1:],
+		}
 		metrics := strings.Fields(match[2])
 		for i := 0; i+1 < len(metrics); i += 2 {
 			value, err := strconv.ParseFloat(metrics[i], 64)

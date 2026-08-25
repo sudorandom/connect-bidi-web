@@ -25,7 +25,7 @@ import (
 
 	"connectrpc.com/connect/v2"
 	"github.com/sudorandom/connect-bidi-web/connectfallback"
-	"github.com/sudorandom/connect-bidi-web/connectwebsocket/draft2"
+	"github.com/sudorandom/connect-bidi-web/connectwebsocket/draft3"
 	pingv1 "github.com/sudorandom/connect-bidi-web/internal/gen/connectbidi/ping/v1"
 	pingv1connect "github.com/sudorandom/connect-bidi-web/internal/gen/connectbidi/ping/v1/pingv1connect"
 	"golang.org/x/net/http2"
@@ -161,7 +161,7 @@ func (pingServer) Ping(_ context.Context, req *pingv1.PingRequest) (*pingv1.Ping
 func TestFallbackWebSocketH2ToH1(t *testing.T) {
 	connectServer := connect.NewServer()
 	pingv1connect.RegisterPingServiceHandler(connectServer, pingServer{})
-	server := httptest.NewServer(draft2.NewHandler(connectServer))
+	server := httptest.NewServer(draft3.NewHandler(connectServer))
 	t.Cleanup(server.Close)
 	wsURL := "ws" + strings.TrimPrefix(server.URL, "http")
 
@@ -171,8 +171,8 @@ func TestFallbackWebSocketH2ToH1(t *testing.T) {
 		AllowHTTP: false,
 	}
 	transport := connectfallback.New(
-		draft2.NewH2Transport(server.URL, h2),
-		draft2.NewTransport(wsURL),
+		draft3.NewH2Transport(server.URL, h2),
+		draft3.NewTransport(wsURL),
 	)
 	t.Cleanup(func() { _ = transport.Close() })
 

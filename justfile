@@ -27,7 +27,7 @@ e2e: build
 # TypeScript draft comparison. Requires `npm ci` in ts/ first.
 bench: build
     go test -bench=. -benchmem -run=NONE ./connectwebsocket/... ./connectwebtransport/...
-    go test -bench=. -benchtime=200x -run=NONE ./internal/bench
+    GODEBUG=http2xconnect=1 go test -bench=. -benchtime=200x -run=NONE ./internal/bench
     npm --prefix ts run bench -w packages/e2e
 
 # Regenerate the benchmark data the demo site renders (see the Benchmarks

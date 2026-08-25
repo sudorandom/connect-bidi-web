@@ -36,7 +36,7 @@ import (
 // server rejects :protocol streams and never advertises
 // SETTINGS_ENABLE_CONNECT_PROTOCOL, so clients — browsers included —
 // never attempt this bootstrap. The Go client transport dials only the
-// HTTP/1.1 upgrade; for a Go client over HTTP/2, use draft 2 or 3.
+// HTTP/1.1 upgrade; for a Go client over HTTP/2, use draft 3 or 4.
 //
 // The wire protocol is identical on both bootstraps. One difference in
 // practice: no WebSocket extensions exist on extended CONNECT, so

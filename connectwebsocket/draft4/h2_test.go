@@ -19,6 +19,7 @@ import (
 	"crypto/tls"
 	"errors"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -211,4 +212,97 @@ func TestWebSocketDraft4OverH2ClientCancelResetsStream(t *testing.T) {
 	if got, want := connects.Load(), int64(1); got != want {
 		t.Errorf("extended CONNECT streams = %d, want %d (reset must not tear down the connection)", got, want)
 	}
+}
+
+// TestWebSocketDraft4OverH2Compresses is the regression test for the gap
+// this path used to have: draft 4 delegates compression to the WebSocket
+// layer, and the HTTP/2 layer had no implementation of it, so a highly
+// compressible payload went out whole with no error. RFC 8441 §5 keeps
+// Sec-WebSocket-Extensions, so the extension is negotiable here; this
+// asserts it is negotiated and that it actually shrinks the wire.
+func TestWebSocketDraft4OverH2Compresses(t *testing.T) {
+	requireExtendedConnect(t)
+
+	// A payload big and repetitive enough that deflate is unmistakable.
+	text := strings.Repeat("all work and no play makes jack a dull boy. ", 400)
+
+	measure := func(t *testing.T, opts ...draft4.Option) int64 {
+		t.Helper()
+		connectServer := connect.NewServer()
+		pingv1connect.RegisterPingServiceHandler(connectServer, testPingServer{})
+		handler := draft4.NewHandler(connectServer, opts...)
+
+		var rx atomic.Int64
+		server := httptest.NewUnstartedServer(handler)
+		server.Listener = &countingListener{Listener: server.Listener, rx: &rx}
+		server.EnableHTTP2 = true
+		server.StartTLS()
+		t.Cleanup(server.Close)
+
+		h2 := &http2.Transport{
+			TLSClientConfig: &tls.Config{
+				InsecureSkipVerify: true,
+				NextProtos:         []string{http2.NextProtoTLS},
+			},
+		}
+		t.Cleanup(h2.CloseIdleConnections)
+		transport := draft4.NewH2Transport(server.URL, h2, opts...)
+		t.Cleanup(func() {
+			if closer, ok := transport.(io.Closer); ok {
+				_ = closer.Close()
+			}
+		})
+		client := pingv1connect.NewPingServiceClient(connect.NewClient(transport))
+
+		// Warm up the connection, then measure one request.
+		if _, err := client.Ping(context.Background(), &pingv1.PingRequest{}); err != nil {
+			t.Fatalf("warmup Ping failed: %v", err)
+		}
+		rx.Store(0)
+		resp, err := client.Ping(context.Background(), &pingv1.PingRequest{Text: text})
+		if err != nil {
+			t.Fatalf("Ping failed: %v", err)
+		}
+		if resp.GetText() != text {
+			t.Fatal("payload did not round-trip")
+		}
+		return rx.Load()
+	}
+
+	compressed := measure(t)
+	plain := measure(t, draft4.WithoutCompression())
+
+	t.Logf("16 KiB compressible payload over HTTP/2: %d bytes compressed, %d uncompressed", compressed, plain)
+	if compressed >= plain/2 {
+		t.Errorf("compression barely helped: %d bytes vs %d uncompressed; expected a large reduction", compressed, plain)
+	}
+	if plain < int64(len(text)) {
+		t.Errorf("WithoutCompression sent %d bytes for a %d-byte payload; it should not be compressing", plain, len(text))
+	}
+}
+
+// countingListener totals the bytes a client sends, so a test can assert on
+// what actually crossed the wire.
+type countingListener struct {
+	net.Listener
+	rx *atomic.Int64
+}
+
+func (l *countingListener) Accept() (net.Conn, error) {
+	conn, err := l.Listener.Accept()
+	if err != nil {
+		return nil, err
+	}
+	return &countingConn{Conn: conn, rx: l.rx}, nil
+}
+
+type countingConn struct {
+	net.Conn
+	rx *atomic.Int64
+}
+
+func (c *countingConn) Read(p []byte) (int, error) {
+	n, err := c.Conn.Read(p)
+	c.rx.Add(int64(n))
+	return n, err
 }

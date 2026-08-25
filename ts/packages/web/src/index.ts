@@ -17,11 +17,6 @@ export type {
   ConnectWebSocketDraft1Transport,
   ConnectWebSocketDraft1TransportOptions,
 } from "./connect-websocket-draft1-transport.js";
-export { createConnectWebSocketDraft2Transport } from "./connect-websocket-draft2-transport.js";
-export type {
-  ConnectWebSocketDraft2Transport,
-  ConnectWebSocketDraft2TransportOptions,
-} from "./connect-websocket-draft2-transport.js";
 export { createConnectWebSocketDraft3Transport } from "./connect-websocket-draft3-transport.js";
 export type {
   ConnectWebSocketDraft3Transport,

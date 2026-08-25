@@ -19,7 +19,7 @@
  *     [4-byte big-endian stream ID][one 5-byte Connect envelope][payload]
  *
  * so the payload length is stated twice — once by the envelope, once by the
- * WebSocket message — which is exactly the redundancy drafts 2 and up
+ * WebSocket message — which is exactly the redundancy the later drafts
  * dropped. Compression is Connect's own, negotiated with
  * `connect-content-encoding`/`connect-accept-encoding` metadata in the
  * headers frame and signaled by the envelope's compressed flag. Must match

@@ -17,7 +17,7 @@
 // bidirectional streaming from environments such as web browsers.
 //
 // This is draft 4 of the WebSocket wire protocol, wire-incompatible with
-// drafts 1, 2, and 3 in the sibling packages. Draft 4 asks what the
+// drafts 1 and 3 in the sibling packages. Draft 4 asks what the
 // protocol looks like when legibility outranks frame economy: the frame
 // head is ASCII text rather than packed binary,
 //
@@ -28,7 +28,7 @@
 // (headers, end-stream) are always JSON, and frames whose payload is UTF-8
 // travel in text WebSocket messages so tooling renders them as text.
 // Compression is left entirely to the WebSocket's permessage-deflate
-// extension, as in draft 2 — draft 4 has no compression bit of its own.
+// extension — draft 4 has no compression bit of its own.
 // All drafts coexist so their implementations can be compared; serve them
 // on different paths.
 //

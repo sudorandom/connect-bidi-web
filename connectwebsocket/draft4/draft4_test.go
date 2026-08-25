@@ -650,7 +650,7 @@ func TestWebSocketDraft4PermessageDeflate(t *testing.T) {
 		t.Errorf("Sec-WebSocket-Extensions = %q, want permessage-deflate accepted", got)
 	}
 	// Draft 4 defines no subprotocol: it is identified by path, like drafts
-	// 1 and 2.
+	// the low three bits.
 	if got := resp.Header.Get("Sec-WebSocket-Protocol"); got != "" {
 		t.Errorf("Sec-WebSocket-Protocol = %q, want empty", got)
 	}

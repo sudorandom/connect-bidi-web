@@ -13,7 +13,7 @@
 // limitations under the License.
 
 /**
- * Draft 3 of the WebSocket wire protocol: draft 2's framing with
+ * Draft 3 of the WebSocket wire protocol: a packed binary head with
  * compression as a protocol option. Every message is
  *
  *     [4-byte big-endian stream ID][1-byte descriptor][payload]

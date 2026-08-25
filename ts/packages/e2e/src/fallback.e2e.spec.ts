@@ -23,10 +23,10 @@ import * as http from "node:http";
 import { after, before, describe, it } from "node:test";
 import type { ServiceImpl } from "@connectrpc/connect";
 import { createClient, createConnectRouter } from "@connectrpc/connect";
-import { createBidiWebSocketDraft2Handler } from "@sudorandom/connect-bidi-node";
+import { createBidiWebSocketDraft3Handler } from "@sudorandom/connect-bidi-node";
 import type { FallbackTransport } from "@sudorandom/connect-bidi-web";
 import {
-  createConnectWebSocketDraft2Transport,
+  createConnectWebSocketDraft3Transport,
   createFallbackTransport,
 } from "@sudorandom/connect-bidi-web";
 import { ElizaService } from "./gen/connectbidi/eliza/v1/eliza_pb.js";
@@ -58,7 +58,7 @@ describe("createFallbackTransport()", () => {
     server.on("upgrade", () => {
       upgrades++;
     });
-    createBidiWebSocketDraft2Handler(router).upgrade(server);
+    createBidiWebSocketDraft3Handler(router).upgrade(server);
     await new Promise<void>((resolve) => {
       server.listen(0, "127.0.0.1", resolve);
     });
@@ -68,8 +68,8 @@ describe("createFallbackTransport()", () => {
     transport = createFallbackTransport(
       // Port 1 on loopback: connection refused, fails fast with
       // Code.Unavailable.
-      createConnectWebSocketDraft2Transport({ baseUrl: "http://127.0.0.1:1" }),
-      createConnectWebSocketDraft2Transport({
+      createConnectWebSocketDraft3Transport({ baseUrl: "http://127.0.0.1:1" }),
+      createConnectWebSocketDraft3Transport({
         baseUrl: `http://127.0.0.1:${port}`,
       }),
     );

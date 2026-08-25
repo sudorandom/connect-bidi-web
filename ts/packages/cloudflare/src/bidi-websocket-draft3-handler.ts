@@ -59,7 +59,7 @@ function selectSubprotocol(
  * Draft 3 negotiates its compression through the WebSocket subprotocols
  * (`connect.bidi.d3.deflate` / `connect.bidi.d3`), echoed on the 101
  * response; upgrades that offer neither are rejected with a 400. Unlike
- * draft 2, compression does not depend on the platform's
+ * draft 4, compression does not depend on the platform's
  * permessage-deflate support.
  */
 export function createBidiWebSocketDraft3Handler(

@@ -5,218 +5,170 @@
     {
       "case": "ws-draft1/identity",
       "workload": "bidi_small x1000",
-      "ms/op": 52.2,
-      "roundtrips/s": 19171,
+      "ms/op": 50.2,
+      "roundtrips/s": 19920.3,
       "rx B/rt": 41.2,
       "tx B/rt": 37.1
     },
     {
       "case": "ws-draft1/identity",
       "workload": "bidi_16KiB_repetitive x50",
-      "ms/op": 12.1,
-      "roundtrips/s": 4124.6,
+      "ms/op": 12,
+      "roundtrips/s": 4168.5,
       "rx B/rt": 16419.6,
       "tx B/rt": 16413.6
     },
     {
       "case": "ws-draft1/identity",
       "workload": "bidi_16KiB_random x50",
-      "ms/op": 11.6,
-      "roundtrips/s": 4315.3,
+      "ms/op": 10.7,
+      "roundtrips/s": 4656.1,
       "rx B/rt": 16419.6,
       "tx B/rt": 16413.6
     },
     {
       "case": "ws-draft1/deflate",
       "workload": "bidi_small x1000",
-      "ms/op": 83.3,
-      "roundtrips/s": 12003.5,
+      "ms/op": 47.5,
+      "roundtrips/s": 21068,
       "rx B/rt": 41.2,
-      "tx B/rt": 6.1
+      "tx B/rt": 37.1
     },
     {
       "case": "ws-draft1/deflate",
       "workload": "bidi_16KiB_repetitive x50",
-      "ms/op": 14,
-      "roundtrips/s": 3559.1,
+      "ms/op": 16.1,
+      "roundtrips/s": 3105.2,
       "rx B/rt": 16419.6,
-      "tx B/rt": 72.8
+      "tx B/rt": 141.5
     },
     {
       "case": "ws-draft1/deflate",
       "workload": "bidi_16KiB_random x50",
-      "ms/op": 13.7,
-      "roundtrips/s": 3646.4,
+      "ms/op": 21,
+      "roundtrips/s": 2379.5,
       "rx B/rt": 16419.6,
-      "tx B/rt": 142.8
-    },
-    {
-      "case": "ws-draft2/identity",
-      "workload": "bidi_small x1000",
-      "ms/op": 46,
-      "roundtrips/s": 21722.6,
-      "rx B/rt": 37.2,
-      "tx B/rt": 33.1
-    },
-    {
-      "case": "ws-draft2/identity",
-      "workload": "bidi_16KiB_repetitive x50",
-      "ms/op": 10.4,
-      "roundtrips/s": 4819.7,
-      "rx B/rt": 16415.4,
-      "tx B/rt": 16409.5
-    },
-    {
-      "case": "ws-draft2/identity",
-      "workload": "bidi_16KiB_random x50",
-      "ms/op": 9.5,
-      "roundtrips/s": 5248.5,
-      "rx B/rt": 16415.4,
-      "tx B/rt": 16409.5
-    },
-    {
-      "case": "ws-draft2/deflate",
-      "workload": "bidi_small x1000",
-      "ms/op": 83.5,
-      "roundtrips/s": 11980.6,
-      "rx B/rt": 37.2,
-      "tx B/rt": 6
-    },
-    {
-      "case": "ws-draft2/deflate",
-      "workload": "bidi_16KiB_repetitive x50",
-      "ms/op": 15.9,
-      "roundtrips/s": 3137.2,
-      "rx B/rt": 16415.4,
-      "tx B/rt": 72.6
-    },
-    {
-      "case": "ws-draft2/deflate",
-      "workload": "bidi_16KiB_random x50",
-      "ms/op": 15,
-      "roundtrips/s": 3330.4,
-      "rx B/rt": 16415.4,
-      "tx B/rt": 142.6
+      "tx B/rt": 12381.6
     },
     {
       "case": "ws-draft3/identity",
       "workload": "bidi_small x1000",
-      "ms/op": 46.3,
-      "roundtrips/s": 21620.6,
+      "ms/op": 48,
+      "roundtrips/s": 20840.1,
       "rx B/rt": 37.2,
       "tx B/rt": 33.1
     },
     {
       "case": "ws-draft3/identity",
       "workload": "bidi_16KiB_repetitive x50",
-      "ms/op": 11.6,
-      "roundtrips/s": 4314,
+      "ms/op": 11,
+      "roundtrips/s": 4526,
       "rx B/rt": 16415.4,
       "tx B/rt": 16409.5
     },
     {
       "case": "ws-draft3/identity",
       "workload": "bidi_16KiB_random x50",
-      "ms/op": 10.9,
-      "roundtrips/s": 4598.3,
+      "ms/op": 10.2,
+      "roundtrips/s": 4886.7,
       "rx B/rt": 16415.4,
       "tx B/rt": 16409.5
     },
     {
       "case": "ws-draft3/deflate",
       "workload": "bidi_small x1000",
-      "ms/op": 47.3,
-      "roundtrips/s": 21141.4,
+      "ms/op": 47.7,
+      "roundtrips/s": 20950.2,
       "rx B/rt": 37.2,
       "tx B/rt": 33.1
     },
     {
       "case": "ws-draft3/deflate",
       "workload": "bidi_16KiB_repetitive x50",
-      "ms/op": 23.4,
-      "roundtrips/s": 2137.6,
-      "rx B/rt": 134.4,
-      "tx B/rt": 128.5
+      "ms/op": 22.5,
+      "roundtrips/s": 2223.8,
+      "rx B/rt": 140.9,
+      "tx B/rt": 135
     },
     {
       "case": "ws-draft3/deflate",
       "workload": "bidi_16KiB_random x50",
-      "ms/op": 34.1,
-      "roundtrips/s": 1465.5,
-      "rx B/rt": 12376.4,
-      "tx B/rt": 12370.5
+      "ms/op": 32.6,
+      "roundtrips/s": 1533.7,
+      "rx B/rt": 12375.7,
+      "tx B/rt": 12369.8
     },
     {
       "case": "ws-draft4/json",
       "workload": "bidi_small x1000",
-      "ms/op": 46.6,
-      "roundtrips/s": 21450.2,
+      "ms/op": 47.6,
+      "roundtrips/s": 21015.4,
       "rx B/rt": 36.2,
       "tx B/rt": 32.1
     },
     {
       "case": "ws-draft4/json",
       "workload": "bidi_16KiB_repetitive x50",
-      "ms/op": 12.2,
-      "roundtrips/s": 4106.3,
+      "ms/op": 11.3,
+      "roundtrips/s": 4437,
       "rx B/rt": 16415,
       "tx B/rt": 16409.1
     },
     {
       "case": "ws-draft4/json",
       "workload": "bidi_16KiB_random x50",
-      "ms/op": 10.6,
-      "roundtrips/s": 4714.1,
+      "ms/op": 10.2,
+      "roundtrips/s": 4924.4,
       "rx B/rt": 16415.4,
       "tx B/rt": 16409.5
     },
     {
       "case": "ws-draft4/proto",
       "workload": "bidi_small x1000",
-      "ms/op": 45,
-      "roundtrips/s": 22221.5,
+      "ms/op": 43.4,
+      "roundtrips/s": 23066.3,
       "rx B/rt": 23.2,
       "tx B/rt": 19.1
     },
     {
       "case": "ws-draft4/proto",
       "workload": "bidi_16KiB_repetitive x50",
-      "ms/op": 5.8,
-      "roundtrips/s": 8584.8,
+      "ms/op": 4.9,
+      "roundtrips/s": 10113,
       "rx B/rt": 16404,
       "tx B/rt": 16398.1
     },
     {
       "case": "ws-draft4/proto",
       "workload": "bidi_16KiB_random x50",
-      "ms/op": 4.9,
-      "roundtrips/s": 10271.6,
+      "ms/op": 4.7,
+      "roundtrips/s": 10528.1,
       "rx B/rt": 16404.4,
       "tx B/rt": 16398.5
     },
     {
       "case": "ws-draft4/deflate",
       "workload": "bidi_small x1000",
-      "ms/op": 84.5,
-      "roundtrips/s": 11839.6,
+      "ms/op": 45.3,
+      "roundtrips/s": 22061.7,
       "rx B/rt": 36.2,
-      "tx B/rt": 6
+      "tx B/rt": 32.1
     },
     {
       "case": "ws-draft4/deflate",
       "workload": "bidi_16KiB_repetitive x50",
-      "ms/op": 15.6,
-      "roundtrips/s": 3197.6,
+      "ms/op": 14,
+      "roundtrips/s": 3562.3,
       "rx B/rt": 16415,
-      "tx B/rt": 72.6
+      "tx B/rt": 134.7
     },
     {
       "case": "ws-draft4/deflate",
       "workload": "bidi_16KiB_random x50",
-      "ms/op": 15.2,
-      "roundtrips/s": 3279.7,
+      "ms/op": 20.4,
+      "roundtrips/s": 2446.6,
       "rx B/rt": 16415.4,
-      "tx B/rt": 142.6
+      "tx B/rt": 12370.6
     }
   ]
 }

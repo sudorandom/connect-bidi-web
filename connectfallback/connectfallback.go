@@ -19,8 +19,8 @@
 //
 //	transport := connectfallback.New(
 //		connectwebtransport.NewDialTransport(url, nil),   // WebTransport (HTTP/3)
-//		draft2.NewH2Transport(url, nil),                  // WebSocket over HTTP/2
-//		draft2.NewTransport(url),                         // WebSocket over HTTP/1.1
+//		draft3.NewH2Transport(url, nil),                  // WebSocket over HTTP/2
+//		draft3.NewTransport(url),                         // WebSocket over HTTP/1.1
 //	)
 //
 // A rung is skipped when opening a stream on it fails with

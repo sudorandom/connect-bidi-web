@@ -23,7 +23,6 @@ import type { ServiceImpl } from "@connectrpc/connect";
 import { createConnectRouter } from "@connectrpc/connect";
 import { createFetchHandler } from "@connectrpc/connect/protocol";
 import {
-  createBidiWebSocketDraft2Handler,
   createBidiWebSocketDraft3Handler,
   createBidiWebSocketDraft4Handler,
   createBidiWebSocketDraft1Handler,
@@ -79,10 +78,6 @@ const webSocketUpgradeHandlers: Record<
   (request: Request) => Response | null
 > = {
   "/websocket-draft1": createBidiWebSocketDraft1Handler(
-    router.handlers,
-    bidiSocketOptions,
-  ),
-  "/websocket-draft2": createBidiWebSocketDraft2Handler(
     router.handlers,
     bidiSocketOptions,
   ),

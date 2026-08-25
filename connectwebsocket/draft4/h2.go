@@ -36,10 +36,18 @@ import (
 // SETTINGS_ENABLE_CONNECT_PROTOCOL, so clients — browsers included —
 // never attempt this bootstrap.
 //
-// Draft 4 shares draft 2's blind spot here: WebSocket extensions do not
-// exist on this bootstrap (RFC 8441 carries no extension negotiation), so
-// permessage-deflate — draft 4's only compression — is simply absent. The
-// frames are byte-identical either way; only their compression differs.
+// Compression works here too. RFC 8441 §5 keeps Sec-WebSocket-Extensions
+// ("used in the CONNECT request and response-header fields as defined in
+// [RFC6455]"), so permessage-deflate is negotiated in the CONNECT exchange
+// exactly as it would be in an Upgrade handshake. The framing underneath is
+// ours because coder/websocket cannot accept over HTTP/2; see compress.go
+// for the extension and h2Conn for the frames.
+//
+// This was a real bug for a while, and an instructive one: draft 4 puts
+// compression *below* the messageConn abstraction, in the WebSocket layer,
+// so swapping the messageConn implementation silently dropped the feature
+// with no error and a 52x cost in bytes. Draft 3 puts its compression above
+// that line and was never affected.
 
 // isExtendedConnectWebSocket reports whether r is an RFC 8441 extended
 // CONNECT request opening a WebSocket. Such requests reach handlers only
@@ -59,6 +67,13 @@ func (h *Handler) serveH2(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "unsupported websocket version", http.StatusBadRequest)
 		return
 	}
+	// permessage-deflate is negotiated in the CONNECT exchange, the same
+	// way it would be in an Upgrade handshake.
+	deflate := !h.opts.withoutCompression &&
+		acceptsDeflate(r.Header.Get(extensionHeader))
+	if deflate {
+		w.Header().Set(extensionHeader, extensionOffer)
+	}
 	// Accept by writing a 200 (RFC 8441 has no 101) and flushing it onto
 	// the stream.
 	control := http.NewResponseController(w)
@@ -67,7 +82,7 @@ func (h *Handler) serveH2(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	body := r.Body
-	conn := newH2Conn(body, func() { _ = body.Close() }, w, control.Flush, false)
+	conn := newH2Conn(body, func() { _ = body.Close() }, w, control.Flush, false, deflate)
 	h.serveConn(r.Context(), conn, r.RemoteAddr)
 }
 
@@ -83,9 +98,6 @@ func (h *Handler) serveH2(w http.ResponseWriter, r *http.Request) {
 // nil is equivalent to a zero http2.Transport. The plain *http.Client
 // cannot send the :protocol pseudo-header, which is why this takes an
 // *http2.Transport directly.
-//
-// There are no WebSocket extensions on this bootstrap, so draft 4 frames
-// travel uncompressed here however WithoutCompression is set.
 //
 // The server must run with GODEBUG=http2xconnect=1. Dialing a server that
 // hasn't advertised extended CONNECT support fails with CodeUnavailable
@@ -134,6 +146,9 @@ func (t *transport) dialH2(ctx context.Context) (*muxConn, error) {
 	}
 	req.Header.Set(":protocol", "websocket")
 	req.Header.Set("Sec-WebSocket-Version", "13")
+	if !t.opts.withoutCompression {
+		req.Header.Set(extensionHeader, extensionOffer)
+	}
 
 	// RoundTrip returns when the response headers arrive, while the
 	// request body keeps streaming — full duplex on one stream. It must
@@ -170,12 +185,15 @@ func (t *transport) dialH2(ctx context.Context) (*muxConn, error) {
 		return nil, connect.Errorf(connect.CodeUnavailable, "WebSocket over HTTP/2 handshake failed: status %d", resp.StatusCode)
 	}
 
+	// The server compresses only if it echoed the extension back.
+	deflate := acceptsDeflate(resp.Header.Get(extensionHeader))
+
 	closeRead := func() {
 		_ = resp.Body.Close()
 		_ = pipeWriter.Close()
 		cancel()
 	}
-	conn := newH2Conn(resp.Body, closeRead, pipeWriter, nil, true)
+	conn := newH2Conn(resp.Body, closeRead, pipeWriter, nil, true, deflate)
 	mc := newMuxConn(context.Background(), conn) //nolint:contextcheck // the connection deliberately outlives the RPC that dialed it
 	go mc.readLoopClient(context.Background())   //nolint:contextcheck,gosec // G118: see above
 	return mc, nil

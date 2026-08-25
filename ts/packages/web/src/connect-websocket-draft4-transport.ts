@@ -42,7 +42,7 @@ import {
 } from "@connectrpc/connect/protocol-connect";
 import { decodeHeadersFrame, encodeHeadersFrame } from "./headers-frame.js";
 
-// Draft 4 of the WebSocket wire protocol. Where drafts 2 and 3 pack the
+// Draft 4 of the WebSocket wire protocol. Where draft 3 packs the
 // frame head into five binary bytes, draft 4 spends a few more on an ASCII
 // head so the wire is readable in the browser's own Network tab without a
 // decoder:
@@ -54,7 +54,7 @@ import { decodeHeadersFrame, encodeHeadersFrame } from "./headers-frame.js";
 // whose payload is UTF-8 are sent as text WebSocket messages, which is what
 // makes devtools render them as text -- with the default JSON format, that
 // is every frame on the connection. Compression is left to
-// permessage-deflate, as in draft 2, so there is no compression flag. Must
+// permessage-deflate, so there is no compression flag. Must
 // match the Go connectwebsocket/draft4 package and
 // @sudorandom/connect-bidi-core's draft 4 server bridge byte-for-byte.
 // The flags field is partitioned: low 3 bits frame type, high 5 bits

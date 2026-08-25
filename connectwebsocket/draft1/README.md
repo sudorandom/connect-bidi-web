@@ -127,7 +127,7 @@ The defined flag values are:
 | --- | --- | --- |
 | `0x00` | data | One uncompressed RPC message encoded with the selected codec |
 | `0x01` | compressed data | One compressed, codec-encoded RPC message |
-| `0x02` | end stream | Empty on requests; Connect EndStreamResponse JSON on responses |
+| `0x02` | end-stream | Empty on requests; Connect `EndStreamResponse` JSON on responses |
 | `0x06` | headers | JSON metadata object (`{"metadata": ...}`) |
 | `0x07` | reset | Empty; aborts the stream |
 

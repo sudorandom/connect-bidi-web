@@ -110,10 +110,17 @@ A 4-byte stream ID and one byte split into a frame type and one flag bit:
 
 - `Stream ID` is an unsigned 32-bit big-endian integer.
 - `C` (bit 7 of the second-header byte) marks the payload as compressed.
-- `Frame type` (bits 0–6) is `0x00` data, `0x01` headers, `0x02`
-  end-stream, or `0x03` reset. Values `0x04` and up are reserved.
+- `Frame type` (bits 0–6) is one of the four values below. Values `0x04`
+  and up are reserved.
 - The payload is the remainder of the WebSocket message: no length
   field.
+
+| Value | Name | Payload |
+| --- | --- | --- |
+| `0x00` | data | One RPC message encoded with the selected codec |
+| `0x01` | headers | JSON metadata object (`{"metadata": ...}`) |
+| `0x02` | end-stream | Empty on requests; Connect `EndStreamResponse` JSON on responses |
+| `0x03` | reset | Empty; aborts the stream |
 
 Everything else — connection mapping, stream IDs, control payload JSON,
 request and response sequences, cancellation, half-close — is the

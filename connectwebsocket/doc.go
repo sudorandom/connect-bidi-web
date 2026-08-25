@@ -17,7 +17,7 @@
 //
 // The drafts themselves are wire-incompatible with one another and each
 // lives in its own subpackage, with its own constructors and default path,
-// so their designs can be compared side by side:
+// so their designs can be compared directly:
 //
 //   - [github.com/sudorandom/connect-bidi-web/connectwebsocket/draft1]:
 //     Connect envelopes and connect-*-encoding compression metadata.

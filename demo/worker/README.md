@@ -100,6 +100,6 @@ and complements — rather than replaces — the WebSocket transport used here:
 - True bidi gRPC on Workers requires Containers + TCP forwarding. Once beta
   access lands, the plan is to add a variant entry point that serves the same
   Eliza service over native gRPC through the `connect(socket)` handler, so the
-  demo can compare WebSocket bidi vs gRPC-over-TCP bidi side by side.
+  demo can measure WebSocket bidi against gRPC-over-TCP bidi.
 
 Until then, this Worker intentionally sticks to GA features.

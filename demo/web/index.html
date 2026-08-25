@@ -62,8 +62,7 @@
             Connect's HTTP protocol can't carry full-duplex streams in the
             browser. A WebSocket can. This is where that protocol gets
             designed: competing drafts, each fully implemented in Go and
-            TypeScript, running side by side so they can be measured against
-            each other.
+            TypeScript, then benchmarked against each other.
           </p>
           <div class="hero-actions">
             <a
@@ -688,17 +687,30 @@ just demo-worker   # Cloudflare workerd: http://localhost:8787
         <div class="section-inner">
           <h2>How the protocol works</h2>
           <p class="section-lede">
-            One rule: stay as close to the
+            One invariant: the
             <a href="https://connectrpc.com/docs/protocol/">Connect
-            protocol</a> as possible, and add only what a raw socket cannot
-            provide itself.
+            protocol</a>'s semantics stay intact. How the framing around
+            them is spent is what the drafts disagree about.
           </p>
           <p>
-            Connect semantics stay intact: the same codecs, the same error
-            codes and details, the same trailers. What cannot survive the
-            upgrade is what Connect borrows from HTTP — per-request headers,
-            a way to tell concurrent RPCs apart, half-close, and
-            <code>RST_STREAM</code>. Four small frames replace them.
+            The same codecs, the same error codes and details, the same
+            trailers. What cannot survive the upgrade is what Connect
+            borrows from HTTP — per-request headers, a way to tell
+            concurrent RPCs apart, half-close, and <code>RST_STREAM</code>.
+            Four small frames replace them.
+          </p>
+          <p>
+            Adding only what a raw socket cannot provide is one strategy for
+            those frames, and the drafts sit at different points along it.
+            Draft 1 takes it most literally: it keeps Connect's own 5-byte
+            envelope untouched and prefixes a 4-byte stream ID, so nine
+            bytes buy strict fidelity. Draft 3 gives that up to save four,
+            replacing the envelope with a single descriptor byte and taking
+            ownership of compression. Draft 4 goes the other way entirely,
+            spending bytes on an ASCII head and JSON headers so the traffic
+            reads as text in the Network tab. Which is right depends on what
+            you are optimizing for — which is why the drafts coexist rather
+            than converge.
           </p>
           <div class="findings">
             <div class="finding">
@@ -734,7 +746,7 @@ just demo-worker   # Cloudflare workerd: http://localhost:8787
               </p>
             </div>
           </div>
-          <h3 id="protocol-drafts">Three drafts, side by side</h3>
+          <h3 id="protocol-drafts">Three wire formats</h3>
           <p>
             Three wire-incompatible <strong>drafts</strong> coexist, on
             different paths (<code>/websocket-draft1</code>,
@@ -886,8 +898,8 @@ just demo-worker   # Cloudflare workerd: http://localhost:8787
                   <tr>
                     <td><code>1</code></td>
                     <td>
-                      headers &mdash; opens every stream; always JSON
-                      metadata with <code>:path</code>,
+                      headers &mdash; opens every stream; JSON metadata
+                      with <code>:path</code>,
                       <code>content-type</code>, &hellip;
                     </td>
                   </tr>

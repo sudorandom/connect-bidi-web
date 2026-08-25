@@ -29,39 +29,17 @@ npm run dev                    # local: http://localhost:8787
 npm run deploy                 # deploy to your Cloudflare account
 ```
 
-### Per-branch preview deploys
-
-Every push to a non-`main` branch can get its own live Worker on real
-Cloudflare infrastructure, without touching production. The mechanism is
-`wrangler versions upload`, which uploads a new *version* and hands back a
-preview URL but does **not** shift production traffic or rewrite the routes
-in `wrangler.jsonc`. Production only moves when someone runs
-`wrangler deploy`.
-
-There are two ways to drive it, and you want **exactly one** — enabling both
-uploads two preview versions per push:
-
-| | GitHub Actions | Workers Builds |
-|---|---|---|
-| Where | [`.github/workflows/preview.yaml`](../../.github/workflows/preview.yaml) | Cloudflare dashboard |
-| Config lives | in the repo, reviewable in a PR | in dashboard settings |
-| Needs | `CLOUDFLARE_API_TOKEN` + `CLOUDFLARE_ACCOUNT_ID` repo secrets | the Git integration connected |
-| Branch scope | every branch except `main` and `release-please--**` | every non-production branch |
-| Preview URL | GitHub job summary | build log + a PR comment |
-
-Neither is per-branch: both cover *all* non-production branches, so there's
-nothing to configure when a new branch appears.
-
-The Actions token needs the **Edit Cloudflare Workers** template (or a custom
-token with `Account → Workers Scripts → Edit`). If Workers Builds is already
-connected, delete `preview.yaml` instead of adding the secrets.
-
 ### Workers Builds (Git integration)
 
-The worker depends on `file:` links into `ts/packages/`, and every `dist/`
-is gitignored, so this package's `build` script builds the sibling packages
-(the ts/ workspace and the demo/web site bundle) before wrangler bundles
-the worker:
+Deploys are driven from the Cloudflare dashboard, not from GitHub Actions —
+nothing in `.github/workflows/` touches Cloudflare. Workers Builds watches
+the repo, and the branch decides whether a push becomes production or a
+preview.
+
+Set it up under *Workers & Pages → `connect-bidi-web` → Settings → Builds*.
+
+**1. Connect the repository.** Authorize the Cloudflare GitHub app and pick
+this repo. Then set the build configuration:
 
 | Setting        | Value |
 |----------------|-------|
@@ -69,25 +47,46 @@ the worker:
 | Build command  | `npm run build` |
 | Deploy command | `npx wrangler deploy` (default) |
 
-**Branch control matters.** Workers Builds triggers on every push to any
-branch of the connected repo, and without branch control it runs the same
-deploy command for all of them — a PR branch (or release-please's bot
-branch) would deploy straight to production. Under the worker's
-*Settings → Builds → Branch control*, set:
+The worker depends on `file:` links into `ts/packages/`, and every `dist/`
+is gitignored, so this package's `build` script builds the sibling packages
+(the ts/ workspace and the demo/web site bundle) before wrangler bundles
+the worker. That is why the build command is `npm run build` and not just
+wrangler.
+
+**2. Turn on preview builds for every other branch.** Under *Branch
+control*:
 
 | Setting | Value |
 |---------|-------|
 | Production branch | `main` |
-| Non-production branch builds | enabled |
+| Non-production branch builds | **enabled** |
 | Non-production deploy command | `npx wrangler versions upload` (default) |
 
-Non-production branches then upload a *preview version* instead of
-deploying: each gets its own `workers.dev` preview URL (enabled by
-`preview_urls` in `wrangler.jsonc`, independent of `workers_dev: false`)
-and a PR comment, while production traffic stays on the custom domain.
+That is the whole preview setup, and it is not per-branch: *every* branch
+that isn't `main` is covered, so a new branch needs no configuration. This
+matters in both directions — without branch control, Workers Builds runs
+the same deploy command for every branch, and a feature branch (or
+release-please's bot branch) would deploy straight to production.
+
+**Why `versions upload` is the safe command.** It uploads a new *version*
+and returns a preview URL, but does not shift production traffic and does
+not touch the `routes` in `wrangler.jsonc`. Production stays on the custom
+domain until a `main` build runs `wrangler deploy`.
+
+Each preview gets its own `workers.dev` URL — enabled by `preview_urls` in
+`wrangler.jsonc`, independent of `workers_dev: false` — reported in the
+build log and, for pushes belonging to a pull request, as a PR comment.
 
 The static assets need no dashboard configuration; `wrangler.jsonc` already
 points at `../web/dist`.
+
+**Two things to watch.** Workers Builds does not read `mise.toml`, so it
+picks its own Node version; the npm packages declare `node >=20.19`, and if
+a build fails on the toolchain, pin it with a `NODE_VERSION` build variable
+or a `.node-version` file. And if you narrow *Build watch paths*, include
+`ts/**` and `demo/web/**` alongside `demo/worker/**` — the worker bundles
+all three, so watching only `demo/worker` would skip rebuilds when the
+library or the site changes.
 
 ## Deferred: native gRPC on Workers (private beta)
 

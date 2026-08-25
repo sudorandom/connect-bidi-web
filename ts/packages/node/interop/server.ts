@@ -28,8 +28,9 @@ import { createConnectRouter } from "@connectrpc/connect";
 import {
   createBidiWebSocketDraft2Handler,
   createBidiWebSocketDraft3Handler,
-  createBidiWebSocketHandler,
-  defaultBidiWebSocketPath,
+  createBidiWebSocketDraft4Handler,
+  createBidiWebSocketDraft1Handler,
+  defaultBidiWebSocketDraft1Path,
 } from "../src/index.js";
 import { ElizaService } from "../src/gen/connectbidi/eliza/v1/eliza_pb.js";
 
@@ -53,11 +54,13 @@ const server = http.createServer((_req, res) => {
   res.writeHead(404);
   res.end();
 });
-createBidiWebSocketHandler(router).upgrade(server);
+createBidiWebSocketDraft1Handler(router).upgrade(server);
 // Draft 2 of the wire protocol, on its own path ("/websocket-draft2").
 createBidiWebSocketDraft2Handler(router).upgrade(server);
 // Draft 3, likewise ("/websocket-draft3").
 createBidiWebSocketDraft3Handler(router).upgrade(server);
+// Draft 4, likewise ("/websocket-draft4").
+createBidiWebSocketDraft4Handler(router).upgrade(server);
 
 const port = Number(process.env.PORT ?? process.argv[2] ?? 8080);
 // Bind on all interfaces: this fixture is meant to be driven by a client
@@ -67,5 +70,7 @@ server.listen(port, "0.0.0.0", () => {
   const address = server.address();
   const actualPort =
     typeof address === "object" && address !== null ? address.port : port;
-  console.log(`READY ws://localhost:${actualPort}${defaultBidiWebSocketPath}`);
+  console.log(
+    `READY ws://localhost:${actualPort}${defaultBidiWebSocketDraft1Path}`,
+  );
 });

@@ -12,9 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// These tests exercise `wrapWebSocket()` bridged to `handleMuxedBidiSocket()`
+// These tests exercise `wrapWebSocket()` bridged to `handleMuxedBidiSocketDraft1()`
 // end-to-end against a mock WebSocket-like object, proving the
-// DuplexMessageStream adapter itself is correct. `createBidiWebSocketHandler()`
+// DuplexMessageStream adapter itself is correct. `createBidiWebSocketDraft1Handler()`
 // additionally relies on the real Workers `WebSocketPair`/`Response.webSocket`
 // globals, which don't exist under plain Node -- that integration is
 // verified against `wrangler dev` instead (see the worker demo).
@@ -36,7 +36,7 @@ import {
   endStreamFromJson,
   type EndStreamResponse,
 } from "@connectrpc/connect/protocol-connect";
-import { handleMuxedBidiSocket } from "@sudorandom/connect-bidi-core";
+import { handleMuxedBidiSocketDraft1 } from "@sudorandom/connect-bidi-core";
 import {
   CountUpRequestSchema,
   CountUpResponseSchema,
@@ -246,7 +246,7 @@ function encodeResetFrame(streamId: number): Uint8Array {
  * Splits a `MockWebSocket`'s captured `send()` calls back into the
  * envelopes belonging to one stream. Each `send()` call here always carries
  * exactly one stream ID plus one complete envelope -- `wrapWebSocket`'s
- * writable forwards `handleMuxedBidiSocket`'s writes verbatim, and the
+ * writable forwards `handleMuxedBidiSocketDraft1`'s writes verbatim, and the
  * muxed handler only ever writes one complete frame per `write()` call.
  */
 function parseSentEnvelopes(
@@ -320,7 +320,7 @@ function parseResponse(
 
 // -- Tests ---------------------------------------------------------------------
 
-describe("wrapWebSocket() + handleMuxedBidiSocket()", () => {
+describe("wrapWebSocket() + handleMuxedBidiSocketDraft1()", () => {
   it("unary success", async () => {
     const handlers = createTestHandlers();
     const handler = findHandler(handlers, "Ping");
@@ -341,7 +341,7 @@ describe("wrapWebSocket() + handleMuxedBidiSocket()", () => {
     );
     socket.emit(encodeEndStreamFrame(1));
 
-    const done = handleMuxedBidiSocket(duplex, handlers);
+    const done = handleMuxedBidiSocketDraft1(duplex, handlers);
     await waitForEndStream(socket, 1);
     socket.close();
     await done;
@@ -375,7 +375,7 @@ describe("wrapWebSocket() + handleMuxedBidiSocket()", () => {
     );
     socket.emit(encodeEndStreamFrame(1));
 
-    const done = handleMuxedBidiSocket(duplex, handlers);
+    const done = handleMuxedBidiSocketDraft1(duplex, handlers);
     await waitForEndStream(socket, 1);
     socket.close();
     await done;
@@ -409,7 +409,7 @@ describe("wrapWebSocket() + handleMuxedBidiSocket()", () => {
     );
     socket.emit(encodeEndStreamFrame(1));
 
-    const done = handleMuxedBidiSocket(duplex, handlers);
+    const done = handleMuxedBidiSocketDraft1(duplex, handlers);
     await waitForEndStream(socket, 1);
     socket.close();
     await done;
@@ -455,7 +455,7 @@ describe("wrapWebSocket() + handleMuxedBidiSocket()", () => {
     socket.emit(encodeEndStreamFrame(2));
     socket.emit(encodeEndStreamFrame(1));
 
-    const done = handleMuxedBidiSocket(duplex, handlers);
+    const done = handleMuxedBidiSocketDraft1(duplex, handlers);
     await waitForEndStream(socket, 1);
     await waitForEndStream(socket, 2);
     socket.close();
@@ -511,7 +511,7 @@ describe("wrapWebSocket() + handleMuxedBidiSocket()", () => {
     );
     socket.emit(encodeEndStreamFrame(2));
 
-    const done = handleMuxedBidiSocket(duplex, handlers);
+    const done = handleMuxedBidiSocketDraft1(duplex, handlers);
     await waitForEndStream(socket, 2);
     socket.close();
     await done;
@@ -541,7 +541,7 @@ describe("wrapWebSocket() + handleMuxedBidiSocket()", () => {
 
     // Must resolve promptly (the aborted handler ends) rather than waiting
     // forever for request messages that can never arrive.
-    await handleMuxedBidiSocket(duplex, handlers);
+    await handleMuxedBidiSocketDraft1(duplex, handlers);
   });
 
   it("unknown :path yields an unimplemented error", async () => {
@@ -558,7 +558,7 @@ describe("wrapWebSocket() + handleMuxedBidiSocket()", () => {
     );
     socket.emit(encodeEndStreamFrame(1));
 
-    const done = handleMuxedBidiSocket(duplex, handlers);
+    const done = handleMuxedBidiSocketDraft1(duplex, handlers);
     await waitForEndStream(socket, 1);
     socket.close();
     await done;
@@ -585,7 +585,7 @@ describe("wrapWebSocket() + handleMuxedBidiSocket()", () => {
       encodeHeadersFrame(1, handler.requestPath, contentTypeStreamProto),
     );
 
-    await handleMuxedBidiSocket(duplex, handlers, { idleTimeoutMs: 20 });
+    await handleMuxedBidiSocketDraft1(duplex, handlers, { idleTimeoutMs: 20 });
 
     assert.ok(socket.closed, "expected the idle connection to be closed");
     assert.strictEqual(
@@ -631,7 +631,7 @@ describe("wrapWebSocket() + handleMuxedBidiSocket()", () => {
     // every subsequent send() throws, like on real workerd.
     socket.close();
 
-    await handleMuxedBidiSocket(duplex, handlers);
+    await handleMuxedBidiSocketDraft1(duplex, handlers);
 
     assert.strictEqual(
       socket.sentFrames.length,

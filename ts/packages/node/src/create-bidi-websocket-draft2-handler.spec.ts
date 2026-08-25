@@ -36,9 +36,9 @@ import {
   PingService,
 } from "./gen/connectbidi/ping/v1/ping_pb.js";
 import {
-  createBidiWebSocketHandler,
-  defaultBidiWebSocketPath,
-} from "./create-bidi-websocket-handler.js";
+  createBidiWebSocketDraft1Handler,
+  defaultBidiWebSocketDraft1Path,
+} from "./create-bidi-websocket-draft1-handler.js";
 import {
   createBidiWebSocketDraft2Handler,
   defaultBidiWebSocketDraft2Path,
@@ -103,7 +103,7 @@ async function startServer(
   const server = http.createServer();
   // Both drafts share the server, each on its default path, matching the
   // intended side-by-side deployment.
-  createBidiWebSocketHandler(handlers).upgrade(server);
+  createBidiWebSocketDraft1Handler(handlers).upgrade(server);
   createBidiWebSocketDraft2Handler(handlers).upgrade(server);
   await new Promise<void>((resolve) => {
     server.listen(0, "127.0.0.1", resolve);
@@ -530,7 +530,7 @@ describe("createBidiWebSocketDraft2Handler()", () => {
       // Draft 1 RPC on the draft 1 path: stream ID followed by a standard
       // 5-byte Connect envelope, headers flag 0x06.
       const draft1Socket = websocketToDuplexMessageStream(
-        await connectClient(running, defaultBidiWebSocketPath),
+        await connectClient(running, defaultBidiWebSocketDraft1Path),
       );
       const draft1Writer = draft1Socket.writable.getWriter();
       const prefixStreamId = (streamId: number, envelope: Uint8Array) => {

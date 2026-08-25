@@ -17,14 +17,11 @@ import type { UniversalHandler } from "@connectrpc/connect/protocol";
 import { handleMuxedBidiSocketDraft2 } from "@sudorandom/connect-bidi-core";
 import type { WebSocket } from "ws";
 import { WebSocketServer } from "ws";
-import {
-  getPathname,
-  isConnectRouter,
-} from "./create-bidi-websocket-handler.js";
+import { getPathname, isConnectRouter } from "./bidi-websocket-handler.js";
 import type {
   BidiWebSocketHandler,
   BidiWebSocketHandlerOptions,
-} from "./create-bidi-websocket-handler.js";
+} from "./bidi-websocket-handler.js";
 import { websocketToDuplexMessageStream } from "./websocket-duplex.js";
 
 /**
@@ -42,7 +39,7 @@ export const defaultBidiWebSocketDraft2Path = "/websocket-draft2";
  * Creates a handler that bridges `ws` WebSocket connections speaking
  * draft 2 of the wire protocol to Connect RPCs, using
  * `@sudorandom/connect-bidi-core`'s `handleMuxedBidiSocketDraft2`. The
- * draft 1 equivalent is `createBidiWebSocketHandler`. Accepts either a
+ * draft 1 equivalent is `createBidiWebSocketDraft1Handler`. Accepts either a
  * `ConnectRouter` (as returned by `createConnectRouter()`) or a plain
  * `UniversalHandler[]` array (`router.handlers`).
  *

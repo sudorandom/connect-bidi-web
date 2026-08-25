@@ -14,8 +14,8 @@
 
 import { handleMuxedBidiSocketDraft2 } from "@sudorandom/connect-bidi-core";
 import type { UniversalHandler } from "@connectrpc/connect/protocol";
-import type { CreateBidiWebSocketHandlerOptions } from "./bidi-websocket-handler.js";
-import { isWebSocketUpgrade } from "./bidi-websocket-handler.js";
+import type { CreateBidiWebSocketHandlerOptions } from "./bidi-websocket-handler-common.js";
+import { isWebSocketUpgrade } from "./bidi-websocket-handler-common.js";
 import { wrapWebSocket } from "./websocket-like.js";
 
 /**
@@ -23,11 +23,11 @@ import { wrapWebSocket } from "./websocket-like.js";
  * requests into a multiplexed bidi connection speaking draft 2 of the wire
  * protocol, bridged to `handlers` via `@sudorandom/connect-bidi-core`'s
  * `handleMuxedBidiSocketDraft2`. The draft 1 equivalent is
- * `createBidiWebSocketHandler`; the two wire protocols are incompatible,
+ * `createBidiWebSocketDraft1Handler`; the two wire protocols are incompatible,
  * so route each path to the handler that speaks its draft:
  *
  * ```ts
- * const draft1 = createBidiWebSocketHandler(handlers);
+ * const draft1 = createBidiWebSocketDraft1Handler(handlers);
  * const draft2 = createBidiWebSocketDraft2Handler(handlers);
  *
  * export default {

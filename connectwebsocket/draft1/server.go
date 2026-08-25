@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package connectwebsocket
+package draft1
 
 import (
 	"context"
@@ -52,13 +52,20 @@ func NewHandler(server *connect.Server, opts ...Option) *Handler {
 // with an unknown stream ID and a headers flag starts a new RPC; a reset
 // frame cancels an in-flight one.
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if isExtendedConnectWebSocket(r) {
+		h.serveH2(w, r)
+		return
+	}
 	conn, err := websocket.Accept(w, r, h.opts.acceptOptions)
 	if err != nil {
 		return
 	}
-	conn.SetReadLimit(-1)
+	h.serveConn(r.Context(), newCoderConn(conn), r.RemoteAddr)
+}
 
-	ctx := r.Context()
+// serveConn runs the multiplexed read loop on one accepted connection,
+// whatever its bootstrap, until the client disconnects.
+func (h *Handler) serveConn(ctx context.Context, conn messageConn, remoteAddr string) {
 	mc := newMuxConn(ctx, conn)
 	var handlers sync.WaitGroup
 	for {
@@ -73,7 +80,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				// A frame for a stream that already finished; drop it.
 				continue
 			}
-			h.startStream(ctx, mc, streamID, payload, &handlers, r.RemoteAddr)
+			h.startStream(ctx, mc, streamID, payload, &handlers, remoteAddr)
 			continue
 		}
 		if flag == bidiprotocol.FlagEnvelopeReset {
@@ -85,7 +92,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	mc.terminateAll(errConnClosed)
 	handlers.Wait()
-	_ = conn.Close(websocket.StatusNormalClosure, "")
+	_ = conn.Close()
 }
 
 // startStream registers a new stream and dispatches its RPC on its own
@@ -114,6 +121,6 @@ func (h *Handler) startStream(
 		// Terminating unblocks the read loop if it is delivering a frame to
 		// this stream, and cancels streamCtx.
 		defer stream.terminate(errStreamClosed)
-		bidiprotocol.HandleRPC(streamCtx, stream, h.server, h.opts.Options, "websocket", remoteAddr)
+		bidiprotocol.HandleRPC(streamCtx, stream, h.server, h.opts.Options, protocolName, remoteAddr)
 	}()
 }

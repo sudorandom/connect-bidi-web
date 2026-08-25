@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package connectwebsocket_test
+package draft1_test
 
 import (
 	"context"
@@ -30,7 +30,7 @@ import (
 	"connectrpc.com/connect/v2"
 	"connectrpc.com/connect/v2/connectproto"
 	"github.com/coder/websocket"
-	"github.com/sudorandom/connect-bidi-web/connectwebsocket"
+	"github.com/sudorandom/connect-bidi-web/connectwebsocket/draft1"
 	pingv1 "github.com/sudorandom/connect-bidi-web/internal/gen/connectbidi/ping/v1"
 	pingv1connect "github.com/sudorandom/connect-bidi-web/internal/gen/connectbidi/ping/v1/pingv1connect"
 	"google.golang.org/protobuf/types/known/wrapperspb"
@@ -109,7 +109,7 @@ func TestWebSocket(t *testing.T) {
 		respTrailers: map[string]string{"X-Test-Trailer": "trailer-val"},
 	})
 
-	wsHandler := connectwebsocket.NewHandler(connectServer, connectwebsocket.WithAcceptOptions(&websocket.AcceptOptions{
+	wsHandler := draft1.NewHandler(connectServer, draft1.WithAcceptOptions(&websocket.AcceptOptions{
 		InsecureSkipVerify: true,
 	}))
 
@@ -121,7 +121,7 @@ func TestWebSocket(t *testing.T) {
 	t.Cleanup(server.Close)
 
 	wsURL := "ws" + strings.TrimPrefix(server.URL, "http")
-	wsTransport := connectwebsocket.NewTransport(wsURL)
+	wsTransport := draft1.NewTransport(wsURL)
 	client := pingv1connect.NewPingServiceClient(connect.NewClient(wsTransport))
 
 	// 1. Unary call
@@ -230,7 +230,7 @@ func newTestServer(t *testing.T, impl pingv1connect.PingServiceHandler) (wsURL s
 	t.Helper()
 	connectServer := connect.NewServer()
 	pingv1connect.RegisterPingServiceHandler(connectServer, impl)
-	wsHandler := connectwebsocket.NewHandler(connectServer, connectwebsocket.WithAcceptOptions(&websocket.AcceptOptions{
+	wsHandler := draft1.NewHandler(connectServer, draft1.WithAcceptOptions(&websocket.AcceptOptions{
 		InsecureSkipVerify: true,
 	}))
 
@@ -245,7 +245,7 @@ func newTestServer(t *testing.T, impl pingv1connect.PingServiceHandler) (wsURL s
 
 func TestWebSocketConnectionPerStream(t *testing.T) {
 	wsURL, connections := newTestServer(t, testPingServer{})
-	wsTransport := connectwebsocket.NewTransport(wsURL, connectwebsocket.WithConnectionPerStream())
+	wsTransport := draft1.NewTransport(wsURL, draft1.WithConnectionPerStream())
 	client := pingv1connect.NewPingServiceClient(connect.NewClient(wsTransport))
 
 	// Unary RPCs share the multiplexed connection even with
@@ -283,7 +283,7 @@ func TestWebSocketConnectionPerStream(t *testing.T) {
 
 func TestWebSocketConcurrentStreams(t *testing.T) {
 	wsURL, connections := newTestServer(t, testPingServer{})
-	wsTransport := connectwebsocket.NewTransport(wsURL)
+	wsTransport := draft1.NewTransport(wsURL)
 	client := pingv1connect.NewPingServiceClient(connect.NewClient(wsTransport))
 
 	var group sync.WaitGroup
@@ -351,7 +351,7 @@ func (s *cancelPingServer) CumSum(ctx context.Context, stream pingv1connect.Ping
 func TestWebSocketClientCancelResetsStream(t *testing.T) {
 	impl := &cancelPingServer{handlerDone: make(chan error, 1)}
 	wsURL, connections := newTestServer(t, impl)
-	wsTransport := connectwebsocket.NewTransport(wsURL)
+	wsTransport := draft1.NewTransport(wsURL)
 	client := pingv1connect.NewPingServiceClient(connect.NewClient(wsTransport))
 
 	stream, err := client.CumSum(context.Background())

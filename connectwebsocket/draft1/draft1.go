@@ -12,13 +12,21 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Package connectwebsocket provides a connect.Transport and an http.Handler
-// that carry Connect RPCs over WebSocket connections, enabling full
-// bidirectional streaming from environments such as web browsers. Every
-// frame carries a stream ID, so any number of concurrent RPCs are
+// Package draft1 provides a connect.Transport and an http.Handler that
+// carry Connect RPCs over WebSocket connections, enabling full
+// bidirectional streaming from environments such as web browsers.
+//
+// This is draft 1 of the WebSocket wire protocol, wire-incompatible with
+// the draft2, draft3, and draft4 subpackages alongside it. Draft 1 reuses
+// as much of the Connect protocol as it can: RPC messages travel in
+// standard 5-byte Connect envelopes, with Connect per-message compression
+// negotiated through connect-*-encoding metadata. All drafts coexist so
+// their implementations can be compared; serve them on different paths.
+//
+// Every frame carries a stream ID, so any number of concurrent RPCs are
 // multiplexed onto one shared WebSocket connection; WithConnectionPerStream
 // gives each streaming RPC a dedicated connection instead.
-package connectwebsocket
+package draft1
 
 import (
 	"context"
@@ -28,7 +36,12 @@ import (
 	"connectrpc.com/connect/v2"
 	"github.com/coder/websocket"
 	"github.com/sudorandom/connect-bidi-web/internal/bidiprotocol"
+	"golang.org/x/net/http2"
 )
+
+// protocolName is surfaced through connect.CallInfo so callers can tell
+// which WebSocket protocol draft carried an RPC.
+const protocolName = "websocket-draft1"
 
 // Option configures NewTransport and NewHandler.
 type Option interface {
@@ -177,6 +190,12 @@ func WithAcceptOptions(acceptOpts *websocket.AcceptOptions) Option {
 type transport struct {
 	url  string
 	opts transportOptions
+	// dialConn opens a new multiplexed connection: an HTTP/1.1 upgrade
+	// (NewTransport) or an RFC 8441 extended CONNECT stream on HTTP/2
+	// (NewH2Transport). The protocol above the connection is identical.
+	dialConn func(ctx context.Context) (*muxConn, error)
+	// h2 is the HTTP/2 client used by dialH2; nil for NewTransport.
+	h2 *http2.Transport
 
 	mu     sync.Mutex
 	shared *muxConn
@@ -198,25 +217,27 @@ func NewTransport(url string, opts ...Option) connect.Transport {
 	}
 	tOpts.Finalize()
 
-	return &transport{
+	t := &transport{
 		url:  url,
 		opts: tOpts,
 	}
+	t.dialConn = t.dialWebSocket
+	return t
 }
 
 func (t *transport) NewClientStream(ctx context.Context, spec connect.Spec) (connect.ClientStream, error) {
 	if t.url == "" {
-		return nil, errors.New("connectwebsocket: empty URL")
+		return nil, errors.New("connectwebsocket/draft1: empty URL")
 	}
 
 	callInfo, _ := connect.CallInfoForClientContext(ctx)
 	if callInfo != nil {
-		callInfo.Protocol = "websocket"
+		callInfo.Protocol = protocolName
 	}
 
 	var stream *muxStream
 	if t.opts.connectionPerStream && spec.StreamType != connect.StreamTypeUnary {
-		mc, err := t.dial(ctx)
+		mc, err := t.dialConn(ctx)
 		if err != nil {
 			return nil, err
 		}
@@ -256,15 +277,14 @@ func (t *transport) Close() error {
 	return shared.shutdown()
 }
 
-func (t *transport) dial(ctx context.Context) (*muxConn, error) {
+func (t *transport) dialWebSocket(ctx context.Context) (*muxConn, error) {
 	conn, _, err := websocket.Dial(ctx, t.url, t.opts.dialOptions) //nolint:bodyclose // coder/websocket closes the handshake response body itself
 	if err != nil {
 		return nil, connect.Errorf(connect.CodeUnavailable, "failed to dial WebSocket: %v", err)
 	}
-	conn.SetReadLimit(-1)
 	// The connection outlives any single RPC, so neither the read loop nor
 	// writes use an RPC context; closing the connection ends them.
-	mc := newMuxConn(context.Background(), conn)
+	mc := newMuxConn(context.Background(), newCoderConn(conn))
 	go mc.readLoopClient(context.Background()) //nolint:contextcheck,gosec // G118: the shared connection deliberately outlives the RPC that dialed it
 	return mc, nil
 }
@@ -283,7 +303,7 @@ func (t *transport) sharedStream(ctx context.Context) (*muxStream, error) {
 		}
 		// The shared connection failed; dial a replacement.
 	}
-	mc, err := t.dial(ctx)
+	mc, err := t.dialConn(ctx)
 	if err != nil {
 		return nil, err
 	}

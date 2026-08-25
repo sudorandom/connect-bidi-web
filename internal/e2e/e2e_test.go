@@ -34,9 +34,10 @@ import (
 	"github.com/coder/websocket"
 	"github.com/quic-go/quic-go/http3"
 	"github.com/quic-go/webtransport-go"
-	"github.com/sudorandom/connect-bidi-web/connectwebsocket"
+	"github.com/sudorandom/connect-bidi-web/connectwebsocket/draft1"
 	"github.com/sudorandom/connect-bidi-web/connectwebsocket/draft2"
 	"github.com/sudorandom/connect-bidi-web/connectwebsocket/draft3"
+	"github.com/sudorandom/connect-bidi-web/connectwebsocket/draft4"
 	"github.com/sudorandom/connect-bidi-web/connectwebtransport"
 	elizav1 "github.com/sudorandom/connect-bidi-web/internal/gen/connectbidi/eliza/v1"
 	"github.com/sudorandom/connect-bidi-web/internal/gen/connectbidi/eliza/v1/elizav1connect"
@@ -157,15 +158,17 @@ func startGoServer(t *testing.T) (wsURL, wtURL string) {
 
 	connectServer := connect.NewServer()
 	elizav1connect.RegisterElizaServiceHandler(connectServer, elizaServer{})
-	websocketHandler := connectwebsocket.NewHandler(connectServer)
+	websocketHandler := draft1.NewHandler(connectServer)
 	websocketDraft2Handler := draft2.NewHandler(connectServer)
 	websocketDraft3Handler := draft3.NewHandler(connectServer)
+	websocketDraft4Handler := draft4.NewHandler(connectServer)
 	webtransportHandler := connectwebtransport.NewHandler(connectServer)
 
 	mux := http.NewServeMux()
 	mux.Handle("/websocket-draft1", websocketHandler)
 	mux.Handle("/websocket-draft2", websocketDraft2Handler)
 	mux.Handle("/websocket-draft3", websocketDraft3Handler)
+	mux.Handle("/websocket-draft4", websocketDraft4Handler)
 
 	// WebSocket over TLS on TCP.
 	httpServer := httptest.NewTLSServer(mux)
@@ -212,9 +215,9 @@ func TestGoClientGoServerWebSocket(t *testing.T) {
 	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
 	defer cancel()
 
-	transport := connectwebsocket.NewTransport(
+	transport := draft1.NewTransport(
 		wsURL,
-		connectwebsocket.WithDialOptions(&websocket.DialOptions{
+		draft1.WithDialOptions(&websocket.DialOptions{
 			HTTPClient: &http.Client{
 				Transport: &http.Transport{
 					TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
@@ -260,6 +263,54 @@ func TestGoClientGoServerWebSocketDraft3(t *testing.T) {
 	transport := draft3.NewTransport(
 		wsDraft3URL,
 		draft3.WithDialOptions(&websocket.DialOptions{
+			HTTPClient: &http.Client{
+				Transport: &http.Transport{
+					TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+				},
+			},
+		}),
+	)
+	client := elizav1connect.NewElizaServiceClient(connect.NewClient(transport))
+	exercise(ctx, t, client)
+}
+
+func TestGoClientGoServerWebSocketDraft4(t *testing.T) {
+	t.Parallel()
+	wsURL, _ := startGoServer(t)
+	wsDraft4URL := strings.TrimSuffix(wsURL, "/websocket-draft1") + "/websocket-draft4"
+
+	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
+	defer cancel()
+
+	transport := draft4.NewTransport(
+		wsDraft4URL,
+		draft4.WithDialOptions(&websocket.DialOptions{
+			HTTPClient: &http.Client{
+				Transport: &http.Transport{
+					TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+				},
+			},
+		}),
+	)
+	client := elizav1connect.NewElizaServiceClient(connect.NewClient(transport))
+	exercise(ctx, t, client)
+}
+
+// The all-text configuration draft 4 is designed around: JSON payloads, so
+// every frame on the connection is a text WebSocket message.
+func TestGoClientGoServerWebSocketDraft4JSON(t *testing.T) {
+	t.Parallel()
+	wsURL, _ := startGoServer(t)
+	wsDraft4URL := strings.TrimSuffix(wsURL, "/websocket-draft1") + "/websocket-draft4"
+
+	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
+	defer cancel()
+
+	transport := draft4.NewTransport(
+		wsDraft4URL,
+		draft4.WithSendCodec(connect.CodecNameJSON),
+		draft4.WithoutCompression(),
+		draft4.WithDialOptions(&websocket.DialOptions{
 			HTTPClient: &http.Client{
 				Transport: &http.Transport{
 					TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
@@ -343,7 +394,7 @@ func TestGoClientNodeServerInterop(t *testing.T) {
 	}
 
 	t.Run("Draft1", func(t *testing.T) {
-		transport := connectwebsocket.NewTransport(wsURL)
+		transport := draft1.NewTransport(wsURL)
 		client := elizav1connect.NewElizaServiceClient(connect.NewClient(transport))
 		exercise(ctx, t, client)
 	})
@@ -360,6 +411,23 @@ func TestGoClientNodeServerInterop(t *testing.T) {
 	t.Run("Draft3", func(t *testing.T) {
 		wsDraft3URL := strings.TrimSuffix(wsURL, "/websocket-draft1") + "/websocket-draft3"
 		transport := draft3.NewTransport(wsDraft3URL)
+		client := elizav1connect.NewElizaServiceClient(connect.NewClient(transport))
+		exercise(ctx, t, client)
+	})
+
+	// Go draft 4 client against the TS draft 4 server: the ASCII frame head
+	// has to be parsed identically by both languages, and each side has to
+	// accept whichever message type the other chose.
+	t.Run("Draft4", func(t *testing.T) {
+		wsDraft4URL := strings.TrimSuffix(wsURL, "/websocket-draft1") + "/websocket-draft4"
+		transport := draft4.NewTransport(wsDraft4URL)
+		client := elizav1connect.NewElizaServiceClient(connect.NewClient(transport))
+		exercise(ctx, t, client)
+	})
+
+	t.Run("Draft4JSON", func(t *testing.T) {
+		wsDraft4URL := strings.TrimSuffix(wsURL, "/websocket-draft1") + "/websocket-draft4"
+		transport := draft4.NewTransport(wsDraft4URL, draft4.WithSendCodec(connect.CodecNameJSON))
 		client := elizav1connect.NewElizaServiceClient(connect.NewClient(transport))
 		exercise(ctx, t, client)
 	})

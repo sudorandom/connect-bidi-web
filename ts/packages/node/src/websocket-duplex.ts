@@ -17,7 +17,7 @@ import type { RawData, WebSocket } from "ws";
 
 /**
  * Adapts a `ws` WebSocket connection to a `DuplexMessageStream` for
- * `handleMuxedBidiSocket`. Message boundaries are preserved, as the muxed
+ * `handleMuxedBidiSocketDraft1`. Message boundaries are preserved, as the muxed
  * protocol requires: each binary message becomes exactly one readable
  * chunk, and each written chunk is sent as one binary WebSocket message.
  * Closing or erroring the socket in either direction propagates to both

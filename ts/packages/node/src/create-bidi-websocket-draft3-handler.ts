@@ -21,14 +21,11 @@ import {
 } from "@sudorandom/connect-bidi-core";
 import type { WebSocket } from "ws";
 import { WebSocketServer } from "ws";
-import {
-  getPathname,
-  isConnectRouter,
-} from "./create-bidi-websocket-handler.js";
+import { getPathname, isConnectRouter } from "./bidi-websocket-handler.js";
 import type {
   BidiWebSocketHandler,
   BidiWebSocketHandlerOptions,
-} from "./create-bidi-websocket-handler.js";
+} from "./bidi-websocket-handler.js";
 import { websocketToDuplexMessageStream } from "./websocket-duplex.js";
 
 /**
@@ -38,6 +35,17 @@ import { websocketToDuplexMessageStream } from "./websocket-duplex.js";
  * connectwebsocket/draft3 server.
  */
 export const defaultBidiWebSocketDraft3Path = "/websocket-draft3";
+
+export interface BidiWebSocketDraft3HandlerOptions
+  extends BidiWebSocketHandlerOptions {
+  /**
+   * Restrict the server to the identity subprotocol (connect.bidi.d3), so
+   * no frame is ever compressed in either direction; clients that offer
+   * only the deflate token are then refused. By default the server
+   * selects connect.bidi.d3.deflate when the client offers it.
+   */
+  withoutCompression?: boolean;
+}
 
 /**
  * Creates a handler that bridges `ws` WebSocket connections speaking
@@ -51,8 +59,12 @@ export const defaultBidiWebSocketDraft3Path = "/websocket-draft3";
  */
 export function createBidiWebSocketDraft3Handler(
   routerOrHandlers: ConnectRouter | readonly UniversalHandler[],
-  options?: BidiWebSocketHandlerOptions,
+  options?: BidiWebSocketDraft3HandlerOptions,
 ): BidiWebSocketHandler {
+  const supported =
+    options?.withoutCompression === true
+      ? [draft3SubprotocolIdentity]
+      : [draft3SubprotocolDeflate, draft3SubprotocolIdentity];
   const handlers = isConnectRouter(routerOrHandlers)
     ? routerOrHandlers.handlers
     : routerOrHandlers;
@@ -84,10 +96,7 @@ export function createBidiWebSocketDraft3Handler(
         // compression replaces it.
         handleProtocols: (protocols) => {
           for (const protocol of protocols) {
-            if (
-              protocol === draft3SubprotocolDeflate ||
-              protocol === draft3SubprotocolIdentity
-            ) {
+            if (supported.includes(protocol)) {
               return protocol;
             }
           }

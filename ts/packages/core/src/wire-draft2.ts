@@ -13,7 +13,7 @@
 // limitations under the License.
 
 /**
- * Draft 2 of the WebSocket wire protocol. Where draft 1 (wire.ts) follows
+ * Draft 2 of the WebSocket wire protocol. Where draft 1 (wire-draft1.ts) follows
  * each stream ID with a standard 5-byte Connect envelope, draft 2 delegates
  * the envelope's two jobs to the WebSocket itself — permessage-deflate for
  * compression, message boundaries for length — so a frame is just:

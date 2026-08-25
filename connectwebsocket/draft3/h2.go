@@ -46,15 +46,16 @@ func isExtendedConnectWebSocket(r *http.Request) bool {
 		r.Header.Get(":protocol") == "websocket"
 }
 
-// selectSubprotocol picks the first draft 3 token from a comma-separated
-// Sec-WebSocket-Protocol offer, in the client's preference order.
-func selectSubprotocol(offer string) (string, bool) {
+// selectSubprotocol picks the first token from a comma-separated
+// Sec-WebSocket-Protocol offer that this side supports, in the client's
+// preference order.
+func selectSubprotocol(offer string, supported []string) (string, bool) {
 	for token := range strings.SplitSeq(offer, ",") {
-		switch strings.TrimSpace(token) {
-		case subprotocolDeflate:
-			return subprotocolDeflate, true
-		case subprotocolIdentity:
-			return subprotocolIdentity, true
+		trimmed := strings.TrimSpace(token)
+		for _, candidate := range supported {
+			if trimmed == candidate {
+				return trimmed, true
+			}
 		}
 	}
 	return "", false
@@ -71,7 +72,7 @@ func (h *Handler) serveH2(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "unsupported websocket version", http.StatusBadRequest)
 		return
 	}
-	subprotocol, ok := selectSubprotocol(r.Header.Get("Sec-Websocket-Protocol"))
+	subprotocol, ok := selectSubprotocol(r.Header.Get("Sec-Websocket-Protocol"), h.supportedSubprotocols())
 	if !ok {
 		http.Error(w, "missing draft 3 subprotocol", http.StatusBadRequest)
 		return

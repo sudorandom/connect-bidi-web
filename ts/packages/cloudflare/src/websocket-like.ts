@@ -12,7 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import type { DuplexMessageStream } from "@sudorandom/connect-bidi-core";
+import type {
+  Draft4DuplexMessageStream,
+  Draft4OutgoingFrame,
+  DuplexMessageStream,
+} from "@sudorandom/connect-bidi-core";
 
 /**
  * The subset of the Workers `WebSocket` interface that `wrapWebSocket`
@@ -41,7 +45,7 @@ export interface BidiWebSocketLike {
 /**
  * Adapts a `BidiWebSocketLike` (an accepted Workers `WebSocket`, or a mock
  * of one in tests) into the `DuplexMessageStream` that
- * `@sudorandom/connect-bidi-core`'s `handleMuxedBidiSocket` bridges to
+ * `@sudorandom/connect-bidi-core`'s `handleMuxedBidiSocketDraft1` bridges to
  * Connect `UniversalHandler`s. Message boundaries are preserved, as the
  * muxed protocol requires: each message becomes exactly one readable
  * chunk, and each written chunk is sent as one WebSocket message.
@@ -115,6 +119,35 @@ export function wrapWebSocket(socket: BidiWebSocketLike): DuplexMessageStream {
     },
   };
 }
+
+/**
+ * The draft 4 counterpart of `wrapWebSocket`, for
+ * `handleMuxedBidiSocketDraft4`. Reading is identical -- both adapters
+ * already accept text and binary messages alike -- but writing carries the
+ * message type: draft 4 sends a frame as a text message whenever its
+ * payload is UTF-8, which is what makes the wire readable in devtools.
+ */
+export function wrapDraft4WebSocket(
+  socket: BidiWebSocketLike,
+): Draft4DuplexMessageStream {
+  const { readable, close } = wrapWebSocket(socket);
+  const writable = new WritableStream<Draft4OutgoingFrame>({
+    write(frame) {
+      // A text message must be sent as a string; Workers infers the opcode
+      // from the argument type, with no separate flag.
+      socket.send(frame.text ? decoder.decode(frame.data) : frame.data);
+    },
+    close() {
+      closeQuietly(socket);
+    },
+    abort() {
+      closeQuietly(socket);
+    },
+  });
+  return { readable, writable, close };
+}
+
+const decoder = new TextDecoder();
 
 /**
  * Closes the socket, tolerating a socket that is already closed: Workers

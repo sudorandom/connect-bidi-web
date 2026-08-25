@@ -23,6 +23,7 @@
       "/websocket-draft1",
       "/websocket-draft2",
       "/websocket-draft3",
+      "/websocket-draft4",
       "/connectbidi.eliza.v1.ElizaService/*"
     ]
   },

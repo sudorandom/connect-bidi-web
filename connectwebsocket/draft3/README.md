@@ -1,9 +1,9 @@
 # connectwebsocket/draft3
 
 Draft 3 of the WebSocket wire protocol. Drafts
-[1](../README.md) and [2](../draft2/README.md) coexist with it, each with
-its own constructors and default path (`/websocket-draft3`), so the
-designs can be compared.
+[1](../draft1/README.md), [2](../draft2/README.md), and
+[4](../draft4/README.md) coexist with it, each with its own constructors
+and default path (`/websocket-draft3`), so the designs can be compared.
 
 Draft 3 keeps draft 2's framing and adds one idea: **compression is an
 option of the protocol itself**, negotiated once per connection through
@@ -53,8 +53,11 @@ client := pingv1connect.NewPingServiceClient(connect.NewClient(transport))
 ```
 
 Compression is on by default (the client offers
-`connect.bidi.d3.deflate` first); `WithoutCompression()` makes the client
-offer only the identity subprotocol. The `Subprotocols` and
+`connect.bidi.d3.deflate` first, and the server selects it). Even then it
+is selective per frame: payloads under 512 bytes, and payloads deflate
+cannot shrink, are sent uncompressed. `WithoutCompression()` disables it
+entirely on whichever side it's applied to — the client stops offering
+the deflate subprotocol, the server stops selecting it. The `Subprotocols` and
 `CompressionMode` fields of custom dial/accept options are overridden:
 the subprotocols are the protocol's negotiation surface, and
 permessage-deflate is never used.

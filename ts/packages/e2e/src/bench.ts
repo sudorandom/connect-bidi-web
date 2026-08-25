@@ -26,6 +26,7 @@
 // Run with: npm run bench -w packages/e2e
 //
 
+import { writeFile } from "node:fs/promises";
 import * as http from "node:http";
 import type { Socket } from "node:net";
 import type { ServiceImpl } from "@connectrpc/connect";
@@ -34,12 +35,14 @@ import type { Transport } from "@connectrpc/connect";
 import {
   createBidiWebSocketDraft2Handler,
   createBidiWebSocketDraft3Handler,
-  createBidiWebSocketHandler,
+  createBidiWebSocketDraft4Handler,
+  createBidiWebSocketDraft1Handler,
 } from "@sudorandom/connect-bidi-node";
 import {
   createConnectWebSocketDraft2Transport,
   createConnectWebSocketDraft3Transport,
-  createConnectWebSocketTransport,
+  createConnectWebSocketDraft4Transport,
+  createConnectWebSocketDraft1Transport,
 } from "@sudorandom/connect-bidi-web";
 import { ElizaService } from "./gen/connectbidi/eliza/v1/eliza_pb.js";
 
@@ -87,7 +90,7 @@ interface BenchServer {
   close(): Promise<void>;
 }
 
-type Draft = "draft1" | "draft2" | "draft3";
+type Draft = "draft1" | "draft2" | "draft3" | "draft4";
 
 function startServer(
   draft: Draft,
@@ -111,12 +114,14 @@ function startServer(
     webSocketServerOptions: { perMessageDeflate },
   };
   if (draft === "draft1") {
-    createBidiWebSocketHandler(router, options).upgrade(server);
+    createBidiWebSocketDraft1Handler(router, options).upgrade(server);
   } else if (draft === "draft2") {
     createBidiWebSocketDraft2Handler(router, options).upgrade(server);
-  } else {
+  } else if (draft === "draft3") {
     // Draft 3 negotiates its own compression; perMessageDeflate is unused.
     createBidiWebSocketDraft3Handler(router, options).upgrade(server);
+  } else {
+    createBidiWebSocketDraft4Handler(router, options).upgrade(server);
   }
 
   return new Promise((resolve) => {
@@ -253,7 +258,8 @@ const cases: BenchCase[] = [
     name: "ws-draft1/identity",
     draft: "draft1",
     perMessageDeflate: false,
-    makeTransport: (baseUrl) => createConnectWebSocketTransport({ baseUrl }),
+    makeTransport: (baseUrl) =>
+      createConnectWebSocketDraft1Transport({ baseUrl }),
   },
   {
     // Draft 1 with the server offering permessage-deflate. The TS client
@@ -262,7 +268,8 @@ const cases: BenchCase[] = [
     name: "ws-draft1/deflate",
     draft: "draft1",
     perMessageDeflate: true,
-    makeTransport: (baseUrl) => createConnectWebSocketTransport({ baseUrl }),
+    makeTransport: (baseUrl) =>
+      createConnectWebSocketDraft1Transport({ baseUrl }),
   },
   {
     name: "ws-draft2/identity",
@@ -297,6 +304,39 @@ const cases: BenchCase[] = [
     perMessageDeflate: false,
     makeTransport: (baseUrl) =>
       createConnectWebSocketDraft3Transport({ baseUrl }),
+  },
+  {
+    // Draft 4 with JSON, the all-text configuration it is designed around:
+    // every frame on the connection is a readable text message. This case
+    // measures what that legibility costs against draft 2's binary framing.
+    name: "ws-draft4/json",
+    draft: "draft4",
+    perMessageDeflate: false,
+    makeTransport: (baseUrl) =>
+      createConnectWebSocketDraft4Transport({ baseUrl }),
+  },
+  {
+    // The same protocol with protobuf payloads. NOTE: every other case in
+    // this suite uses the JSON codec (the web transports' default), so this
+    // row differs from them in *codec as well as draft* -- it is not a
+    // framing comparison. Read it against ws-draft4/json to see what the
+    // codec costs; read ws-draft4/json against ws-draft2/identity to see
+    // what the framing costs.
+    name: "ws-draft4/proto",
+    draft: "draft4",
+    perMessageDeflate: false,
+    makeTransport: (baseUrl) =>
+      createConnectWebSocketDraft4Transport({
+        baseUrl,
+        useBinaryFormat: true,
+      }),
+  },
+  {
+    name: "ws-draft4/deflate",
+    draft: "draft4",
+    perMessageDeflate: true,
+    makeTransport: (baseUrl) =>
+      createConnectWebSocketDraft4Transport({ baseUrl }),
   },
 ];
 
@@ -344,6 +384,20 @@ async function main(): Promise<void> {
       transport.close();
       await server.close();
     }
+  }
+  // With --out <path>, write JSON for the demo site instead of a table.
+  const outIndex = process.argv.indexOf("--out");
+  if (outIndex !== -1 && process.argv[outIndex + 1] !== undefined) {
+    const payload = {
+      generatedAt: new Date().toISOString().slice(0, 10),
+      runtime: `Node ${process.versions.node}`,
+      rows: results,
+    };
+    await writeFile(
+      process.argv[outIndex + 1],
+      `${JSON.stringify(payload, null, 2)}\n`,
+    );
+    return;
   }
   console.log(
     "\nTS WebSocket transport benchmarks (client: connect-bidi-web over " +

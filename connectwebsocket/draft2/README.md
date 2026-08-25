@@ -1,7 +1,8 @@
 # connectwebsocket/draft2
 
-Draft 2 of the WebSocket wire protocol. Draft 1 lives in the parent
-[`connectwebsocket`](../README.md) package; the two are wire-incompatible
+Draft 2 of the WebSocket wire protocol. Drafts
+[1](../draft1/README.md), [3](../draft3/README.md), and
+[4](../draft4/README.md) sit alongside it; all four are wire-incompatible
 and coexist so their designs and implementations can be compared. Serve
 them on different paths.
 

@@ -18,21 +18,32 @@ import {
   handleMuxedBidiSocketDraft3,
 } from "@sudorandom/connect-bidi-core";
 import type { UniversalHandler } from "@connectrpc/connect/protocol";
-import type { CreateBidiWebSocketHandlerOptions } from "./bidi-websocket-handler.js";
-import { isWebSocketUpgrade } from "./bidi-websocket-handler.js";
+import type { CreateBidiWebSocketHandlerOptions } from "./bidi-websocket-handler-common.js";
+import { isWebSocketUpgrade } from "./bidi-websocket-handler-common.js";
 import { wrapWebSocket } from "./websocket-like.js";
 
+export interface CreateBidiWebSocketDraft3HandlerOptions
+  extends CreateBidiWebSocketHandlerOptions {
+  /**
+   * Restrict the server to the identity subprotocol (connect.bidi.d3), so
+   * no frame is ever compressed in either direction; clients that offer
+   * only the deflate token are then refused. By default the server
+   * selects connect.bidi.d3.deflate when the client offers it.
+   */
+  withoutCompression?: boolean;
+}
+
 /**
- * Selects the first draft 3 token from a comma-separated
+ * Selects the first supported token from a comma-separated
  * Sec-WebSocket-Protocol offer, in the client's preference order.
  */
-function selectSubprotocol(offer: string | null): string | undefined {
+function selectSubprotocol(
+  offer: string | null,
+  supported: string[],
+): string | undefined {
   for (const token of (offer ?? "").split(",")) {
     const trimmed = token.trim();
-    if (
-      trimmed === draft3SubprotocolDeflate ||
-      trimmed === draft3SubprotocolIdentity
-    ) {
+    if (supported.includes(trimmed)) {
       return trimmed;
     }
   }
@@ -53,14 +64,19 @@ function selectSubprotocol(offer: string | null): string | undefined {
  */
 export function createBidiWebSocketDraft3Handler(
   handlers: readonly UniversalHandler[],
-  options?: CreateBidiWebSocketHandlerOptions,
+  options?: CreateBidiWebSocketDraft3HandlerOptions,
 ): (request: Request) => Response | null {
+  const supported =
+    options?.withoutCompression === true
+      ? [draft3SubprotocolIdentity]
+      : [draft3SubprotocolDeflate, draft3SubprotocolIdentity];
   return function handleUpgrade(request: Request): Response | null {
     if (!isWebSocketUpgrade(request)) {
       return null;
     }
     const subprotocol = selectSubprotocol(
       request.headers.get("sec-websocket-protocol"),
+      supported,
     );
     if (subprotocol === undefined) {
       return new Response("missing draft 3 subprotocol", { status: 400 });

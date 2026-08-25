@@ -12,14 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-export {
-  createBidiWebSocketHandler,
-  defaultBidiWebSocketPath,
-} from "./create-bidi-websocket-handler.js";
 export type {
   BidiWebSocketHandler,
   BidiWebSocketHandlerOptions,
-} from "./create-bidi-websocket-handler.js";
+} from "./bidi-websocket-handler.js";
+export {
+  createBidiWebSocketDraft1Handler,
+  defaultBidiWebSocketDraft1Path,
+} from "./create-bidi-websocket-draft1-handler.js";
 export {
   createBidiWebSocketDraft2Handler,
   defaultBidiWebSocketDraft2Path,
@@ -28,4 +28,10 @@ export {
   createBidiWebSocketDraft3Handler,
   defaultBidiWebSocketDraft3Path,
 } from "./create-bidi-websocket-draft3-handler.js";
+export type { BidiWebSocketDraft3HandlerOptions } from "./create-bidi-websocket-draft3-handler.js";
+export {
+  createBidiWebSocketDraft4Handler,
+  defaultBidiWebSocketDraft4Path,
+} from "./create-bidi-websocket-draft4-handler.js";
 export { websocketToDuplexMessageStream } from "./websocket-duplex.js";
+export { websocketToDraft4DuplexMessageStream } from "./websocket-duplex-draft4.js";

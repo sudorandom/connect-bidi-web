@@ -1,0 +1,325 @@
+{
+  "generatedAt": "2026-08-25",
+  "cpu": "Apple M5 Pro",
+  "rows": [
+    {
+      "case": "ws-draft1/identity",
+      "workload": "unary_small",
+      "nsPerOp": 71969,
+      "rxBytesPerOp": 186,
+      "txBytesPerOp": 143
+    },
+    {
+      "case": "ws-draft1/identity",
+      "workload": "unary_16KiB_repetitive",
+      "nsPerOp": 107645,
+      "rxBytesPerOp": 16576,
+      "txBytesPerOp": 16533
+    },
+    {
+      "case": "ws-draft1/identity",
+      "workload": "unary_16KiB_random",
+      "nsPerOp": 84122,
+      "rxBytesPerOp": 16576,
+      "txBytesPerOp": 16533
+    },
+    {
+      "case": "ws-draft1/identity",
+      "workload": "bidi_100_roundtrips",
+      "nsPerOp": 3106945,
+      "nsPerRoundtrip": 31069,
+      "rxBytesPerOp": 3059,
+      "txBytesPerOp": 1911
+    },
+    {
+      "case": "ws-draft1/gzip",
+      "workload": "unary_small",
+      "nsPerOp": 79079,
+      "rxBytesPerOp": 283,
+      "txBytesPerOp": 205
+    },
+    {
+      "case": "ws-draft1/gzip",
+      "workload": "unary_16KiB_repetitive",
+      "nsPerOp": 176595,
+      "rxBytesPerOp": 396,
+      "txBytesPerOp": 318
+    },
+    {
+      "case": "ws-draft1/gzip",
+      "workload": "unary_16KiB_random",
+      "nsPerOp": 522780,
+      "rxBytesPerOp": 12635,
+      "txBytesPerOp": 12557
+    },
+    {
+      "case": "ws-draft1/gzip",
+      "workload": "bidi_100_roundtrips",
+      "nsPerOp": 5743552,
+      "nsPerRoundtrip": 57436,
+      "rxBytesPerOp": 5532,
+      "txBytesPerOp": 4349
+    },
+    {
+      "case": "ws-draft2/identity",
+      "workload": "unary_small",
+      "nsPerOp": 44095,
+      "rxBytesPerOp": 144,
+      "txBytesPerOp": 84
+    },
+    {
+      "case": "ws-draft2/identity",
+      "workload": "unary_16KiB_repetitive",
+      "nsPerOp": 91881,
+      "rxBytesPerOp": 16534,
+      "txBytesPerOp": 16474
+    },
+    {
+      "case": "ws-draft2/identity",
+      "workload": "unary_16KiB_random",
+      "nsPerOp": 89895,
+      "rxBytesPerOp": 16534,
+      "txBytesPerOp": 16474
+    },
+    {
+      "case": "ws-draft2/identity",
+      "workload": "bidi_100_roundtrips",
+      "nsPerOp": 2980065,
+      "nsPerRoundtrip": 29801,
+      "rxBytesPerOp": 1433,
+      "txBytesPerOp": 1060
+    },
+    {
+      "case": "ws-draft2/deflate",
+      "workload": "unary_small",
+      "nsPerOp": 46329,
+      "rxBytesPerOp": 144,
+      "txBytesPerOp": 84
+    },
+    {
+      "case": "ws-draft2/deflate",
+      "workload": "unary_16KiB_repetitive",
+      "nsPerOp": 122435,
+      "rxBytesPerOp": 321.2,
+      "txBytesPerOp": 261.2
+    },
+    {
+      "case": "ws-draft2/deflate",
+      "workload": "unary_16KiB_random",
+      "nsPerOp": 361177,
+      "rxBytesPerOp": 12499,
+      "txBytesPerOp": 12439
+    },
+    {
+      "case": "ws-draft2/deflate",
+      "workload": "bidi_100_roundtrips",
+      "nsPerOp": 2961249,
+      "nsPerRoundtrip": 29612,
+      "rxBytesPerOp": 1433,
+      "txBytesPerOp": 1060
+    },
+    {
+      "case": "ws-draft3/identity",
+      "workload": "unary_small",
+      "nsPerOp": 44832,
+      "rxBytesPerOp": 144,
+      "txBytesPerOp": 84
+    },
+    {
+      "case": "ws-draft3/identity",
+      "workload": "unary_16KiB_repetitive",
+      "nsPerOp": 99580,
+      "rxBytesPerOp": 16534,
+      "txBytesPerOp": 16474
+    },
+    {
+      "case": "ws-draft3/identity",
+      "workload": "unary_16KiB_random",
+      "nsPerOp": 92070,
+      "rxBytesPerOp": 16534,
+      "txBytesPerOp": 16474
+    },
+    {
+      "case": "ws-draft3/identity",
+      "workload": "bidi_100_roundtrips",
+      "nsPerOp": 2938555,
+      "nsPerRoundtrip": 29386,
+      "rxBytesPerOp": 1433,
+      "txBytesPerOp": 1060
+    },
+    {
+      "case": "ws-draft3/deflate",
+      "workload": "unary_small",
+      "nsPerOp": 45932,
+      "rxBytesPerOp": 144,
+      "txBytesPerOp": 84
+    },
+    {
+      "case": "ws-draft3/deflate",
+      "workload": "unary_16KiB_repetitive",
+      "nsPerOp": 161878,
+      "rxBytesPerOp": 261,
+      "txBytesPerOp": 201
+    },
+    {
+      "case": "ws-draft3/deflate",
+      "workload": "unary_16KiB_random",
+      "nsPerOp": 563645,
+      "rxBytesPerOp": 12502,
+      "txBytesPerOp": 12442
+    },
+    {
+      "case": "ws-draft3/deflate",
+      "workload": "bidi_100_roundtrips",
+      "nsPerOp": 2900963,
+      "nsPerRoundtrip": 29010,
+      "rxBytesPerOp": 1433,
+      "txBytesPerOp": 1060
+    },
+    {
+      "case": "ws-draft4/identity",
+      "workload": "unary_small",
+      "nsPerOp": 42941,
+      "rxBytesPerOp": 145.5,
+      "txBytesPerOp": 85.47
+    },
+    {
+      "case": "ws-draft4/identity",
+      "workload": "unary_16KiB_repetitive",
+      "nsPerOp": 99711,
+      "rxBytesPerOp": 16537,
+      "txBytesPerOp": 16477
+    },
+    {
+      "case": "ws-draft4/identity",
+      "workload": "unary_16KiB_random",
+      "nsPerOp": 100886,
+      "rxBytesPerOp": 16537,
+      "txBytesPerOp": 16477
+    },
+    {
+      "case": "ws-draft4/identity",
+      "workload": "bidi_100_roundtrips",
+      "nsPerOp": 3014411,
+      "nsPerRoundtrip": 30144,
+      "rxBytesPerOp": 1535,
+      "txBytesPerOp": 1162
+    },
+    {
+      "case": "ws-draft4/deflate",
+      "workload": "unary_small",
+      "nsPerOp": 42844,
+      "rxBytesPerOp": 145.5,
+      "txBytesPerOp": 85.47
+    },
+    {
+      "case": "ws-draft4/deflate",
+      "workload": "unary_16KiB_repetitive",
+      "nsPerOp": 124440,
+      "rxBytesPerOp": 326.8,
+      "txBytesPerOp": 266.8
+    },
+    {
+      "case": "ws-draft4/deflate",
+      "workload": "unary_16KiB_random",
+      "nsPerOp": 390034,
+      "rxBytesPerOp": 12500,
+      "txBytesPerOp": 12440
+    },
+    {
+      "case": "ws-draft4/deflate",
+      "workload": "bidi_100_roundtrips",
+      "nsPerOp": 4296907,
+      "nsPerRoundtrip": 42969,
+      "rxBytesPerOp": 1535,
+      "txBytesPerOp": 1162
+    },
+    {
+      "case": "ws-draft4/json",
+      "workload": "unary_small",
+      "nsPerOp": 63975,
+      "rxBytesPerOp": 157.5,
+      "txBytesPerOp": 97.47
+    },
+    {
+      "case": "ws-draft4/json",
+      "workload": "unary_16KiB_repetitive",
+      "nsPerOp": 208751,
+      "rxBytesPerOp": 16556,
+      "txBytesPerOp": 16496
+    },
+    {
+      "case": "ws-draft4/json",
+      "workload": "unary_16KiB_random",
+      "nsPerOp": 208774,
+      "rxBytesPerOp": 16556,
+      "txBytesPerOp": 16496
+    },
+    {
+      "case": "ws-draft4/json",
+      "workload": "bidi_100_roundtrips",
+      "nsPerOp": 3276901,
+      "nsPerRoundtrip": 32769,
+      "rxBytesPerOp": 2826,
+      "txBytesPerOp": 2216
+    },
+    {
+      "case": "webtransport/identity",
+      "workload": "unary_small",
+      "nsPerOp": 85715,
+      "rxBytesPerOp": 207.1,
+      "txBytesPerOp": 163.5
+    },
+    {
+      "case": "webtransport/identity",
+      "workload": "unary_16KiB_repetitive",
+      "nsPerOp": 358692,
+      "rxBytesPerOp": 17048,
+      "txBytesPerOp": 17006
+    },
+    {
+      "case": "webtransport/identity",
+      "workload": "unary_16KiB_random",
+      "nsPerOp": 331690,
+      "rxBytesPerOp": 17050,
+      "txBytesPerOp": 17000
+    },
+    {
+      "case": "webtransport/identity",
+      "workload": "bidi_100_roundtrips",
+      "nsPerOp": 4713108,
+      "nsPerRoundtrip": 47131,
+      "rxBytesPerOp": 4406,
+      "txBytesPerOp": 4065
+    },
+    {
+      "case": "webtransport/gzip",
+      "workload": "unary_small",
+      "nsPerOp": 105649,
+      "rxBytesPerOp": 300,
+      "txBytesPerOp": 240.5
+    },
+    {
+      "case": "webtransport/gzip",
+      "workload": "unary_16KiB_repetitive",
+      "nsPerOp": 189590,
+      "rxBytesPerOp": 419.2,
+      "txBytesPerOp": 372.7
+    },
+    {
+      "case": "webtransport/gzip",
+      "workload": "unary_16KiB_random",
+      "nsPerOp": 762895,
+      "rxBytesPerOp": 13004,
+      "txBytesPerOp": 12944
+    },
+    {
+      "case": "webtransport/gzip",
+      "workload": "bidi_100_roundtrips",
+      "nsPerOp": 7136938,
+      "nsPerRoundtrip": 71369,
+      "rxBytesPerOp": 6851,
+      "txBytesPerOp": 6475
+    }
+  ]
+}

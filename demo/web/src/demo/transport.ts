@@ -18,7 +18,8 @@ import {
   createCompositeTransport,
   createConnectWebSocketDraft2Transport,
   createConnectWebSocketDraft3Transport,
-  createConnectWebSocketTransport,
+  createConnectWebSocketDraft4Transport,
+  createConnectWebSocketDraft1Transport,
   createConnectWebTransportTransport,
   createFallbackTransport,
 } from "@sudorandom/connect-bidi-web";
@@ -30,7 +31,8 @@ export type StreamingTransportChoice =
   | "webtransport"
   | "websocket"
   | "websocket-draft2"
-  | "websocket-draft3";
+  | "websocket-draft3"
+  | "websocket-draft4";
 
 export interface DemoTransportOptions {
   /**
@@ -168,7 +170,24 @@ export function createDemoTransport(
     };
   }
 
-  const streaming = createConnectWebSocketTransport({
+  if (choice === "websocket-draft4") {
+    const streaming = createConnectWebSocketDraft4Transport({
+      baseUrl: serverUrl,
+      connectionPerStream,
+    });
+    return {
+      transport: createCompositeTransport(unary, streaming),
+      description:
+        "Draft 4 wire protocol: the frame head is ASCII text rather than " +
+        "packed bytes \u2014 \"7|1|{...}\", a stream ID and a flags field " +
+        "separated by pipes \u2014 and every frame here is a text WebSocket " +
+        "message. Open the Network tab, pick this connection, and read the " +
+        "conversation as it happens. " +
+        lanes,
+    };
+  }
+
+  const streaming = createConnectWebSocketDraft1Transport({
     baseUrl: serverUrl,
     connectionPerStream,
   });

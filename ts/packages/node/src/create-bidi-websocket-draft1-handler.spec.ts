@@ -40,9 +40,9 @@ import {
   PingService,
 } from "./gen/connectbidi/ping/v1/ping_pb.js";
 import {
-  createBidiWebSocketHandler,
-  defaultBidiWebSocketPath,
-} from "./create-bidi-websocket-handler.js";
+  createBidiWebSocketDraft1Handler,
+  defaultBidiWebSocketDraft1Path,
+} from "./create-bidi-websocket-draft1-handler.js";
 import { websocketToDuplexMessageStream } from "./websocket-duplex.js";
 
 // -- Test service implementation ---------------------------------------------
@@ -107,7 +107,7 @@ async function startServer(
     res.writeHead(200, { "content-type": "text/plain" });
     res.end("ok");
   });
-  createBidiWebSocketHandler(handlers).upgrade(server);
+  createBidiWebSocketDraft1Handler(handlers).upgrade(server);
   await new Promise<void>((resolve) => {
     server.listen(0, "127.0.0.1", resolve);
   });
@@ -133,7 +133,7 @@ async function startServer(
 
 async function connectClient(running: RunningServer): Promise<WebSocket> {
   const ws = new WebSocket(
-    `ws://127.0.0.1:${running.port}${defaultBidiWebSocketPath}`,
+    `ws://127.0.0.1:${running.port}${defaultBidiWebSocketDraft1Path}`,
   );
   await new Promise<void>((resolve, reject) => {
     ws.once("open", () => resolve());
@@ -287,7 +287,7 @@ function demuxResponses(
 
 // -- Tests ---------------------------------------------------------------------
 
-describe("createBidiWebSocketHandler()", () => {
+describe("createBidiWebSocketDraft1Handler()", () => {
   it("unary over a real WebSocket connection", async () => {
     const handlers = createTestHandlers();
     const handler = findHandler(handlers, "Ping");

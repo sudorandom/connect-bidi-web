@@ -66,10 +66,11 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		acceptOpts = &cloned
 	}
 	// Draft 3 negotiates its compression through these subprotocols, so
-	// they are not configurable, and the permessage-deflate extension is
-	// never accepted: with the deflate subprotocol it would compress
-	// twice, and without it the client asked for no compression at all.
-	acceptOpts.Subprotocols = []string{subprotocolDeflate, subprotocolIdentity}
+	// they are set by the handler (shaped only by WithoutCompression), and
+	// the permessage-deflate extension is never accepted: with the deflate
+	// subprotocol it would compress twice, and without it the client asked
+	// for no compression at all.
+	acceptOpts.Subprotocols = h.supportedSubprotocols()
 	acceptOpts.CompressionMode = websocket.CompressionDisabled
 	conn, err := websocket.Accept(w, r, acceptOpts)
 	if err != nil {
@@ -83,6 +84,15 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.serveConn(r.Context(), newCoderConn(conn), subprotocol == subprotocolDeflate, r.RemoteAddr)
+}
+
+// supportedSubprotocols lists the draft 3 tokens this handler selects
+// from, most preferred first.
+func (h *Handler) supportedSubprotocols() []string {
+	if h.opts.withoutCompression {
+		return []string{subprotocolIdentity}
+	}
+	return []string{subprotocolDeflate, subprotocolIdentity}
 }
 
 // serveConn runs the multiplexed read loop on one accepted connection,

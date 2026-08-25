@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package connectwebsocket_test
+package draft1_test
 
 import (
 	"context"
@@ -25,7 +25,7 @@ import (
 
 	"connectrpc.com/connect/v2"
 	"github.com/coder/websocket"
-	"github.com/sudorandom/connect-bidi-web/connectwebsocket"
+	"github.com/sudorandom/connect-bidi-web/connectwebsocket/draft1"
 	pingv1 "github.com/sudorandom/connect-bidi-web/internal/gen/connectbidi/ping/v1"
 	pingv1connect "github.com/sudorandom/connect-bidi-web/internal/gen/connectbidi/ping/v1/pingv1connect"
 )
@@ -86,7 +86,7 @@ func BenchmarkWebSocket(b *testing.B) {
 
 	srv := connect.NewServer()
 	pingv1connect.RegisterPingServiceHandler(srv, benchPingServer{})
-	wsHandler := connectwebsocket.NewHandler(srv, connectwebsocket.WithAcceptOptions(&websocket.AcceptOptions{
+	wsHandler := draft1.NewHandler(srv, draft1.WithAcceptOptions(&websocket.AcceptOptions{
 		InsecureSkipVerify: true,
 	}))
 
@@ -95,11 +95,11 @@ func BenchmarkWebSocket(b *testing.B) {
 
 	wsURL := "ws" + strings.TrimPrefix(server.URL, "http")
 	ctx := b.Context()
-	wsTransport := connectwebsocket.NewTransport(wsURL)
+	wsTransport := draft1.NewTransport(wsURL)
 	client := pingv1connect.NewPingServiceClient(connect.NewClient(wsTransport))
-	compressedTransport := connectwebsocket.NewTransport(
+	compressedTransport := draft1.NewTransport(
 		wsURL,
-		connectwebsocket.WithSendCompressor(connect.CompressionNameGzip),
+		draft1.WithSendCompressor(connect.CompressionNameGzip),
 	)
 	compressedClient := pingv1connect.NewPingServiceClient(connect.NewClient(compressedTransport))
 

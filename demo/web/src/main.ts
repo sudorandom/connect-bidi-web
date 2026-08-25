@@ -13,6 +13,7 @@
 // limitations under the License.
 
 import { createClient } from "@connectrpc/connect";
+import { renderBenchmarks } from "./demo/benchmarks.js";
 import { createChatView } from "./demo/chat-view.js";
 import { requireElement } from "./demo/dom.js";
 import { highlightCodeExamples } from "./demo/highlight.js";
@@ -42,7 +43,9 @@ function transportLabel(
       ? "WebSocket Draft 2"
       : choice === "websocket-draft3"
         ? "WebSocket Draft 3"
-        : "WebSocket Draft 1";
+        : choice === "websocket-draft4"
+          ? "WebSocket Draft 4"
+          : "WebSocket Draft 1";
   return connectionPerStream
     ? `${draft} (connection per RPC)`
     : `${draft} (multiplexed)`;
@@ -51,6 +54,7 @@ function transportLabel(
 /** Wires up the live demo: transport/server controls, tabs, and RPC views. */
 function main(): void {
   highlightCodeExamples();
+  renderBenchmarks();
 
   // Transport tabs on the code example sections (WebSocket is the default).
   initTabs([
@@ -160,6 +164,8 @@ function main(): void {
         return "websocket-draft2";
       case "websocket-draft3":
         return "websocket-draft3";
+      case "websocket-draft4":
+        return "websocket-draft4";
       default:
         return "websocket";
     }

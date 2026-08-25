@@ -38,9 +38,10 @@ import (
 	connect "connectrpc.com/connect/v2"
 	"github.com/quic-go/quic-go/http3"
 	"github.com/quic-go/webtransport-go"
-	"github.com/sudorandom/connect-bidi-web/connectwebsocket"
+	"github.com/sudorandom/connect-bidi-web/connectwebsocket/draft1"
 	"github.com/sudorandom/connect-bidi-web/connectwebsocket/draft2"
 	"github.com/sudorandom/connect-bidi-web/connectwebsocket/draft3"
+	"github.com/sudorandom/connect-bidi-web/connectwebsocket/draft4"
 	"github.com/sudorandom/connect-bidi-web/connectwebtransport"
 	pingv1 "github.com/sudorandom/connect-bidi-web/internal/gen/connectbidi/ping/v1"
 	pingv1connect "github.com/sudorandom/connect-bidi-web/internal/gen/connectbidi/ping/v1/pingv1connect"
@@ -160,11 +161,11 @@ func startWebSocketServer(b *testing.B, handler http.Handler) (string, *wireCoun
 	return "ws://" + listener.Addr().String(), counter
 }
 
-func setupDraft1(clientOpts ...connectwebsocket.Option) func(b *testing.B) (pingv1connect.PingServiceClient, *wireCounter) {
+func setupDraft1(clientOpts ...draft1.Option) func(b *testing.B) (pingv1connect.PingServiceClient, *wireCounter) {
 	return func(b *testing.B) (pingv1connect.PingServiceClient, *wireCounter) {
 		b.Helper()
-		url, counter := startWebSocketServer(b, connectwebsocket.NewHandler(newConnectServer()))
-		transport := connectwebsocket.NewTransport(url, clientOpts...)
+		url, counter := startWebSocketServer(b, draft1.NewHandler(newConnectServer()))
+		transport := draft1.NewTransport(url, clientOpts...)
 		return pingv1connect.NewPingServiceClient(connect.NewClient(transport)), counter
 	}
 }
@@ -194,6 +195,28 @@ func setupDraft3(compression bool) func(b *testing.B) (pingv1connect.PingService
 		}
 		url, counter := startWebSocketServer(b, draft3.NewHandler(newConnectServer()))
 		transport := draft3.NewTransport(url, clientOpts...)
+		return pingv1connect.NewPingServiceClient(connect.NewClient(transport)), counter
+	}
+}
+
+// setupDraft4 measures the cost of draft 4's ASCII frame head. The proto
+// codec keeps the payloads identical to the other drafts, so the wire-byte
+// difference is the head alone; setting json exercises the all-text
+// configuration draft 4 is designed around, where the payload grows too.
+func setupDraft4(compression bool, json bool) func(b *testing.B) (pingv1connect.PingServiceClient, *wireCounter) {
+	return func(b *testing.B) (pingv1connect.PingServiceClient, *wireCounter) {
+		b.Helper()
+		var serverOpts []draft4.Option
+		var clientOpts []draft4.Option
+		if !compression {
+			serverOpts = append(serverOpts, draft4.WithoutCompression())
+			clientOpts = append(clientOpts, draft4.WithoutCompression())
+		}
+		if json {
+			clientOpts = append(clientOpts, draft4.WithSendCodec(connect.CodecNameJSON))
+		}
+		url, counter := startWebSocketServer(b, draft4.NewHandler(newConnectServer(), serverOpts...))
+		transport := draft4.NewTransport(url, clientOpts...)
 		return pingv1connect.NewPingServiceClient(connect.NewClient(transport)), counter
 	}
 }
@@ -288,10 +311,10 @@ func BenchmarkTransports(b *testing.B) {
 		setup func(b *testing.B) (pingv1connect.PingServiceClient, *wireCounter)
 	}{
 		{name: "ws-draft1/identity", setup: setupDraft1(
-			connectwebsocket.WithAcceptCompression(),
+			draft1.WithAcceptCompression(),
 		)},
 		{name: "ws-draft1/gzip", setup: setupDraft1(
-			connectwebsocket.WithSendCompressor(connect.CompressionNameGzip),
+			draft1.WithSendCompressor(connect.CompressionNameGzip),
 		)},
 		{name: "ws-draft2/identity", setup: setupDraft2(false)},
 		{name: "ws-draft2/deflate", setup: setupDraft2(true)},
@@ -300,6 +323,13 @@ func BenchmarkTransports(b *testing.B) {
 		// threshold.
 		{name: "ws-draft3/identity", setup: setupDraft3(false)},
 		{name: "ws-draft3/deflate", setup: setupDraft3(true)},
+		// Draft 4: an ASCII frame head instead of five packed bytes, with
+		// compression back in permessage-deflate's hands. The json case is
+		// the all-text configuration the draft is designed around, and pays
+		// for legibility in the payload as well as the head.
+		{name: "ws-draft4/identity", setup: setupDraft4(false, false)},
+		{name: "ws-draft4/deflate", setup: setupDraft4(true, false)},
+		{name: "ws-draft4/json", setup: setupDraft4(false, true)},
 		// WebTransport wire bytes include QUIC and TLS overhead, unlike the
 		// plaintext TCP the WebSocket drafts run on here.
 		{name: "webtransport/identity", setup: setupWebTransport(

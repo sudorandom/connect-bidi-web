@@ -33,9 +33,10 @@ import (
 	"github.com/coder/websocket"
 	"github.com/quic-go/quic-go/http3"
 	"github.com/quic-go/webtransport-go"
-	"github.com/sudorandom/connect-bidi-web/connectwebsocket"
+	"github.com/sudorandom/connect-bidi-web/connectwebsocket/draft1"
 	"github.com/sudorandom/connect-bidi-web/connectwebsocket/draft2"
 	"github.com/sudorandom/connect-bidi-web/connectwebsocket/draft3"
+	"github.com/sudorandom/connect-bidi-web/connectwebsocket/draft4"
 	"github.com/sudorandom/connect-bidi-web/connectwebtransport"
 	elizav1 "github.com/sudorandom/connect-bidi-web/internal/gen/connectbidi/eliza/v1"
 	"github.com/sudorandom/connect-bidi-web/internal/gen/connectbidi/eliza/v1/elizav1connect"
@@ -90,6 +91,19 @@ func (elizaServer) Introduce(ctx context.Context, req *elizav1.IntroduceRequest,
 	return nil
 }
 
+// displayURL renders a listen address as a clickable https URL,
+// substituting localhost for wildcard or empty hosts.
+func displayURL(addr string) string {
+	host, port, err := net.SplitHostPort(addr)
+	if err != nil {
+		return "https://localhost" + addr
+	}
+	if host == "" || host == "0.0.0.0" || host == "::" {
+		host = "localhost"
+	}
+	return "https://" + net.JoinHostPort(host, port)
+}
+
 func main() {
 	certFile := flag.String("cert", "localhost.pem", "TLS certificate file (create with mkcert localhost)")
 	keyFile := flag.String("key", "localhost-key.pem", "TLS key file")
@@ -106,7 +120,7 @@ func main() {
 	connectServer := connect.NewServer()
 	elizav1connect.RegisterElizaServiceHandler(connectServer, elizaServer{})
 	webtransportHandler := connectwebtransport.NewHandler(connectServer)
-	websocketHandler := connectwebsocket.NewHandler(connectServer, connectwebsocket.WithAcceptOptions(&websocket.AcceptOptions{
+	websocketHandler := draft1.NewHandler(connectServer, draft1.WithAcceptOptions(&websocket.AcceptOptions{
 		InsecureSkipVerify: true,
 	}))
 	// Draft 2 of the WebSocket wire protocol, on its own path.
@@ -118,6 +132,15 @@ func main() {
 	websocketDraft3Handler := draft3.NewHandler(connectServer, draft3.WithAcceptOptions(&websocket.AcceptOptions{
 		InsecureSkipVerify: true,
 	}))
+	// Draft 4's ASCII frame head is meant to be read, so this endpoint
+	// declines permessage-deflate: the browser's Network tab shows the
+	// frames as text rather than as compressed blobs.
+	websocketDraft4Handler := draft4.NewHandler(connectServer,
+		draft4.WithoutCompression(),
+		draft4.WithAcceptOptions(&websocket.AcceptOptions{
+			InsecureSkipVerify: true,
+		}),
+	)
 
 	// 2. One mux serves Connect over HTTP, the WebSocket endpoint, and the
 	// static demo site.
@@ -126,6 +149,7 @@ func main() {
 	mux.Handle("/websocket-draft1", websocketHandler)
 	mux.Handle("/websocket-draft2", websocketDraft2Handler)
 	mux.Handle("/websocket-draft3", websocketDraft3Handler)
+	mux.Handle("/websocket-draft4", websocketDraft4Handler)
 	// The demo UI probes this endpoint to decide whether to offer the
 	// WebTransport option; this server terminates HTTP/3, so it does.
 	mux.HandleFunc("/capabilities.json", func(w http.ResponseWriter, _ *http.Request) {
@@ -165,7 +189,6 @@ func main() {
 	mux.Handle("/webtransport", webtransportHandler.UpgradeHandler(wtServer))
 
 	go func() {
-		log.Printf("UDP WebTransport/H3 server listening on https://localhost%s/webtransport", *addr)
 		udpAddr, err := net.ResolveUDPAddr("udp", *addr)
 		if err != nil {
 			log.Fatalf("failed to resolve UDP: %v", err)
@@ -174,6 +197,7 @@ func main() {
 		if err != nil {
 			log.Fatalf("failed to listen UDP: %v", err)
 		}
+		log.Printf("HTTP/3 (UDP) server listening on %s; WebTransport sessions at %s/webtransport", conn.LocalAddr(), displayURL(*addr))
 		if err := wtServer.Serve(conn); err != nil {
 			log.Fatalf("WebTransport server failed: %v", err)
 		}
@@ -187,7 +211,7 @@ func main() {
 		})
 	}
 
-	log.Printf("TCP HTTP/2 frontend server listening on https://localhost%s", *addr)
+	log.Printf("TCP HTTP/1.1+HTTP/2 frontend server listening on %s", displayURL(*addr))
 	server := &http.Server{
 		Addr:              *addr,
 		Handler:           withH3Headers(corsHandler),

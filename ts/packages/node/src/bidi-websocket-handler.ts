@@ -12,29 +12,21 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+// The pieces every draft's Node handler shares: the handler shape, its
+// options, and two small helpers. Each draft's own module supplies the
+// default path and the core bridge that speaks its wire protocol.
+
 import type * as http from "node:http";
 import type * as https from "node:https";
 import type { ConnectRouter, ContextValues } from "@connectrpc/connect";
 import type { UniversalHandler } from "@connectrpc/connect/protocol";
-import { handleMuxedBidiSocket } from "@sudorandom/connect-bidi-core";
 import type { ServerOptions, WebSocket } from "ws";
-import { WebSocketServer } from "ws";
-import { websocketToDuplexMessageStream } from "./websocket-duplex.js";
-
-/**
- * The path draft 1 WebSocket upgrades are accepted on by default, when
- * using `BidiWebSocketHandler.upgrade()`. Matches the path used by
- * `@sudorandom/connect-bidi-web`'s draft 1 client transport and the Go
- * connectwebsocket server. Distinct from draft 2's "/websocket-draft2":
- * the two wire protocols are incompatible, so each connection must reach
- * the handler that speaks its draft.
- */
-export const defaultBidiWebSocketPath = "/websocket-draft1";
 
 export interface BidiWebSocketHandlerOptions {
   /**
    * The path to accept WebSocket upgrades on when using `upgrade()`.
-   * Defaults to "/websocket-draft1". Has no effect on `handleConnection()`.
+   * Defaults to the draft's own path, e.g. "/websocket-draft1". Has no
+   * effect on `handleConnection()`.
    */
   path?: string;
 
@@ -64,9 +56,9 @@ export interface BidiWebSocketHandler {
   /**
    * Subscribes to `server`'s `'upgrade'` event and accepts WebSocket
    * upgrade requests whose path matches `path` (or the handler's
-   * configured `path`, default "/websocket-draft1"), serving any number of
-   * concurrent RPCs per accepted connection, demultiplexed by the stream
-   * ID on every frame. Upgrade requests for other paths are left
+   * configured `path`, defaulting to the draft's own), serving any number
+   * of concurrent RPCs per accepted connection, demultiplexed by the
+   * stream ID on every frame. Upgrade requests for other paths are left
    * untouched, so multiple `BidiWebSocketHandler`s -- or other `'upgrade'`
    * listeners -- can share the same `http.Server`. Ordinary HTTP requests
    * (the `'request'` event) are entirely unaffected.
@@ -80,55 +72,6 @@ export interface BidiWebSocketHandler {
    * `ws.WebSocketServer`.
    */
   handleConnection(ws: WebSocket): Promise<void>;
-}
-
-/**
- * Creates a handler that bridges `ws` WebSocket connections to Connect
- * RPCs, using `@sudorandom/connect-bidi-core`'s `handleMuxedBidiSocket`.
- * Accepts either a `ConnectRouter` (as returned by `createConnectRouter()`)
- * or a plain `UniversalHandler[]` array (`router.handlers`).
- */
-export function createBidiWebSocketHandler(
-  routerOrHandlers: ConnectRouter | readonly UniversalHandler[],
-  options?: BidiWebSocketHandlerOptions,
-): BidiWebSocketHandler {
-  const handlers = isConnectRouter(routerOrHandlers)
-    ? routerOrHandlers.handlers
-    : routerOrHandlers;
-
-  async function handleConnection(ws: WebSocket): Promise<void> {
-    const socket = websocketToDuplexMessageStream(ws);
-    await handleMuxedBidiSocket(socket, handlers, {
-      contextValues: options?.contextValues,
-      idleTimeoutMs: options?.idleTimeoutMs,
-    });
-  }
-
-  return {
-    handleConnection,
-    upgrade(server, path = options?.path ?? defaultBidiWebSocketPath) {
-      const wss = new WebSocketServer({
-        ...options?.webSocketServerOptions,
-        noServer: true,
-      });
-      server.on("upgrade", (request, socket, head) => {
-        const requestPath = getPathname(request.url);
-        if (requestPath !== path) {
-          // Not ours: leave the upgrade request for another listener.
-          return;
-        }
-        wss.handleUpgrade(request, socket, head, (ws) => {
-          // handleMuxedBidiSocket already reports RPC-level failures to the
-          // client via an error end-stream envelope; a rejection here means
-          // the connection itself failed in some more fundamental way, and
-          // there is nothing left to do but let it close.
-          handleConnection(ws).catch(() => {
-            // Intentionally ignored; see above.
-          });
-        });
-      });
-    },
-  };
 }
 
 export function isConnectRouter(

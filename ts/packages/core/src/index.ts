@@ -17,11 +17,11 @@ export type {
   DuplexByteStream,
   HandleBidiSocketOptions,
 } from "./handle-bidi-socket.js";
-export { handleMuxedBidiSocket } from "./handle-muxed-bidi-socket.js";
 export type {
   DuplexMessageStream,
   HandleMuxedBidiSocketOptions,
-} from "./handle-muxed-bidi-socket.js";
+} from "./muxed-bidi-socket.js";
+export { handleMuxedBidiSocketDraft1 } from "./handle-muxed-bidi-socket-draft1.js";
 export { handleMuxedBidiSocketDraft2 } from "./handle-muxed-bidi-socket-draft2.js";
 export { handleMuxedBidiSocketDraft3 } from "./handle-muxed-bidi-socket-draft3.js";
 export type { HandleMuxedBidiSocketDraft3Options } from "./handle-muxed-bidi-socket-draft3.js";
@@ -29,3 +29,20 @@ export {
   draft3SubprotocolDeflate,
   draft3SubprotocolIdentity,
 } from "./wire-draft3.js";
+export { handleMuxedBidiSocketDraft4 } from "./handle-muxed-bidi-socket-draft4.js";
+export type {
+  Draft4DuplexMessageStream,
+  Draft4OutgoingFrame,
+  Draft4StreamFrame,
+} from "./wire-draft4.js";
+export {
+  decodeDraft4StreamFrame,
+  draft4FrameFlagsMask,
+  draft4FrameTypeData,
+  draft4FrameTypeEndStream,
+  draft4FrameTypeHeaders,
+  draft4FrameTypeMask,
+  draft4FrameTypeOf,
+  draft4FrameTypeReset,
+  encodeDraft4StreamFrame,
+} from "./wire-draft4.js";

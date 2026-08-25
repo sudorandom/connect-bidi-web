@@ -25,7 +25,8 @@ import { createFetchHandler } from "@connectrpc/connect/protocol";
 import {
   createBidiWebSocketDraft2Handler,
   createBidiWebSocketDraft3Handler,
-  createBidiWebSocketHandler,
+  createBidiWebSocketDraft4Handler,
+  createBidiWebSocketDraft1Handler,
 } from "@sudorandom/connect-bidi-cloudflare";
 import { ElizaService } from "./gen/connectbidi/eliza/v1/eliza_pb.js";
 
@@ -77,7 +78,7 @@ const webSocketUpgradeHandlers: Record<
   string,
   (request: Request) => Response | null
 > = {
-  "/websocket-draft1": createBidiWebSocketHandler(
+  "/websocket-draft1": createBidiWebSocketDraft1Handler(
     router.handlers,
     bidiSocketOptions,
   ),
@@ -86,6 +87,10 @@ const webSocketUpgradeHandlers: Record<
     bidiSocketOptions,
   ),
   "/websocket-draft3": createBidiWebSocketDraft3Handler(
+    router.handlers,
+    bidiSocketOptions,
+  ),
+  "/websocket-draft4": createBidiWebSocketDraft4Handler(
     router.handlers,
     bidiSocketOptions,
   ),

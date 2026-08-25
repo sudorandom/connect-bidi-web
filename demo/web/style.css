@@ -491,6 +491,9 @@ h3 {
   text-align: left;
   padding: 0.3rem 0;
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  /* The meaning column carries prose now; wrap it instead of widening
+     the card. */
+  max-width: 34ch;
 }
 
 .flag-table td:first-child {
@@ -1109,6 +1112,48 @@ a.badge:hover {
     order: 4;
     flex-basis: 100%;
   }
+}
+
+/* Benchmarks */
+.bench-meta {
+  margin: 0.25rem 0 0.9rem;
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  max-width: 720px;
+}
+
+#benchmarks h3 {
+  margin: 1.75rem 0 0.25rem;
+}
+
+.bench-table-scroll {
+  margin-bottom: 1.5rem;
+}
+
+#benchmarks h4 {
+  margin: 1.25rem 0 0.5rem;
+  font-size: 0.95rem;
+}
+
+.bench-table {
+  min-width: 520px;
+}
+
+/* The winning value in each metric column. */
+.bench-best {
+  color: var(--accent-secondary);
+  font-weight: 650;
+}
+
+/* Seam between the identity rows and the compressed rows. */
+.bench-table tr.bench-variant-start td {
+  border-top: 2px solid var(--border-color);
+}
+
+.bench-table-scroll .support-table td,
+.bench-table-scroll .support-table th {
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
 }
 
 /* Support matrix */

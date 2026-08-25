@@ -54,7 +54,7 @@ const streamIdLength = 4;
  * A connect-es Transport carrying streaming RPCs over WebSocket, plus
  * control over the shared multiplexed connection.
  */
-export interface ConnectWebSocketTransport extends Transport {
+export interface ConnectWebSocketDraft1Transport extends Transport {
   /**
    * Closes the shared multiplexed connection, if one is open, terminating
    * any RPCs still running on it. The transport remains usable: the next
@@ -64,7 +64,7 @@ export interface ConnectWebSocketTransport extends Transport {
   close(): void;
 }
 
-export interface ConnectWebSocketTransportOptions {
+export interface ConnectWebSocketDraft1TransportOptions {
   baseUrl: string;
   useBinaryFormat?: boolean;
   interceptors?: Interceptor[];
@@ -301,9 +301,9 @@ function prefixStreamId(
   return frame;
 }
 
-export function createConnectWebSocketTransport(
-  options: ConnectWebSocketTransportOptions,
-): ConnectWebSocketTransport {
+export function createConnectWebSocketDraft1Transport(
+  options: ConnectWebSocketDraft1TransportOptions,
+): ConnectWebSocketDraft1Transport {
   const useBinaryFormat = options.useBinaryFormat ?? false;
   const url = new URL("/websocket-draft1", options.baseUrl);
   url.protocol = url.protocol === "https:" ? "wss:" : "ws:";

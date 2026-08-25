@@ -20,7 +20,7 @@ import { handleBidiSocket } from "./handle-bidi-socket.js";
 import type {
   DuplexMessageStream,
   HandleMuxedBidiSocketOptions,
-} from "./handle-muxed-bidi-socket.js";
+} from "./muxed-bidi-socket.js";
 import { flagEnvelopeData, flagEnvelopeHeaders } from "./wire.js";
 import type { Draft2StreamFrame } from "./wire-draft2.js";
 import {
@@ -95,7 +95,7 @@ function frameTypeForEnvelopeFlag(flag: number): number {
  * Bridges a multiplexed bidi connection (a WebSocket) speaking draft 2 of
  * the wire protocol to UniversalHandlers from `@connectrpc/connect`. Use
  * `createConnectRouter(...).handlers` to obtain the handlers array. The
- * draft 1 equivalent is `handleMuxedBidiSocket`; the two wire protocols are
+ * draft 1 equivalent is `handleMuxedBidiSocketDraft1`; the two wire protocols are
  * incompatible, so a connection must be served by the matching bridge.
  *
  * Every message on the wire is a 4-byte big-endian stream ID, a 1-byte

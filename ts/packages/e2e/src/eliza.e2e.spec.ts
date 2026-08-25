@@ -41,18 +41,21 @@ import { createConnectTransport } from "@connectrpc/connect-web";
 import {
   createBidiWebSocketDraft2Handler,
   createBidiWebSocketDraft3Handler,
-  createBidiWebSocketHandler,
+  createBidiWebSocketDraft4Handler,
+  createBidiWebSocketDraft1Handler,
 } from "@sudorandom/connect-bidi-node";
 import type {
   ConnectWebSocketDraft2Transport,
   ConnectWebSocketDraft3Transport,
-  ConnectWebSocketTransport,
+  ConnectWebSocketDraft4Transport,
+  ConnectWebSocketDraft1Transport,
 } from "@sudorandom/connect-bidi-web";
 import {
   createCompositeTransport,
   createConnectWebSocketDraft2Transport,
   createConnectWebSocketDraft3Transport,
-  createConnectWebSocketTransport,
+  createConnectWebSocketDraft4Transport,
+  createConnectWebSocketDraft1Transport,
 } from "@sudorandom/connect-bidi-web";
 import type { ConverseRequestSchema } from "./gen/connectbidi/eliza/v1/eliza_pb.js";
 import { ElizaService } from "./gen/connectbidi/eliza/v1/eliza_pb.js";
@@ -157,7 +160,7 @@ const elizaImpl: ServiceImpl<typeof ElizaService> = {
 
 describe("TS WebSocket client <-> TS Node server", () => {
   let server: http.Server;
-  let transport: ConnectWebSocketTransport;
+  let transport: ConnectWebSocketDraft1Transport;
   let client: ElizaClient;
   let upgrades = 0;
 
@@ -171,14 +174,14 @@ describe("TS WebSocket client <-> TS Node server", () => {
     server.on("upgrade", () => {
       upgrades++;
     });
-    createBidiWebSocketHandler(router).upgrade(server);
+    createBidiWebSocketDraft1Handler(router).upgrade(server);
     await new Promise<void>((resolve) => {
       server.listen(0, "127.0.0.1", resolve);
     });
     const address = server.address();
     const port =
       typeof address === "object" && address !== null ? address.port : 0;
-    transport = createConnectWebSocketTransport({
+    transport = createConnectWebSocketDraft1Transport({
       baseUrl: `http://127.0.0.1:${port}`,
     });
     client = createClient(ElizaService, transport);
@@ -377,14 +380,14 @@ describe("TS composite client <-> Go server", {
   skip: goAvailable ? false : "go not found in PATH",
 }, () => {
   let goServer: GoServer;
-  let wsTransport: ConnectWebSocketTransport;
+  let wsTransport: ConnectWebSocketDraft1Transport;
   let client: ElizaClient;
 
   before(async () => {
     goServer = await startGoServer();
     // Unary over plain Connect HTTP, streams over WebSocket — the
     // recommended production setup from the README.
-    wsTransport = createConnectWebSocketTransport({
+    wsTransport = createConnectWebSocketDraft1Transport({
       baseUrl: goServer.baseUrl,
     });
     client = createClient(
@@ -435,6 +438,53 @@ describe("TS Draft2 WebSocket client <-> Go server", {
   exerciseStreams(() => client);
 });
 
+// Draft 4 client against the TS Node draft 4 server, both in-process: the
+// all-text default, where every frame on the wire is readable.
+describe("TS Draft4 WebSocket client <-> TS Node server", () => {
+  let server: http.Server;
+  let transport: ConnectWebSocketDraft4Transport;
+  let client: ElizaClient;
+  let upgrades = 0;
+
+  before(async () => {
+    const router = createConnectRouter();
+    router.service(ElizaService, elizaImpl);
+    server = http.createServer((_req, res) => {
+      res.writeHead(404);
+      res.end();
+    });
+    server.on("upgrade", () => {
+      upgrades++;
+    });
+    createBidiWebSocketDraft4Handler(router).upgrade(server);
+    await new Promise<void>((resolve) => {
+      server.listen(0, "127.0.0.1", resolve);
+    });
+    const address = server.address();
+    const port =
+      typeof address === "object" && address !== null ? address.port : 0;
+    transport = createConnectWebSocketDraft4Transport({
+      baseUrl: `http://127.0.0.1:${port}`,
+    });
+    client = createClient(ElizaService, transport);
+  });
+
+  after(
+    () =>
+      new Promise<void>((resolve, reject) => {
+        assert.strictEqual(
+          upgrades,
+          1,
+          `expected all RPCs to share one connection, saw ${upgrades} upgrades`,
+        );
+        transport.close();
+        server.close((err) => (err ? reject(err) : resolve()));
+      }),
+  );
+
+  exerciseStreams(() => client);
+});
+
 describe("TS Draft3 WebSocket client <-> Go server", {
   skip: goAvailable ? false : "go not found in PATH",
 }, () => {
@@ -446,6 +496,59 @@ describe("TS Draft3 WebSocket client <-> Go server", {
     goServer = await startGoServer();
     wsTransport = createConnectWebSocketDraft3Transport({
       baseUrl: goServer.baseUrl,
+    });
+    client = createClient(ElizaService, wsTransport);
+  });
+
+  after(async () => {
+    wsTransport.close();
+    await goServer.stop();
+  });
+
+  exerciseStreams(() => client);
+});
+
+// Draft 4 across languages: the ASCII frame head has to be parsed
+// identically by both sides, and each side has to accept whichever
+// WebSocket message type the other chose to send.
+describe("TS Draft4 WebSocket client <-> Go server", {
+  skip: goAvailable ? false : "go not found in PATH",
+}, () => {
+  let goServer: GoServer;
+  let wsTransport: ConnectWebSocketDraft4Transport;
+  let client: ElizaClient;
+
+  before(async () => {
+    goServer = await startGoServer();
+    wsTransport = createConnectWebSocketDraft4Transport({
+      baseUrl: goServer.baseUrl,
+    });
+    client = createClient(ElizaService, wsTransport);
+  });
+
+  after(async () => {
+    wsTransport.close();
+    await goServer.stop();
+  });
+
+  exerciseStreams(() => client);
+});
+
+// The same, with protobuf payloads: the client then sends binary data
+// frames and text control frames on one connection, so both sides have to
+// handle a mixed-opcode stream.
+describe("TS Draft4 proto WebSocket client <-> Go server", {
+  skip: goAvailable ? false : "go not found in PATH",
+}, () => {
+  let goServer: GoServer;
+  let wsTransport: ConnectWebSocketDraft4Transport;
+  let client: ElizaClient;
+
+  before(async () => {
+    goServer = await startGoServer();
+    wsTransport = createConnectWebSocketDraft4Transport({
+      baseUrl: goServer.baseUrl,
+      useBinaryFormat: true,
     });
     client = createClient(ElizaService, wsTransport);
   });

@@ -522,6 +522,43 @@ func TestWebSocketDraft3SubprotocolNegotiation(t *testing.T) {
 	}
 }
 
+// TestWebSocketDraft3ServerWithoutCompression verifies a server built
+// with WithoutCompression selects the identity subprotocol even when the
+// client prefers deflate, and still serves RPCs.
+func TestWebSocketDraft3ServerWithoutCompression(t *testing.T) {
+	connectServer := connect.NewServer()
+	pingv1connect.RegisterPingServiceHandler(connectServer, testPingServer{})
+	server := httptest.NewServer(draft3.NewHandler(connectServer, draft3.WithoutCompression()))
+	t.Cleanup(server.Close)
+	wsURL := "ws" + strings.TrimPrefix(server.URL, "http")
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	conn, _, err := websocket.Dial(ctx, wsURL, &websocket.DialOptions{ //nolint:bodyclose // coder/websocket closes the handshake response body itself
+		Subprotocols: []string{"connect.bidi.d3.deflate", "connect.bidi.d3"},
+	})
+	if err != nil {
+		t.Fatalf("dial failed: %v", err)
+	}
+	defer func() {
+		_ = conn.Close(websocket.StatusNormalClosure, "")
+	}()
+	if got, want := conn.Subprotocol(), "connect.bidi.d3"; got != want {
+		t.Fatalf("negotiated subprotocol = %q, want %q (server declines deflate)", got, want)
+	}
+
+	// A default client against the same server still completes RPCs, just
+	// uncompressed.
+	client := pingv1connect.NewPingServiceClient(connect.NewClient(draft3.NewTransport(wsURL)))
+	resp, err := client.Ping(context.Background(), &pingv1.PingRequest{Number: 7, Text: "plain"})
+	if err != nil {
+		t.Fatalf("Ping failed: %v", err)
+	}
+	if resp.GetText() != "plain" {
+		t.Errorf("unexpected response: %+v", resp)
+	}
+}
+
 // TestWebSocketDraft3RejectsMissingSubprotocol verifies a client that
 // offers no draft 3 token is closed instead of served.
 func TestWebSocketDraft3RejectsMissingSubprotocol(t *testing.T) {

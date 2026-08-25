@@ -14,50 +14,17 @@
 
 import { Code, ConnectError } from "@connectrpc/connect";
 import type { UniversalHandler } from "@connectrpc/connect/protocol";
-import type { HandleBidiSocketOptions } from "./handle-bidi-socket.js";
 import { handleBidiSocket } from "./handle-bidi-socket.js";
-import type { StreamFrame } from "./wire.js";
+import type {
+  DuplexMessageStream,
+  HandleMuxedBidiSocketOptions,
+} from "./muxed-bidi-socket.js";
+import type { Draft1StreamFrame } from "./wire-draft1.js";
 import {
-  decodeStreamFrame,
-  encodeStreamFrame,
-  flagEnvelopeHeaders,
-  flagEnvelopeReset,
-} from "./wire.js";
-
-/**
- * A full-duplex, message-oriented connection carrying any number of
- * multiplexed RPC streams -- in practice, a WebSocket. Unlike
- * DuplexByteStream, message boundaries are significant: the readable must
- * yield exactly one WebSocket message per chunk, and every chunk written to
- * the writable must be sent as one WebSocket message, because each message
- * begins with the stream ID it belongs to.
- */
-export interface DuplexMessageStream {
-  readonly readable: ReadableStream<Uint8Array>;
-  readonly writable: WritableStream<Uint8Array>;
-  /**
-   * Close the underlying connection, optionally with a WebSocket close
-   * code and reason the peer can surface to its callers. Called once the
-   * connection's read side has ended and every in-flight RPC has
-   * finished, and eagerly (with a reason) when an idle timeout fires.
-   */
-  close?: (code?: number, reason?: string) => void;
-}
-
-export interface HandleMuxedBidiSocketOptions extends HandleBidiSocketOptions {
-  /**
-   * Tears the connection down after this many milliseconds without an
-   * incoming frame: in-flight RPCs are aborted and the socket is closed.
-   *
-   * Recommended on pay-per-use runtimes such as Cloudflare Workers, where
-   * an idle connection otherwise pins a live invocation until the platform
-   * reaps it (and logs the request as hung). Streams that are actively
-   * receiving are kept alive by their own traffic; only a fully quiet peer
-   * is disconnected. Well-behaved clients dial a fresh connection on their
-   * next RPC.
-   */
-  idleTimeoutMs?: number;
-}
+  decodeDraft1StreamFrame,
+  encodeDraft1StreamFrame,
+} from "./wire-draft1.js";
+import { flagEnvelopeHeaders, flagEnvelopeReset } from "./wire.js";
 
 interface StreamEntry {
   /** Feeds incoming envelopes to the stream's handleBidiSocket. */
@@ -72,21 +39,21 @@ interface StreamEntry {
 const idle = Symbol("idle");
 
 /**
- * Bridges a multiplexed bidi connection (a WebSocket) to UniversalHandlers
- * from `@connectrpc/connect`. Use `createConnectRouter(...).handlers` to
- * obtain the handlers array.
+ * Bridges a multiplexed draft 1 bidi connection (a WebSocket) to
+ * UniversalHandlers from `@connectrpc/connect`. Use
+ * `createConnectRouter(...).handlers` to obtain the handlers array.
  *
  * Every message on the wire is a 4-byte big-endian stream ID followed by
- * one Connect envelope, matching `@sudorandom/connect-bidi-web`'s client
- * transports byte-for-byte. A headers envelope (flag 0x06) with an unknown
- * stream ID starts a new RPC; a reset envelope (flag 0x07) cancels an
- * in-flight one; frames for finished streams are dropped. Any number of
+ * one Connect envelope, matching `@sudorandom/connect-bidi-web`'s draft 1
+ * client transport byte-for-byte. A headers envelope (flag 0x06) with an
+ * unknown stream ID starts a new RPC; a reset envelope (flag 0x07) cancels
+ * an in-flight one; frames for finished streams are dropped. Any number of
  * RPCs run concurrently on one connection.
  *
  * The returned promise settles once the connection's read side has ended
  * and every RPC started on it has finished.
  */
-export async function handleMuxedBidiSocket(
+export async function handleMuxedBidiSocketDraft1(
   socket: DuplexMessageStream,
   handlers: readonly UniversalHandler[],
   options?: HandleMuxedBidiSocketOptions,
@@ -148,7 +115,7 @@ export async function handleMuxedBidiSocket(
             new ConnectError("stream reset by client", Code.Canceled),
           );
         }
-        return writer.write(encodeStreamFrame(streamId, chunk));
+        return writer.write(encodeDraft1StreamFrame(streamId, chunk));
       },
     });
     entry.controller.enqueue(headersEnvelope);
@@ -214,9 +181,9 @@ export async function handleMuxedBidiSocket(
       if (result.done) {
         return;
       }
-      let frame: StreamFrame;
+      let frame: Draft1StreamFrame;
       try {
-        frame = decodeStreamFrame(result.value);
+        frame = decodeDraft1StreamFrame(result.value);
       } catch {
         // Malformed frame: the connection is unusable as a whole, since
         // framing has been lost. Stop serving it.

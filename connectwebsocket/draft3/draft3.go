@@ -62,7 +62,8 @@ type transportOptions struct {
 type serverOptions struct {
 	protocolOptions
 
-	acceptOptions *websocket.AcceptOptions
+	acceptOptions      *websocket.AcceptOptions
+	withoutCompression bool
 }
 
 type optionFunc func(*transportOptions, *serverOptions)
@@ -134,15 +135,20 @@ func WithDialOptions(dialOpts *websocket.DialOptions) Option {
 	})
 }
 
-// WithoutCompression makes the client offer only the identity subprotocol
-// (connect.bidi.d3), so no frame is ever compressed in either direction.
-// The default offers connect.bidi.d3.deflate first: per-frame raw DEFLATE
-// for payloads of 512 bytes and up, in both directions, negotiated once
-// per connection.
+// WithoutCompression restricts this side to the identity subprotocol
+// (connect.bidi.d3), so no frame is ever compressed in either direction:
+// a client stops offering connect.bidi.d3.deflate, a server stops
+// selecting it (clients that offer only deflate are then refused). The
+// default supports connect.bidi.d3.deflate: per-frame raw DEFLATE for
+// payloads of 512 bytes and up, in both directions, negotiated once per
+// connection.
 func WithoutCompression() Option {
-	return optionFunc(func(topts *transportOptions, _ *serverOptions) {
+	return optionFunc(func(topts *transportOptions, sopts *serverOptions) {
 		if topts != nil {
 			topts.withoutCompression = true
+		}
+		if sopts != nil {
+			sopts.withoutCompression = true
 		}
 	})
 }

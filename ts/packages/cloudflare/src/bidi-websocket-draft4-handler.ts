@@ -12,35 +12,25 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import type { HandleMuxedBidiSocketOptions } from "@sudorandom/connect-bidi-core";
-import { handleMuxedBidiSocket } from "@sudorandom/connect-bidi-core";
+import { handleMuxedBidiSocketDraft4 } from "@sudorandom/connect-bidi-core";
 import type { UniversalHandler } from "@connectrpc/connect/protocol";
-import { wrapWebSocket } from "./websocket-like.js";
-
-export interface CreateBidiWebSocketHandlerOptions
-  extends HandleMuxedBidiSocketOptions {
-  /**
-   * Called if `handleMuxedBidiSocket` rejects for a given connection (a bug
-   * in a handler implementation; protocol errors are reported to the client
-   * instead of throwing). Defaults to a no-op -- the fetch handler never
-   * awaits the RPCs, so an unset `onError` would otherwise surface as a
-   * silently swallowed rejection.
-   */
-  onError?: (error: unknown) => void;
-}
+import type { CreateBidiWebSocketHandlerOptions } from "./bidi-websocket-handler-common.js";
+import { isWebSocketUpgrade } from "./bidi-websocket-handler-common.js";
+import { wrapDraft4WebSocket } from "./websocket-like.js";
 
 /**
  * Creates a fetch-handler helper that upgrades `Upgrade: websocket`
- * requests into a multiplexed bidi connection, bridged to `handlers` via
- * `@sudorandom/connect-bidi-core`'s `handleMuxedBidiSocket`. Get `handlers`
- * from `createConnectRouter(...).handlers` (`@connectrpc/connect`).
+ * requests into a multiplexed draft 4 bidi connection, bridged to
+ * `handlers` via `@sudorandom/connect-bidi-core`'s
+ * `handleMuxedBidiSocketDraft4`. Get `handlers` from
+ * `createConnectRouter(...).handlers` (`@connectrpc/connect`).
  *
  * The returned function returns the 101 upgrade `Response` for WebSocket
  * upgrade requests, or `null` for everything else, so callers can fall
  * through to their own Connect-over-fetch handling:
  *
  * ```ts
- * const bidiWebSocket = createBidiWebSocketHandler(handlers);
+ * const bidiWebSocket = createBidiWebSocketDraft4Handler(handlers);
  *
  * export default {
  *   fetch(request: Request): Response | Promise<Response> {
@@ -49,11 +39,11 @@ export interface CreateBidiWebSocketHandlerOptions
  * };
  * ```
  *
- * One WebSocket connection carries any number of concurrent RPCs,
- * demultiplexed by the stream ID on every frame, matching the Go and Node
- * adapters.
+ * Draft 4 has no compression of its own; on Workers, permessage-deflate is
+ * governed by the `web_socket_compression` compatibility flag (default-on
+ * for compatibility dates of 2023-08-15 and later).
  */
-export function createBidiWebSocketHandler(
+export function createBidiWebSocketDraft4Handler(
   handlers: readonly UniversalHandler[],
   options?: CreateBidiWebSocketHandlerOptions,
 ): (request: Request) => Response | null {
@@ -67,16 +57,14 @@ export function createBidiWebSocketHandler(
     const server = pair[1];
     server.accept();
 
-    handleMuxedBidiSocket(wrapWebSocket(server), handlers, options).catch(
-      (error: unknown) => {
-        options?.onError?.(error);
-      },
-    );
+    handleMuxedBidiSocketDraft4(
+      wrapDraft4WebSocket(server),
+      handlers,
+      options,
+    ).catch((error: unknown) => {
+      options?.onError?.(error);
+    });
 
     return new Response(null, { status: 101, webSocket: client });
   };
-}
-
-export function isWebSocketUpgrade(request: Request): boolean {
-  return request.headers.get("upgrade")?.toLowerCase() === "websocket";
 }

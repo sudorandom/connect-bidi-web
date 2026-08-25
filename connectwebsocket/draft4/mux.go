@@ -12,92 +12,123 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package connectwebsocket
+package draft4
 
 import (
+	"bytes"
 	"context"
-	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
 	"math"
+	"strconv"
 	"sync"
 	"sync/atomic"
 
 	"connectrpc.com/connect/v2"
 	"github.com/coder/websocket"
-	"github.com/sudorandom/connect-bidi-web/internal/bidiprotocol"
 )
 
-// Wire framing: every binary WebSocket message carries exactly one envelope
-// belonging to exactly one stream:
+// Wire framing: every WebSocket message carries exactly one frame belonging
+// to exactly one stream, behind an ASCII text head:
 //
-//	[4-byte big-endian stream ID][1-byte flag][4-byte big-endian length][payload]
+//	<stream ID>|<flags>|<payload>
+//
+// Both fields are unpadded decimal ASCII, so a frame reads as
+// "7|1|{"metadata":...}" in a packet capture or a browser's network
+// inspector. Parsing splits on the first two '|' bytes only, which is why
+// the payload needs no escaping: a '|' inside JSON or protobuf bytes is
+// just a payload byte. The payload is delimited by the WebSocket message
+// itself, so frames carry no length of their own.
 //
 // The stream ID lets several RPCs share one connection: receivers use it to
 // match each frame to the appropriate caller. IDs are assigned by the
 // client, start at 1, increase by one per stream, and are never reused
-// within a connection. Everything after the stream ID is a standard Connect
-// envelope.
+// within a connection.
 
-const (
-	streamIDLen  = 4
-	frameHeadLen = streamIDLen + 5 // stream ID + Connect envelope head
-)
+// fieldSep separates the frame head's fields, and the head from the
+// payload.
+const fieldSep = '|'
+
+// maxHeadLen bounds how far the parser scans for the two separators: ten
+// digits of uint32 stream ID, three digits of uint8 flags, and the two
+// separators. A frame whose separators are further out than this is
+// malformed, and bounding the scan keeps a hostile peer from making us
+// search a whole large message for a separator that isn't there.
+//
+// The window has to fit the whole uint8 flags range, not just the four
+// frame types defined today: a reserved type must parse so the stream code
+// can reject it as an unknown frame type rather than as a broken frame.
+const maxHeadLen = 10 + 1 + 3 + 1
 
 var (
 	errConnClosed   = errors.New("websocket connection closed")
 	errStreamClosed = errors.New("websocket stream closed")
 )
 
-// writeFrame writes one WebSocket message carrying one envelope for one
-// stream. Callers must serialize calls (muxConn.writeFrame does).
-func writeFrame(ctx context.Context, conn *websocket.Conn, streamID uint32, flag uint8, payload []byte) error {
-	if uint64(len(payload)) > math.MaxUint32 {
-		return errors.New("payload too large")
-	}
-	writer, err := conn.Writer(ctx, websocket.MessageBinary)
-	if err != nil {
-		return err
-	}
-	var head [frameHeadLen]byte
-	binary.BigEndian.PutUint32(head[0:4], streamID)
-	head[4] = flag
-	//nolint:gosec // the payload length is bounded to MaxUint32 above
-	binary.BigEndian.PutUint32(head[5:9], uint32(len(payload)))
-	if _, err := writer.Write(head[:]); err != nil {
-		_ = writer.Close()
-		return err
-	}
-	if len(payload) > 0 {
-		if _, err := writer.Write(payload); err != nil {
-			_ = writer.Close()
-			return err
-		}
-	}
-	return writer.Close()
+// appendFrameHead appends "<streamID>|<flags>|" to dst. flags is the whole
+// second field: a frame type in its low bits, ORed with any flag bits.
+func appendFrameHead(dst []byte, streamID uint32, flags uint8) []byte {
+	dst = strconv.AppendUint(dst, uint64(streamID), 10)
+	dst = append(dst, fieldSep)
+	dst = strconv.AppendUint(dst, uint64(flags), 10)
+	return append(dst, fieldSep)
 }
 
-// readFrame reads one WebSocket message and splits it into stream ID, flag,
-// and payload. A message must contain exactly one complete envelope.
-func readFrame(ctx context.Context, conn *websocket.Conn) (streamID uint32, flag uint8, payload []byte, err error) {
-	msgType, data, err := conn.Read(ctx)
+// writeFrame writes one WebSocket message carrying one frame for one
+// stream. Callers must serialize calls (muxConn.writeFrame does). The frame
+// is assembled into one buffer and sent as one message: coder/websocket
+// decides whether permessage-deflate applies to a message by the size of
+// the first write, so writing the head separately would leave every message
+// uncompressed.
+//
+// text sends the message with a text opcode rather than a binary one, which
+// is what makes draft 4 frames legible to tooling. Only a caller that knows
+// the payload is valid UTF-8 may set it.
+func writeFrame(ctx context.Context, conn messageConn, streamID uint32, flags uint8, payload []byte, text bool) error {
+	frame := make([]byte, 0, maxHeadLen+len(payload))
+	frame = appendFrameHead(frame, streamID, flags)
+	frame = append(frame, payload...)
+	return conn.WriteMessage(ctx, frame, text)
+}
+
+// parseFrame splits one WebSocket message into stream ID, flags, and
+// payload. flags is returned whole, flag bits included; callers apply
+// frameTypeOf to get the frame type. The payload aliases data.
+func parseFrame(data []byte) (streamID uint32, flags uint8, payload []byte, err error) {
+	head := data
+	if len(head) > maxHeadLen {
+		head = head[:maxHeadLen]
+	}
+	firstSep := bytes.IndexByte(head, fieldSep)
+	if firstSep < 0 {
+		return 0, 0, nil, fmt.Errorf("frame head has no %q separator in its first %d bytes", fieldSep, len(head))
+	}
+	rest := head[firstSep+1:]
+	secondSep := bytes.IndexByte(rest, fieldSep)
+	if secondSep < 0 {
+		return 0, 0, nil, fmt.Errorf("frame head has only one %q separator in its first %d bytes", fieldSep, len(head))
+	}
+
+	id, err := strconv.ParseUint(string(head[:firstSep]), 10, 32)
+	if err != nil {
+		return 0, 0, nil, fmt.Errorf("invalid stream ID %q: %w", head[:firstSep], err)
+	}
+	parsedFlags, err := strconv.ParseUint(string(rest[:secondSep]), 10, 8)
+	if err != nil {
+		return 0, 0, nil, fmt.Errorf("invalid flags %q: %w", rest[:secondSep], err)
+	}
+	return uint32(id), uint8(parsedFlags), data[firstSep+1+secondSep+1:], nil
+}
+
+// readFrame reads one WebSocket message and splits it into stream ID,
+// flags, and payload.
+func readFrame(ctx context.Context, conn messageConn) (streamID uint32, flags uint8, payload []byte, err error) {
+	data, err := conn.ReadMessage(ctx)
 	if err != nil {
 		return 0, 0, nil, err
 	}
-	if msgType != websocket.MessageBinary {
-		return 0, 0, nil, errors.New("received non-binary websocket message")
-	}
-	if len(data) < frameHeadLen {
-		return 0, 0, nil, fmt.Errorf("frame too short: %d bytes", len(data))
-	}
-	streamID = binary.BigEndian.Uint32(data[0:4])
-	flag = data[4]
-	length := binary.BigEndian.Uint32(data[5:9])
-	if int64(length) != int64(len(data)-frameHeadLen) {
-		return 0, 0, nil, fmt.Errorf("envelope declares %d payload bytes but frame carries %d", length, len(data)-frameHeadLen)
-	}
-	return streamID, flag, data[frameHeadLen:], nil
+	return parseFrame(data)
 }
 
 // muxConn multiplexes streams onto a single WebSocket connection. Both the
@@ -105,7 +136,7 @@ func readFrame(ctx context.Context, conn *websocket.Conn) (streamID uint32, flag
 // each incoming frame to the inbox of the stream it belongs to, and outgoing
 // frames from all streams are serialized onto the connection.
 type muxConn struct {
-	conn *websocket.Conn
+	conn messageConn
 	// writeCtx lives as long as the connection and is used for every write.
 	// Stream or RPC contexts must never reach a write: coder/websocket
 	// treats a context canceled mid-write as fatal to the connection (the
@@ -122,7 +153,7 @@ type muxConn struct {
 	closeErr error
 }
 
-func newMuxConn(writeCtx context.Context, conn *websocket.Conn) *muxConn {
+func newMuxConn(writeCtx context.Context, conn messageConn) *muxConn {
 	return &muxConn{
 		conn:     conn,
 		writeCtx: writeCtx,
@@ -180,10 +211,10 @@ func (mc *muxConn) lookup(streamID uint32) *muxStream {
 	return mc.streams[streamID]
 }
 
-func (mc *muxConn) writeFrame(streamID uint32, flag uint8, payload []byte) error {
+func (mc *muxConn) writeFrame(streamID uint32, flags uint8, payload []byte, text bool) error {
 	mc.writeMu.Lock()
 	defer mc.writeMu.Unlock()
-	return writeFrame(mc.writeCtx, mc.conn, streamID, flag, payload)
+	return writeFrame(mc.writeCtx, mc.conn, streamID, flags, payload, text)
 }
 
 // readLoopClient routes incoming frames to the client streams that opened
@@ -191,22 +222,22 @@ func (mc *muxConn) writeFrame(streamID uint32, flag uint8, payload []byte) error
 // (already closed on this side) are dropped.
 func (mc *muxConn) readLoopClient(ctx context.Context) {
 	for {
-		streamID, flag, payload, err := readFrame(ctx, mc.conn)
+		streamID, flags, payload, err := readFrame(ctx, mc.conn)
 		if err != nil {
 			mc.terminateAll(connReadError(err))
-			_ = mc.conn.CloseNow()
+			_ = mc.conn.CloseNow() //nolint:contextcheck // CloseNow takes no context by design
 			return
 		}
 		stream := mc.lookup(streamID)
 		if stream == nil {
 			continue
 		}
-		if flag == bidiprotocol.FlagEnvelopeReset {
+		if frameTypeOf(flags) == frameTypeReset {
 			mc.deregister(streamID)
 			stream.terminate(connect.Errorf(connect.CodeCanceled, "stream reset by peer"))
 			continue
 		}
-		stream.deliver(flag, payload)
+		stream.deliver(flags, payload)
 	}
 }
 
@@ -231,7 +262,7 @@ func (mc *muxConn) terminateAll(err error) {
 // shutdown terminates every stream and closes the connection gracefully.
 func (mc *muxConn) shutdown() error {
 	mc.terminateAll(errConnClosed)
-	return mc.conn.Close(websocket.StatusNormalClosure, "")
+	return mc.conn.Close()
 }
 
 // connReadError converts a read-loop failure into the error surfaced by the
@@ -250,22 +281,23 @@ func connReadError(err error) error {
 	}
 }
 
-// envelope is one frame routed to a stream's inbox.
-type envelope struct {
-	flag    uint8
+// frame is one frame routed to a stream's inbox. The flags field is kept
+// whole rather than pre-masked, so a flag defined by a later revision
+// reaches the stream code instead of being dropped here.
+type frame struct {
+	flags   uint8
 	payload []byte
 }
 
-// muxStream is one logical stream on a muxConn, implementing
-// bidiprotocol.Conn. The connection's read loop delivers this stream's
-// frames to inbox; writes go back through the shared connection with this
-// stream's ID.
+// muxStream is one logical stream on a muxConn, implementing frameConn. The
+// connection's read loop delivers this stream's frames to inbox; writes go
+// back through the shared connection with this stream's ID.
 type muxStream struct {
 	mc  *muxConn
 	id  uint32
-	ctx context.Context //nolint:containedctx // carries the RPC context into bidiprotocol.Conn's context-free interface
+	ctx context.Context //nolint:containedctx // carries the RPC context into frameConn's context-free interface
 
-	inbox chan envelope
+	inbox chan frame
 
 	terminateOnce sync.Once
 	terminated    chan struct{}
@@ -278,18 +310,18 @@ type muxStream struct {
 	dedicated bool
 
 	// rxEnd records that the peer finished this stream with an end-stream
-	// envelope, making a reset frame on close unnecessary.
+	// frame, making a reset frame on close unnecessary.
 	rxEnd atomic.Bool
 }
 
-var _ bidiprotocol.Conn = (*muxStream)(nil)
+var _ frameConn = (*muxStream)(nil)
 
 func newMuxStream(ctx context.Context, mc *muxConn, id uint32) *muxStream {
 	return &muxStream{
 		mc:         mc,
 		id:         id,
 		ctx:        ctx,
-		inbox:      make(chan envelope, 64),
+		inbox:      make(chan frame, 64),
 		terminated: make(chan struct{}),
 	}
 }
@@ -297,9 +329,9 @@ func newMuxStream(ctx context.Context, mc *muxConn, id uint32) *muxStream {
 // deliver hands a frame to the stream's consumer. It blocks until the
 // consumer accepts it, providing connection-wide backpressure, and drops the
 // frame if the stream terminates first.
-func (s *muxStream) deliver(flag uint8, payload []byte) {
+func (s *muxStream) deliver(flags uint8, payload []byte) {
 	select {
-	case s.inbox <- envelope{flag: flag, payload: payload}:
+	case s.inbox <- frame{flags: flags, payload: payload}:
 	case <-s.terminated:
 	}
 }
@@ -316,18 +348,18 @@ func (s *muxStream) terminate(err error) {
 	})
 }
 
-// ReadEnvelope implements bidiprotocol.Conn.
-func (s *muxStream) ReadEnvelope() (uint8, []byte, error) {
+// ReadFrame implements frameConn.
+func (s *muxStream) ReadFrame() (uint8, []byte, error) {
 	// Prefer a frame delivered before termination, so an end-stream racing a
 	// connection failure isn't lost.
 	select {
-	case env := <-s.inbox:
-		return s.acceptEnvelope(env)
+	case f := <-s.inbox:
+		return s.acceptFrame(f)
 	default:
 	}
 	select {
-	case env := <-s.inbox:
-		return s.acceptEnvelope(env)
+	case f := <-s.inbox:
+		return s.acceptFrame(f)
 	case <-s.terminated:
 		return 0, nil, s.terminalErr
 	case <-s.ctx.Done():
@@ -335,17 +367,17 @@ func (s *muxStream) ReadEnvelope() (uint8, []byte, error) {
 	}
 }
 
-func (s *muxStream) acceptEnvelope(env envelope) (uint8, []byte, error) {
-	if env.flag == bidiprotocol.FlagEnvelopeEndStream {
+func (s *muxStream) acceptFrame(f frame) (uint8, []byte, error) {
+	if frameTypeOf(f.flags) == frameTypeEndStream {
 		s.rxEnd.Store(true)
 	}
-	return env.flag, env.payload, nil
+	return f.flags, f.payload, nil
 }
 
-// WriteEnvelope implements bidiprotocol.Conn. Stream cancellation is checked
-// before the write; the write itself runs under the connection's context so
-// a cancellation can never poison the shared connection mid-frame.
-func (s *muxStream) WriteEnvelope(flag uint8, payload []byte) error {
+// WriteFrame implements frameConn. Stream cancellation is checked before
+// the write; the write itself runs under the connection's context so a
+// cancellation can never poison the shared connection mid-frame.
+func (s *muxStream) WriteFrame(flags uint8, payload []byte, text bool) error {
 	select {
 	case <-s.terminated:
 		return s.terminalErr
@@ -353,27 +385,27 @@ func (s *muxStream) WriteEnvelope(flag uint8, payload []byte) error {
 		return s.ctx.Err()
 	default:
 	}
-	return s.mc.writeFrame(s.id, flag, payload)
+	return s.mc.writeFrame(s.id, flags, payload, text)
 }
 
-// CloseSend implements bidiprotocol.Conn by writing an explicit end-stream
-// envelope: a WebSocket has no per-stream half-close of its own.
+// CloseSend implements frameConn by writing an explicit end-stream frame: a
+// WebSocket has no per-stream half-close of its own.
 func (s *muxStream) CloseSend() error {
-	return s.WriteEnvelope(bidiprotocol.FlagEnvelopeEndStream, nil)
+	return s.WriteFrame(frameTypeEndStream, nil, true)
 }
 
-// Close implements bidiprotocol.Conn, releasing the client side of the
-// stream. If the peer hasn't finished the stream, a reset frame tells it to
-// stop work; a dedicated connection is closed outright instead.
+// Close implements frameConn, releasing the client side of the stream. If
+// the peer hasn't finished the stream, a reset frame tells it to stop work;
+// a dedicated connection is closed outright instead.
 func (s *muxStream) Close() error {
 	s.mc.deregister(s.id)
 	finished := s.rxEnd.Load()
 	s.terminate(errStreamClosed)
 	if s.dedicated {
-		return s.mc.conn.Close(websocket.StatusNormalClosure, "")
+		return s.mc.conn.Close()
 	}
 	if !finished {
-		_ = s.mc.writeFrame(s.id, bidiprotocol.FlagEnvelopeReset, nil)
+		_ = s.mc.writeFrame(s.id, frameTypeReset, nil, true)
 	}
 	return nil
 }

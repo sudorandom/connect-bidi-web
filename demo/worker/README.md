@@ -29,6 +29,33 @@ npm run dev                    # local: http://localhost:8787
 npm run deploy                 # deploy to your Cloudflare account
 ```
 
+### Per-branch preview deploys
+
+Every push to a non-`main` branch can get its own live Worker on real
+Cloudflare infrastructure, without touching production. The mechanism is
+`wrangler versions upload`, which uploads a new *version* and hands back a
+preview URL but does **not** shift production traffic or rewrite the routes
+in `wrangler.jsonc`. Production only moves when someone runs
+`wrangler deploy`.
+
+There are two ways to drive it, and you want **exactly one** — enabling both
+uploads two preview versions per push:
+
+| | GitHub Actions | Workers Builds |
+|---|---|---|
+| Where | [`.github/workflows/preview.yaml`](../../.github/workflows/preview.yaml) | Cloudflare dashboard |
+| Config lives | in the repo, reviewable in a PR | in dashboard settings |
+| Needs | `CLOUDFLARE_API_TOKEN` + `CLOUDFLARE_ACCOUNT_ID` repo secrets | the Git integration connected |
+| Branch scope | every branch except `main` and `release-please--**` | every non-production branch |
+| Preview URL | GitHub job summary | build log + a PR comment |
+
+Neither is per-branch: both cover *all* non-production branches, so there's
+nothing to configure when a new branch appears.
+
+The Actions token needs the **Edit Cloudflare Workers** template (or a custom
+token with `Account → Workers Scripts → Edit`). If Workers Builds is already
+connected, delete `preview.yaml` instead of adding the secrets.
+
 ### Workers Builds (Git integration)
 
 The worker depends on `file:` links into `ts/packages/`, and every `dist/`

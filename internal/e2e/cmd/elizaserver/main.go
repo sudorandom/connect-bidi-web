@@ -14,7 +14,7 @@
 
 // Interop fixture for the TypeScript e2e tests in ts/packages/web/e2e.
 // Serves ElizaService over plain HTTP (standard Connect protocol) and over a
-// plain ws:// WebSocket (no TLS) using connectwebsocket. Prints
+// plain ws:// WebSocket (no TLS) using draft1. Prints
 // "READY ws://<host>:<port>/websocket-draft1" on stdout once listening.
 package main
 
@@ -31,9 +31,10 @@ import (
 
 	connect "connectrpc.com/connect/v2"
 	"connectrpc.com/connect/v2/connecthttp"
-	"github.com/sudorandom/connect-bidi-web/connectwebsocket"
+	"github.com/sudorandom/connect-bidi-web/connectwebsocket/draft1"
 	"github.com/sudorandom/connect-bidi-web/connectwebsocket/draft2"
 	"github.com/sudorandom/connect-bidi-web/connectwebsocket/draft3"
+	"github.com/sudorandom/connect-bidi-web/connectwebsocket/draft4"
 	elizav1 "github.com/sudorandom/connect-bidi-web/internal/gen/connectbidi/eliza/v1"
 	"github.com/sudorandom/connect-bidi-web/internal/gen/connectbidi/eliza/v1/elizav1connect"
 )
@@ -83,9 +84,10 @@ func main() {
 
 	mux := http.NewServeMux()
 	connecthttp.Mount(mux, connectServer)
-	mux.Handle("/websocket-draft1", connectwebsocket.NewHandler(connectServer))
+	mux.Handle("/websocket-draft1", draft1.NewHandler(connectServer))
 	mux.Handle("/websocket-draft2", draft2.NewHandler(connectServer))
 	mux.Handle("/websocket-draft3", draft3.NewHandler(connectServer))
+	mux.Handle("/websocket-draft4", draft4.NewHandler(connectServer))
 
 	listener, err := net.Listen("tcp", *addr)
 	if err != nil {

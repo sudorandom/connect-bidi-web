@@ -32,7 +32,7 @@ from JavaScript.
 
 | Package | What it is |
 |---|---|
-| [`github.com/sudorandom/connect-bidi-web/connectwebsocket`](https://pkg.go.dev/github.com/sudorandom/connect-bidi-web/connectwebsocket) | Go client transport + `http.Handler` server |
+| [`github.com/sudorandom/connect-bidi-web/connectwebsocket`](https://pkg.go.dev/github.com/sudorandom/connect-bidi-web/connectwebsocket) | Go client transports + `http.Handler` servers, one subpackage per wire protocol draft (`draft1`…`draft4`) |
 | [`github.com/sudorandom/connect-bidi-web/connectwebtransport`](https://pkg.go.dev/github.com/sudorandom/connect-bidi-web/connectwebtransport) | Go client transport + WebTransport session handler |
 | [`github.com/sudorandom/connect-bidi-web/connectfallback`](https://pkg.go.dev/github.com/sudorandom/connect-bidi-web/connectfallback) | Go degrading transport: tries a ladder of transports, best-first |
 | [`@sudorandom/connect-bidi-web`](https://www.npmjs.com/package/@sudorandom/connect-bidi-web) | Browser client transports (WebSocket, WebTransport, composite) |
@@ -61,13 +61,13 @@ server := connect.NewServer()
 elizav1connect.RegisterElizaServiceHandler(server, &elizaServer{})
 
 // Serve Connect RPCs over WebSocket alongside regular HTTP handlers:
-http.Handle("/websocket-draft1", connectwebsocket.NewHandler(server))
+http.Handle("/websocket-draft1", draft1.NewHandler(server))
 ```
 
 ### Go client
 
 ```go
-transport := connectwebsocket.NewTransport("wss://api.example.com/websocket-draft1")
+transport := draft1.NewTransport("wss://api.example.com/websocket-draft1")
 client := elizav1connect.NewElizaServiceClient(connect.NewClient(transport))
 ```
 
@@ -78,23 +78,23 @@ import { createClient } from "@connectrpc/connect";
 import { createConnectTransport } from "@connectrpc/connect-web";
 import {
   createCompositeTransport,
-  createConnectWebSocketTransport,
+  createConnectWebSocketDraft1Transport,
 } from "@sudorandom/connect-bidi-web";
 
 const transport = createCompositeTransport(
   createConnectTransport({ baseUrl: "https://api.example.com" }), // unary
-  createConnectWebSocketTransport({ baseUrl: "https://api.example.com" }), // streams
+  createConnectWebSocketDraft1Transport({ baseUrl: "https://api.example.com" }), // streams
 );
 const client = createClient(ElizaService, transport);
 ```
 
 ## Wire protocol
 
-The WebSocket transport exists in two wire-incompatible drafts, served on
+The WebSocket transport exists in four wire-incompatible drafts, served on
 different paths so their designs and implementations can be compared;
 WebTransport has a single protocol.
 
-**WebSocket draft 1** (`connectwebsocket`, `/websocket-draft1`) and **WebTransport**
+**WebSocket draft 1** (`connectwebsocket/draft1`, `/websocket-draft1`) and **WebTransport**
 (`connectwebtransport`) share Connect-style envelopes: a flag byte and a
 big-endian u32 payload length. `0x00` data, `0x01` compressed data, `0x02`
 end-stream (Connect `EndStreamResponse` JSON), `0x06` headers (JSON metadata,
@@ -109,12 +109,15 @@ Compression is negotiated with
 delegates the envelope's two jobs to the WebSocket itself — permessage-deflate
 for compression, message boundaries for length — so a frame is just a 4-byte
 big-endian stream ID, one frame type byte (`0x00` data, `0x01` headers,
-`0x02` end-stream, `0x03` reset), and the payload. Draft 2 can also be
-bootstrapped over **HTTP/2 extended CONNECT**
-([RFC 8441](https://datatracker.ietf.org/doc/html/rfc8441)) instead of an
-HTTP/1.1 upgrade — one WebSocket per h2 stream on a shared connection —
-via `draft2.NewH2Transport`; the handler serves both bootstraps. The
-server process must run with `GODEBUG=http2xconnect=1`.
+`0x02` end-stream, `0x03` reset), and the payload.
+
+Every draft runs over two bootstraps carrying identical frames: the
+classic HTTP/1.1 upgrade, and **HTTP/2 extended CONNECT**
+([RFC 8441](https://datatracker.ietf.org/doc/html/rfc8441)) — one
+WebSocket per h2 stream on a shared connection — via each package's
+`NewH2Transport`; the handlers serve both automatically. The server
+process must run with `GODEBUG=http2xconnect=1` for HTTP/2 bootstrapping,
+which is how browsers pick it too.
 
 **WebSocket draft 3** (`connectwebsocket/draft3`, `/websocket-draft3`)
 keeps draft 2's framing and moves compression into the protocol: a
@@ -124,7 +127,17 @@ behaves identically over both bootstraps (including HTTP/2 extended
 CONNECT, where draft 2 has none) and both directions, without relying on
 permessage-deflate support along the path.
 
-See the per-package READMEs for details.
+**WebSocket draft 4** (`connectwebsocket/draft4`, `/websocket-draft4`)
+trades frame economy for legibility: the head is ASCII text,
+`<stream ID>|<flags>|<payload>`, so a frame reads as
+`7|1|{"metadata":…}` in a browser's Network tab with no decoder. Control
+payloads are always JSON, frames whose payload is UTF-8 travel as *text*
+WebSocket messages, and compression goes back to permessage-deflate (a
+text head can't cheaply carry a compressed bit). Parsers split on the
+first two `|` only, so payloads are never escaped.
+
+See the per-package READMEs for details, and [CONCLUSIONS.md](CONCLUSIONS.md)
+for the generalized findings and recommendations the drafts produced.
 
 ## Demo
 

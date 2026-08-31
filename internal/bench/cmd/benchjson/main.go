@@ -55,7 +55,7 @@ type output struct {
 
 // benchLine matches e.g.:
 //
-//	BenchmarkTransports/ws-draft1/identity/unary_small-18  200  99773 ns/op  186.0 rxB/op  143.0 txB/op
+//	BenchmarkTransports/ws-draft3/proto/identity/unary_small-18  200  46445 ns/op  144.0 rxB/op  84.00 txB/op
 var benchLine = regexp.MustCompile(`^BenchmarkTransports/(.+)-\d+\s+\d+\s+(.*)$`)
 
 // bootstrapFor classifies a case by how its connection was established,
@@ -64,8 +64,9 @@ func bootstrapFor(benchCase string) string {
 	if strings.HasPrefix(benchCase, "webtransport") {
 		return "HTTP/3"
 	}
-	// Cases are "<transport>/<variant>"; the HTTP/2 variants are the ones
-	// dialed with NewH2Transport, named h2-*.
+	// Cases are "<transport>[/h2]/<codec>/<compression>"; the HTTP/2 rows
+	// are the ones dialed over extended CONNECT, marked by an h2 segment
+	// straight after the transport.
 	if _, variant, ok := strings.Cut(benchCase, "/"); ok && strings.HasPrefix(variant, "h2") {
 		return "HTTP/2"
 	}
@@ -86,8 +87,10 @@ func main() {
 		if match == nil {
 			continue
 		}
-		// The benchmark name is <case>/<workload> where the case itself
-		// contains one slash (e.g. ws-draft1/identity/unary_small).
+		// The benchmark name is <case>/<workload>. The case itself contains
+		// slashes — "<transport>[/h2]/<codec>/<compression>" — so the split
+		// is at the *last* one (e.g.
+		// ws-draft3/proto/identity + unary_small).
 		name := match[1]
 		lastSlash := strings.LastIndex(name, "/")
 		if lastSlash < 0 {

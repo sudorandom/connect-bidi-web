@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"io"
 	"sync"
+	"sync/atomic"
 
 	"github.com/gobwas/ws"
 )
@@ -32,13 +33,13 @@ import (
 // frames. gobwas/ws provides the frame codec; this type adds message
 // assembly, control-frame handling, and write serialization.
 //
-// This bootstrap negotiates no extensions, so unlike the HTTP/1.1 one it
-// has no permessage-deflate and messages travel uncompressed. That is a
-// gap in this implementation, not a rule: RFC 8441 §5 keeps
-// Sec-WebSocket-Extensions in the CONNECT exchange, and draft 4 implements
-// the extension over HTTP/2 on exactly that basis (see
-// draft4/compress.go). Draft 1's own per-message Connect compression is
-// unaffected either way — it sits above the connection.
+// permessage-deflate is implemented here rather than inherited, because
+// coder/websocket — which provides it on the HTTP/1.1 path — cannot accept
+// over HTTP/2. See compress.go.
+//
+// Draft 1 messages are always binary, so unlike the drafts that frame with
+// the opcode, the opcode is checked here and then discarded: what the
+// caller gets back is one envelope.
 type h2Conn struct {
 	reader *bufio.Reader
 	// closeRead unblocks a pending read: the request body on servers, the
@@ -50,36 +51,52 @@ type h2Conn struct {
 	flush func() error
 	// client marks the client side, which must mask every frame it sends.
 	client bool
+	// deflater is non-nil when permessage-deflate was negotiated. Guarded
+	// by writeMu, like every other write-side resource.
+	deflater *messageDeflater
 
 	writeMu   sync.Mutex
 	closeOnce sync.Once
+	// closed records that the stream has been torn down, by either side. It
+	// is what keeps a courtesy close frame from racing the peer's own.
+	closed atomic.Bool
 }
 
-func newH2Conn(reader io.Reader, closeRead func(), writer io.Writer, flush func() error, client bool) *h2Conn {
-	return &h2Conn{
+func newH2Conn(reader io.Reader, closeRead func(), writer io.Writer, flush func() error, client, deflate bool) *h2Conn {
+	conn := &h2Conn{
 		reader:    bufio.NewReader(reader),
 		closeRead: closeRead,
 		writer:    writer,
 		flush:     flush,
 		client:    client,
 	}
+	if deflate {
+		conn.deflater = newMessageDeflater()
+	}
+	return conn
 }
 
-// ReadMessage reads frames until one complete binary message has been
-// assembled, transparently answering pings and completing the closing
-// handshake. The context is not consulted: an HTTP/2 stream read is
-// unblocked by the stream ending (peer reset, connection loss) or by
-// CloseNow.
+// ReadMessage reads frames until one complete message has been assembled,
+// transparently answering pings and completing the closing handshake. The
+// context is not consulted: an HTTP/2 stream read is unblocked by the
+// stream ending (peer reset, connection loss) or by CloseNow.
 func (c *h2Conn) ReadMessage(_ context.Context) ([]byte, error) {
 	var message []byte
 	assembling := false
+	// RSV1 on the first frame of a message marks the whole message as one
+	// deflated stream (RFC 7692 §6.2).
+	compressed := false
 	for {
 		header, err := ws.ReadHeader(c.reader)
 		if err != nil {
 			return nil, err
 		}
-		if header.Rsv != 0 {
-			return nil, fmt.Errorf("frame uses reserved bits 0b%03b, but no extension was negotiated", header.Rsv)
+		rsv1, rsv2, rsv3 := ws.RsvBits(header.Rsv)
+		if rsv2 || rsv3 {
+			return nil, fmt.Errorf("frame uses reserved bits 0b%03b, but no such extension was negotiated", header.Rsv)
+		}
+		if rsv1 && c.deflater == nil {
+			return nil, errors.New("frame is marked compressed, but permessage-deflate was not negotiated")
 		}
 		payload := make([]byte, header.Length)
 		if _, err := io.ReadFull(c.reader, payload); err != nil {
@@ -99,76 +116,68 @@ func (c *h2Conn) ReadMessage(_ context.Context) ([]byte, error) {
 			// Complete the closing handshake, then surface EOF like a
 			// normally closed connection.
 			_ = c.writeFrame(ws.NewCloseFrame(nil))
-			c.closeOnce.Do(c.closeRead)
+			c.shutdown()
 			return nil, io.EOF
+		case ws.OpText:
+			return nil, errors.New("expected a binary websocket message carrying an envelope")
 		case ws.OpBinary:
 			if assembling {
 				return nil, errors.New("interleaved message frames")
 			}
 			message = payload
 			assembling = true
+			compressed = rsv1
 			if header.Fin {
-				return message, nil
+				return c.finishMessage(message, compressed)
 			}
 		case ws.OpContinuation:
 			if !assembling {
 				return nil, errors.New("continuation frame without a message")
 			}
+			if rsv1 {
+				// RSV1 belongs to the first frame of a message only.
+				return nil, errors.New("continuation frame sets RSV1")
+			}
 			message = append(message, payload...)
 			if header.Fin {
-				return message, nil
+				return c.finishMessage(message, compressed)
 			}
-		case ws.OpText:
-			return nil, errors.New("received non-binary websocket message")
 		default:
 			return nil, fmt.Errorf("unknown frame opcode 0x%x", byte(header.OpCode))
 		}
 	}
 }
 
-// WriteMessage sends one binary message, assembled from parts, as a
-// single unfragmented frame. Server frames stream the parts directly
-// after the frame header; client frames must be masked, which ciphers in
-// place, so the parts are first copied into one buffer.
-func (c *h2Conn) WriteMessage(_ context.Context, parts ...[]byte) error {
-	var length int64
-	for _, part := range parts {
-		length += int64(len(part))
+// finishMessage inflates an assembled message when the sender marked it
+// compressed.
+func (c *h2Conn) finishMessage(message []byte, compressed bool) ([]byte, error) {
+	if !compressed {
+		return message, nil
 	}
+	return inflate(message)
+}
+
+// WriteMessage sends one envelope as a single unfragmented binary frame.
+// When permessage-deflate was negotiated the payload is compressed and RSV1
+// set, unless compressing it would not shrink it.
+func (c *h2Conn) WriteMessage(_ context.Context, message []byte) error {
+	// One lock for compress-and-send: the deflater is shared state, and
+	// splitting the two would let another writer slip a frame between a
+	// message's compression and its write.
 	c.writeMu.Lock()
 	defer c.writeMu.Unlock()
-	header := ws.Header{Fin: true, OpCode: ws.OpBinary, Length: length}
-	if c.client {
-		header.Masked = true
-		header.Mask = ws.NewMask()
-		buf := make([]byte, 0, length)
-		for _, part := range parts {
-			buf = append(buf, part...)
-		}
-		ws.Cipher(buf, header.Mask, 0)
-		if err := ws.WriteHeader(c.writer, header); err != nil {
-			return err
-		}
-		if _, err := c.writer.Write(buf); err != nil {
-			return err
-		}
-	} else {
-		if err := ws.WriteHeader(c.writer, header); err != nil {
-			return err
-		}
-		for _, part := range parts {
-			if len(part) == 0 {
-				continue
-			}
-			if _, err := c.writer.Write(part); err != nil {
-				return err
-			}
+	compressed := false
+	if c.deflater != nil {
+		if deflated, ok := c.deflater.deflate(message); ok {
+			message = deflated
+			compressed = true
 		}
 	}
-	if c.flush != nil {
-		return c.flush()
+	frame := ws.NewFrame(ws.OpBinary, true, message)
+	if compressed {
+		frame.Header.Rsv = ws.Rsv(true, false, false)
 	}
-	return nil
+	return c.writeFrameLocked(frame)
 }
 
 // writeFrame masks (on clients), writes, and flushes one frame. The lock
@@ -177,6 +186,11 @@ func (c *h2Conn) WriteMessage(_ context.Context, parts ...[]byte) error {
 func (c *h2Conn) writeFrame(frame ws.Frame) error {
 	c.writeMu.Lock()
 	defer c.writeMu.Unlock()
+	return c.writeFrameLocked(frame)
+}
+
+// writeFrameLocked is writeFrame's body; callers already hold writeMu.
+func (c *h2Conn) writeFrameLocked(frame ws.Frame) error {
 	if c.client {
 		frame = ws.MaskFrameInPlace(frame)
 	}
@@ -192,15 +206,33 @@ func (c *h2Conn) writeFrame(frame ws.Frame) error {
 // Close sends a close frame, then tears the stream down. Waiting for the
 // peer's close reply is unnecessary: the HTTP/2 stream itself confirms
 // delivery, and the read side answers a peer-initiated close on its own.
+//
+// Closing an already-closed connection is not an error, and in draft 1 that
+// is the common case rather than a corner: one WebSocket is one RPC, so
+// both sides close as soon as the RPC ends, and whichever close frame loses
+// the race finds the stream already gone.
 func (c *h2Conn) Close() error {
+	if c.closed.Load() {
+		return nil
+	}
 	err := c.writeFrame(ws.NewCloseFrame(ws.NewCloseFrameBody(ws.StatusNormalClosure, "")))
-	c.closeOnce.Do(c.closeRead)
+	c.shutdown()
+	if errors.Is(err, io.ErrClosedPipe) {
+		// The peer's close raced ours; the connection is closed either way.
+		return nil
+	}
 	return err
 }
 
 // CloseNow implements messageConn by closing the read side, which unblocks
 // a pending ReadMessage and, on clients, cancels the CONNECT request.
 func (c *h2Conn) CloseNow() error {
-	c.closeOnce.Do(c.closeRead)
+	c.shutdown()
 	return nil
+}
+
+// shutdown releases the stream exactly once and records that it is gone.
+func (c *h2Conn) shutdown() {
+	c.closed.Store(true)
+	c.closeOnce.Do(c.closeRead)
 }

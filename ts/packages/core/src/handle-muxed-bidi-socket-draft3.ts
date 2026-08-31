@@ -95,11 +95,10 @@ function frameTypeForEnvelopeFlag(flag: number): number {
  * the wire protocol to UniversalHandlers from `@connectrpc/connect`.
  * Draft 3 is a packed binary head plus protocol-level compression: the
  * handshake negotiates it by subprotocol (see `options.compression`), and
- * each frame's descriptor bit 7 marks a raw-DEFLATE payload. The draft 1
- * and 2 equivalents are `handleMuxedBidiSocketDraft1` and
- * `handleMuxedBidiSocketDraft1` and `handleMuxedBidiSocketDraft4`; the wire
- * protocols are incompatible, so
- * a connection must be served by the matching bridge.
+ * each frame's descriptor bit 7 marks a raw-DEFLATE payload. The other
+ * bridges are `handleMuxedBidiSocketDraft4` and, for the unmultiplexed
+ * draft 5, `handleBidiSocketDraft5`; the wire protocols are incompatible,
+ * so a connection must be served by the bridge that speaks its draft.
  *
  * The returned promise settles once the connection's read side has ended
  * and every RPC started on it has finished.

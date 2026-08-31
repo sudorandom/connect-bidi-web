@@ -36,10 +36,12 @@ const (
 	// FlagEnvelopeHeaders marks the leading metadata frame of a request or
 	// response, standing in for the HTTP headers a raw socket doesn't have.
 	FlagEnvelopeHeaders uint8 = 0x06
-	// FlagEnvelopeReset aborts a single stream, with an empty payload. It is
-	// used only by transports that multiplex several streams onto one
-	// connection (WebSocket); transports with one stream per connection
-	// simply close the connection instead.
+	// FlagEnvelopeReset aborts a single stream, with an empty payload. Only
+	// transports that multiplex several streams onto one connection need
+	// it; one with a stream per connection closes the connection instead.
+	// No live transport uses it — WebTransport, the only remaining user of
+	// this package, has a QUIC stream per RPC — but the value stays
+	// reserved here rather than being freed for something else to reuse.
 	FlagEnvelopeReset uint8 = 0x07
 )
 

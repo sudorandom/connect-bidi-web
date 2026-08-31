@@ -74,6 +74,10 @@ const goWorkloadLabels: Record<string, WorkloadLabel> = {
     tab: "16 KiB random",
     full: "Unary — 16 KiB random text (incompressible)",
   },
+  bidi_16KiB_repetitive: {
+    tab: "Bidi 16 KiB",
+    full: "Bidi — 16 KiB repetitive text on a stream (compressible)",
+  },
   bidi_100_roundtrips: {
     tab: "Bidi ×100",
     full: "Bidi — 100 small roundtrips",
@@ -205,7 +209,7 @@ function renderButterflyChart<T extends { case: string }>(
 ): SVGSVGElement {
   const NS = "http://www.w3.org/2000/svg";
   const width = 680;
-  const centerW = 196;
+  const centerW = 212;
   const sideW = (width - centerW) / 2;
   const barH = 13;
   const rowH = 24;
@@ -318,7 +322,13 @@ function renderButterflyChart<T extends { case: string }>(
       right: 0,
     };
     const top = y + 5;
-    text("bench-chart-label", midL + centerW / 2, textY(top), line.text, "middle");
+    text(
+      `bench-chart-label ${draftClass(row.case)}`.trim(),
+      midL + centerW / 2,
+      textY(top),
+      line.text,
+      "middle",
+    );
 
     // Left: one stacked bar, growing away from the centre.
     const parts = config.left.map((s) => s.value(row) ?? 0);
@@ -415,15 +425,31 @@ function sectionOf(row: { case: string }): string {
 }
 
 /**
- * Row label: bootstrap, then the case. The `h2-` marker is dropped from the
- * variant because the prefix already says it.
+ * The CSS class carrying a row's draft identity colour, matching the card
+ * that explains that draft in the wire-format section. Colour is never the
+ * only cue -- every row is still named in full -- so an unrecognised case
+ * name simply gets no class.
+ */
+function draftClass(caseName: string): string {
+  const match = /^ws-draft(\d+)\b/.exec(caseName);
+  if (match !== null) {
+    return `draft-${match[1]}`;
+  }
+  return caseName.startsWith("webtransport") ? "draft-wt" : "";
+}
+
+/**
+ * Row label: bootstrap, then the case. Cases are
+ * `<transport>[/h2]/<codec>/<compression>`; the `h2` segment is dropped
+ * because the bootstrap prefix already says it, leaving the transport, the
+ * encoding, and the compression.
  */
 function rowLabel(row: { case: string; bootstrap?: string }): string {
   const prefix =
     row.bootstrap === undefined || row.bootstrap === ""
       ? ""
       : `${row.bootstrap.toLowerCase().replace("/", "")}/`;
-  return prefix + row.case.replace("/h2-", "/");
+  return prefix + row.case.replace("/h2/", "/");
 }
 
 interface Panel {
@@ -529,6 +555,8 @@ function buildWorkloadPanels<T extends { case: string; workload: string }>(
       const best = bestBySection.get(section) ?? [];
       const tr = document.createElement("tr");
       const caseCell = document.createElement("td");
+      caseCell.className =
+        `bench-case ${draftClass((row as T & { case: string }).case)}`.trim();
       caseCell.textContent = rowLabel(row as T & { bootstrap?: string });
       tr.appendChild(caseCell);
       columns.forEach((column, index) => {

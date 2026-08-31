@@ -25,7 +25,7 @@ import type { ServerOptions, WebSocket } from "ws";
 export interface BidiWebSocketHandlerOptions {
   /**
    * The path to accept WebSocket upgrades on when using `upgrade()`.
-   * Defaults to the draft's own path, e.g. "/websocket-draft1". Has no
+   * Defaults to the draft's own path, e.g. "/websocket-draft3". Has no
    * effect on `handleConnection()`.
    */
   path?: string;

@@ -121,9 +121,10 @@ function streamCodecIsJson(headersPayload: Uint8Array): boolean {
  * Bridges a multiplexed bidi connection (a WebSocket) speaking draft 4 of
  * the wire protocol to UniversalHandlers from `@connectrpc/connect`. Use
  * `createConnectRouter(...).handlers` to obtain the handlers array. The
- * other drafts' equivalents are `handleMuxedBidiSocketDraft1` through
- * `handleMuxedBidiSocketDraft3`; the wire protocols are incompatible, so a
- * connection must be served by the matching bridge.
+ * other bridges are `handleMuxedBidiSocketDraft3` and, for the
+ * unmultiplexed draft 5, `handleBidiSocketDraft5`; the wire protocols are
+ * incompatible, so a connection must be served by the bridge that speaks
+ * its draft.
  *
  * Every message on the wire is an ASCII head, `<stream ID>|<flags>|`,
  * followed by the payload (see wire-draft4.ts), matching

@@ -26,10 +26,10 @@ import * as http from "node:http";
 import type { ServiceImpl } from "@connectrpc/connect";
 import { createConnectRouter } from "@connectrpc/connect";
 import {
+  createBidiWebSocketDraft1Handler,
   createBidiWebSocketDraft3Handler,
   createBidiWebSocketDraft4Handler,
-  createBidiWebSocketDraft1Handler,
-  defaultBidiWebSocketDraft1Path,
+  defaultBidiWebSocketDraft3Path,
 } from "../src/index.js";
 import { ElizaService } from "../src/gen/connectbidi/eliza/v1/eliza_pb.js";
 
@@ -53,8 +53,11 @@ const server = http.createServer((_req, res) => {
   res.writeHead(404);
   res.end();
 });
-createBidiWebSocketDraft1Handler(router).upgrade(server);
-// Draft 3, likewise ("/websocket-draft3").
+// Draft 1 takes the procedure from the URL; the prefix matches the Go
+// fixture's, so one client configuration drives both.
+createBidiWebSocketDraft1Handler(router, {
+  pathPrefix: "/websocket-draft1",
+}).upgrade(server);
 createBidiWebSocketDraft3Handler(router).upgrade(server);
 // Draft 4, likewise ("/websocket-draft4").
 createBidiWebSocketDraft4Handler(router).upgrade(server);
@@ -68,6 +71,6 @@ server.listen(port, "0.0.0.0", () => {
   const actualPort =
     typeof address === "object" && address !== null ? address.port : port;
   console.log(
-    `READY ws://localhost:${actualPort}${defaultBidiWebSocketDraft1Path}`,
+    `READY ws://localhost:${actualPort}${defaultBidiWebSocketDraft3Path}`,
   );
 });

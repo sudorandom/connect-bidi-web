@@ -38,12 +38,14 @@ function transportLabel(
   if (choice === "webtransport") {
     return "WebTransport";
   }
+  if (choice === "websocket-draft1" || choice === "websocket-draft5") {
+    // Drafts 1 and 5 are always one connection per RPC; the toggle does
+    // not apply.
+    const draft = choice === "websocket-draft1" ? "1" : "5";
+    return `WebSocket Draft ${draft} (connection per RPC)`;
+  }
   const draft =
-    choice === "websocket-draft3"
-      ? "WebSocket Draft 3"
-      : choice === "websocket-draft4"
-        ? "WebSocket Draft 4"
-        : "WebSocket Draft 1";
+    choice === "websocket-draft4" ? "WebSocket Draft 4" : "WebSocket Draft 3";
   return connectionPerStream
     ? `${draft} (connection per RPC)`
     : `${draft} (multiplexed)`;
@@ -158,12 +160,14 @@ function main(): void {
         return "auto";
       case "webtransport":
         return "webtransport";
-      case "websocket-draft3":
-        return "websocket-draft3";
+      case "websocket-draft1":
+        return "websocket-draft1";
       case "websocket-draft4":
         return "websocket-draft4";
+      case "websocket-draft5":
+        return "websocket-draft5";
       default:
-        return "websocket";
+        return "websocket-draft3";
     }
   }
 

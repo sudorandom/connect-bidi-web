@@ -16,9 +16,10 @@ import type { Transport } from "@connectrpc/connect";
 import { createConnectTransport } from "@connectrpc/connect-web";
 import {
   createCompositeTransport,
+  createConnectWebSocketDraft1Transport,
   createConnectWebSocketDraft3Transport,
   createConnectWebSocketDraft4Transport,
-  createConnectWebSocketDraft1Transport,
+  createConnectWebSocketDraft5Transport,
   createConnectWebTransportTransport,
   createFallbackTransport,
 } from "@sudorandom/connect-bidi-web";
@@ -28,9 +29,10 @@ import { isWebTransportSupported } from "./webtransport-support.js";
 export type StreamingTransportChoice =
   | "auto"
   | "webtransport"
-  | "websocket"
+  | "websocket-draft1"
   | "websocket-draft3"
-  | "websocket-draft4";
+  | "websocket-draft4"
+  | "websocket-draft5";
 
 export interface DemoTransportOptions {
   /**
@@ -125,6 +127,62 @@ export function createDemoTransport(
     };
   }
 
+  if (choice === "websocket-draft1") {
+    // Draft 1 carries streaming RPCs only, so it is composed with the plain
+    // Connect transport for unary ones. It ignores the connection-per-RPC
+    // toggle, because that is all it does — one WebSocket per streaming
+    // RPC is the design.
+    return {
+      transport: createCompositeTransport(
+        unary,
+        createConnectWebSocketDraft1Transport({
+          // The demo server mounts draft 1 under a prefix, because draft 5
+          // already has the bare procedure URLs. A deployment serving draft
+          // 1 alone would point this straight at serverUrl.
+          baseUrl: `${serverUrl.replace(/\/$/, "")}/websocket-draft1`,
+          // application/connect+json, so the payload after each envelope
+          // head reads as the JSON it is rather than as protobuf bytes.
+          useBinaryFormat: false,
+          unaryTransport: unary,
+        }),
+      ),
+      description:
+        "Draft 1 wire protocol: each lane below opens its own WebSocket on " +
+        "the RPC's own URL, and every message on it is one standard 5-byte " +
+        "Connect envelope — a flag byte, a length, and the payload. " +
+        "Each direction opens with a headers envelope, because a browser " +
+        "can neither set headers on the upgrade nor read them off the " +
+        "response. In the Network tab the messages are binary: the five " +
+        "bytes of head are the price of keeping Connect's envelope intact, " +
+        "and the price draft 5 refused to pay.",
+    };
+  }
+
+  if (choice === "websocket-draft5") {
+    // Draft 5 needs no composite transport: it routes unary RPCs to the
+    // plain Connect transport itself, and upgrades only streaming ones. It
+    // also ignores the connection-per-RPC toggle, because that is all it
+    // does — one WebSocket per streaming RPC is the design.
+    return {
+      transport: createConnectWebSocketDraft5Transport({
+        baseUrl: serverUrl,
+        // application/connect+json, so the messages in the Network tab read
+        // as the JSON they are rather than as protobuf bytes.
+        useBinaryFormat: false,
+        unaryTransport: unary,
+      }),
+      description:
+        "Draft 5 wire protocol: no framing at all. Each lane below opens " +
+        "its own WebSocket on the RPC's own URL \u2014 the handshake is " +
+        "the request \u2014 and the messages that follow are the codec's " +
+        "output, unadorned. This demo negotiates " +
+        "application/connect+json, so in the Network tab every message is " +
+        "readable: a JSON metadata message opens and closes each " +
+        "connection, the RPC messages are JSON between them, and an empty " +
+        "text message marks the end of each direction's data.",
+    };
+  }
+
   const connectionPerStream = options.connectionPerStream === true;
 
   // With connectionPerStream, each lane below dials its own WebSocket
@@ -170,15 +228,19 @@ export function createDemoTransport(
     };
   }
 
-  const streaming = createConnectWebSocketDraft1Transport({
+  // Draft 3 is the default.
+  const streaming = createConnectWebSocketDraft3Transport({
     baseUrl: serverUrl,
     connectionPerStream,
   });
   return {
     transport: createCompositeTransport(unary, streaming),
     description:
-      "Draft 1 wire protocol: inside each WebSocket message, a frame is a " +
-      "stream ID followed by a standard 5-byte Connect envelope. " +
+      "Draft 3 wire protocol: a packed head inside each WebSocket message " +
+      "(stream ID, descriptor byte, payload), with compression as a " +
+      "protocol option \u2014 a subprotocol negotiates per-frame raw " +
+      "DEFLATE, signaled by one bit in that descriptor, independent of the " +
+      "WebSocket layer. " +
       lanes,
   };
 }

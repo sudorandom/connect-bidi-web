@@ -29,13 +29,13 @@ import (
 	"time"
 
 	connect "connectrpc.com/connect/v2"
-	"connectrpc.com/connect/v2/connecthttp"
 	"github.com/coder/websocket"
 	"github.com/quic-go/quic-go/http3"
 	"github.com/quic-go/webtransport-go"
 	"github.com/sudorandom/connect-bidi-web/connectwebsocket/draft1"
 	"github.com/sudorandom/connect-bidi-web/connectwebsocket/draft3"
 	"github.com/sudorandom/connect-bidi-web/connectwebsocket/draft4"
+	"github.com/sudorandom/connect-bidi-web/connectwebsocket/draft5"
 	"github.com/sudorandom/connect-bidi-web/connectwebtransport"
 	elizav1 "github.com/sudorandom/connect-bidi-web/internal/gen/connectbidi/eliza/v1"
 	"github.com/sudorandom/connect-bidi-web/internal/gen/connectbidi/eliza/v1/elizav1connect"
@@ -119,9 +119,6 @@ func main() {
 	connectServer := connect.NewServer()
 	elizav1connect.RegisterElizaServiceHandler(connectServer, elizaServer{})
 	webtransportHandler := connectwebtransport.NewHandler(connectServer)
-	websocketHandler := draft1.NewHandler(connectServer, draft1.WithAcceptOptions(&websocket.AcceptOptions{
-		InsecureSkipVerify: true,
-	}))
 	// Draft 3 negotiates compression through its subprotocols; the handler
 	// overrides Subprotocols and CompressionMode itself.
 	websocketDraft3Handler := draft3.NewHandler(connectServer, draft3.WithAcceptOptions(&websocket.AcceptOptions{
@@ -137,11 +134,30 @@ func main() {
 		}),
 	)
 
-	// 2. One mux serves Connect over HTTP, the WebSocket endpoint, and the
+	// 2. One mux serves Connect over HTTP, the WebSocket endpoints, and the
 	// static demo site.
+	//
+	// draft5.Mount stands in for connecthttp.Mount: draft 5 has no path of
+	// its own, so it registers the procedure URLs themselves, each serving
+	// POST as ordinary Connect and GET+Upgrade as draft 5. Drafts 1, 3, and
+	// 4 keep a path each below.
+	//
+	// Draft 1 also takes the procedure from the URL, so in a deployment of
+	// its own it would mount on those same procedure URLs — draft1.Mount
+	// with an empty prefix. Here draft 5 already has them, so draft 1 gets
+	// a prefix; the procedure is the path's last two segments either way,
+	// and neither the protocol nor the client cares which.
 	mux := http.NewServeMux()
-	connecthttp.Mount(mux, connectServer)
-	mux.Handle("/websocket-draft1", websocketHandler)
+	draft5.Mount(mux, connectServer,
+		draft5.WithWebSocketAcceptOptions(&websocket.AcceptOptions{
+			InsecureSkipVerify: true,
+		}),
+	)
+	draft1.Mount(mux, connectServer, draft1.DefaultPathPrefix,
+		draft1.WithAcceptOptions(&websocket.AcceptOptions{
+			InsecureSkipVerify: true,
+		}),
+	)
 	mux.Handle("/websocket-draft3", websocketDraft3Handler)
 	mux.Handle("/websocket-draft4", websocketDraft4Handler)
 	// The demo UI probes this endpoint to decide whether to offer the

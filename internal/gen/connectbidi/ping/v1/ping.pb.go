@@ -413,7 +413,12 @@ func (x *CountUpResponse) GetNumber() int64 {
 type CumSumRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// A number to add to the cumulative sum.
-	Number        int64 `protobuf:"varint,1,opt,name=number,proto3" json:"number,omitempty"`
+	Number int64 `protobuf:"varint,1,opt,name=number,proto3" json:"number,omitempty"`
+	// Text echoed back on the response, so a bidi workload can carry a
+	// payload worth compressing. The service's streaming methods otherwise
+	// send nothing but numbers, which leaves per-message compression on a
+	// *stream* unmeasurable.
+	Text          string `protobuf:"bytes,2,opt,name=text,proto3" json:"text,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -455,10 +460,19 @@ func (x *CumSumRequest) GetNumber() int64 {
 	return 0
 }
 
+func (x *CumSumRequest) GetText() string {
+	if x != nil {
+		return x.Text
+	}
+	return ""
+}
+
 type CumSumResponse struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// The cumulative sum of all numbers received so far.
-	Sum           int64 `protobuf:"varint,1,opt,name=sum,proto3" json:"sum,omitempty"`
+	Sum int64 `protobuf:"varint,1,opt,name=sum,proto3" json:"sum,omitempty"`
+	// The text from the request, echoed.
+	Text          string `protobuf:"bytes,2,opt,name=text,proto3" json:"text,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -500,6 +514,13 @@ func (x *CumSumResponse) GetSum() int64 {
 	return 0
 }
 
+func (x *CumSumResponse) GetText() string {
+	if x != nil {
+		return x.Text
+	}
+	return ""
+}
+
 var File_connectbidi_ping_v1_ping_proto protoreflect.FileDescriptor
 
 const file_connectbidi_ping_v1_ping_proto_rawDesc = "" +
@@ -522,11 +543,13 @@ const file_connectbidi_ping_v1_ping_proto_rawDesc = "" +
 	"\x0eCountUpRequest\x12\x16\n" +
 	"\x06number\x18\x01 \x01(\x03R\x06number\")\n" +
 	"\x0fCountUpResponse\x12\x16\n" +
-	"\x06number\x18\x01 \x01(\x03R\x06number\"'\n" +
+	"\x06number\x18\x01 \x01(\x03R\x06number\";\n" +
 	"\rCumSumRequest\x12\x16\n" +
-	"\x06number\x18\x01 \x01(\x03R\x06number\"\"\n" +
+	"\x06number\x18\x01 \x01(\x03R\x06number\x12\x12\n" +
+	"\x04text\x18\x02 \x01(\tR\x04text\"6\n" +
 	"\x0eCumSumResponse\x12\x10\n" +
-	"\x03sum\x18\x01 \x01(\x03R\x03sum2\xaf\x03\n" +
+	"\x03sum\x18\x01 \x01(\x03R\x03sum\x12\x12\n" +
+	"\x04text\x18\x02 \x01(\tR\x04text2\xaf\x03\n" +
 	"\vPingService\x12P\n" +
 	"\x04Ping\x12 .connectbidi.ping.v1.PingRequest\x1a!.connectbidi.ping.v1.PingResponse\"\x03\x90\x02\x01\x12M\n" +
 	"\x04Fail\x12 .connectbidi.ping.v1.FailRequest\x1a!.connectbidi.ping.v1.FailResponse\"\x00\x12L\n" +

@@ -32,7 +32,7 @@ from JavaScript.
 
 | Package | What it is |
 |---|---|
-| [`github.com/sudorandom/connect-bidi-web/connectwebsocket`](https://pkg.go.dev/github.com/sudorandom/connect-bidi-web/connectwebsocket) | Go client transports + `http.Handler` servers, one subpackage per wire protocol draft (`draft1`…`draft4`) |
+| [`github.com/sudorandom/connect-bidi-web/connectwebsocket`](https://pkg.go.dev/github.com/sudorandom/connect-bidi-web/connectwebsocket) | Go client transports + `http.Handler` servers, one subpackage per wire protocol draft (`draft1`, `draft3`…`draft5`) |
 | [`github.com/sudorandom/connect-bidi-web/connectwebtransport`](https://pkg.go.dev/github.com/sudorandom/connect-bidi-web/connectwebtransport) | Go client transport + WebTransport session handler |
 | [`github.com/sudorandom/connect-bidi-web/connectfallback`](https://pkg.go.dev/github.com/sudorandom/connect-bidi-web/connectfallback) | Go degrading transport: tries a ladder of transports, best-first |
 | [`@sudorandom/connect-bidi-web`](https://www.npmjs.com/package/@sudorandom/connect-bidi-web) | Browser client transports (WebSocket, WebTransport, composite) |
@@ -61,13 +61,13 @@ server := connect.NewServer()
 elizav1connect.RegisterElizaServiceHandler(server, &elizaServer{})
 
 // Serve Connect RPCs over WebSocket alongside regular HTTP handlers:
-http.Handle("/websocket-draft1", draft1.NewHandler(server))
+http.Handle("/websocket-draft3", draft3.NewHandler(server))
 ```
 
 ### Go client
 
 ```go
-transport := draft1.NewTransport("wss://api.example.com/websocket-draft1")
+transport := draft3.NewTransport("wss://api.example.com/websocket-draft3")
 client := elizav1connect.NewElizaServiceClient(connect.NewClient(transport))
 ```
 
@@ -78,40 +78,54 @@ import { createClient } from "@connectrpc/connect";
 import { createConnectTransport } from "@connectrpc/connect-web";
 import {
   createCompositeTransport,
-  createConnectWebSocketDraft1Transport,
+  createConnectWebSocketDraft3Transport,
 } from "@sudorandom/connect-bidi-web";
 
 const transport = createCompositeTransport(
   createConnectTransport({ baseUrl: "https://api.example.com" }), // unary
-  createConnectWebSocketDraft1Transport({ baseUrl: "https://api.example.com" }), // streams
+  createConnectWebSocketDraft3Transport({ baseUrl: "https://api.example.com" }), // streams
 );
 const client = createClient(ElizaService, transport);
 ```
 
 ## Wire protocol
 
-The WebSocket transport exists in three wire-incompatible drafts, served on
-different paths so their designs and implementations can be compared;
-WebTransport has a single protocol.
+The WebSocket transport exists in several wire-incompatible drafts so their
+designs and implementations can be compared; WebTransport has a single
+protocol. Drafts 3 and 4 are served on paths of their own; drafts 1 and 5
+are served on the Connect procedure URLs themselves.
 
-**WebSocket draft 1** (`connectwebsocket/draft1`, `/websocket-draft1`) and **WebTransport**
-(`connectwebtransport`) share Connect-style envelopes: a flag byte and a
-big-endian u32 payload length. `0x00` data, `0x01` compressed data, `0x02`
-end-stream (Connect `EndStreamResponse` JSON), `0x06` headers (JSON metadata,
-includes `:path`), `0x07` reset (WebSocket only; aborts one stream). On
-WebSocket, every frame is additionally prefixed with a 4-byte big-endian
-stream ID so concurrent RPCs can share the connection; WebTransport needs
-neither stream IDs nor resets, because each RPC has its own QUIC stream.
-Compression is negotiated with
-`connect-content-encoding`/`connect-accept-encoding` metadata.
+**WebTransport** (`connectwebtransport`) uses Connect-style envelopes: a
+flag byte and a big-endian u32 payload length. `0x00` data, `0x01`
+compressed data, `0x02` end-stream (Connect `EndStreamResponse` JSON),
+`0x06` headers (JSON metadata, includes `:path`). It needs neither stream
+IDs nor resets, because each RPC has its own QUIC stream — which is the
+same observation drafts 1 and 5 act on over WebSocket.
 
 Every draft runs over two bootstraps carrying identical frames: the
 classic HTTP/1.1 upgrade, and **HTTP/2 extended CONNECT**
 ([RFC 8441](https://datatracker.ietf.org/doc/html/rfc8441)) — one
 WebSocket per h2 stream on a shared connection — via each package's
-`NewH2Transport`; the handlers serve both automatically. The server
+`NewH2Transport` (`WithH2Bootstrap` in draft 5); the handlers serve both
+automatically. The server
 process must run with `GODEBUG=http2xconnect=1` for HTTP/2 bootstrapping,
 which is how browsers pick it too.
+
+**WebSocket draft 1** (`connectwebsocket/draft1`) is the shape the others
+are variations on, and the one this repository proposes. Each streaming RPC
+gets **its own WebSocket**; unary calls stay on HTTP, so a WebSocket
+transport is composed with an HTTP one rather than replacing it. That
+removes stream IDs and the reset frame — cancelling is closing the socket —
+at the cost of a handshake per streaming call and one of the browser's
+per-host WebSocket slots (255 in Chrome). Every message is a standard
+5-byte Connect envelope, one per WebSocket message: `0x00` data, `0x02`
+end-stream, `0x06` headers. The length field is redundant beside the
+message boundary and is kept anyway, so the envelope stays Connect's own.
+Each direction opens with a headers envelope, the server's as well as the
+client's, because browser APIs can neither set headers on the upgrade
+request nor read them off the response. Compression is
+**permessage-deflate**, accepted only with `no_context_takeover` on both
+sides and disabled entirely otherwise.
 
 **WebSocket draft 3** (`connectwebsocket/draft3`, `/websocket-draft3`)
 packs the frame head into a 4-byte big-endian stream ID plus one byte
@@ -127,8 +141,8 @@ alone.
 
 **WebSocket draft 4** (`connectwebsocket/draft4`, `/websocket-draft4`)
 optimizes for the browser, which is the primary WebSocket client and the
-place this traffic actually gets read: drafts 1 and 3 render as opaque hex in
-the Network tab. The head is ASCII text,
+place this traffic actually gets read: drafts 1 and 3 render as opaque hex
+in the Network tab. The head is ASCII text,
 `<stream ID>|<flags>|<payload>`, so a frame reads as
 `7|1|{"metadata":…}` with no decoder, and frames whose payload is UTF-8
 travel as *text* WebSocket messages so devtools renders them as text.
@@ -136,6 +150,29 @@ Control payloads are always JSON; parsers split on the first two `|` only,
 so payloads are never escaped; and compression goes back to
 permessage-deflate, since a text head can't cheaply carry a compressed
 bit.
+
+**WebSocket draft 5** (`connectwebsocket/draft5`) asks what is left to
+design once you admit that a WebSocket handshake is already an HTTP
+request. The answer is nearly nothing: it carries **one RPC per
+connection**, so there are no stream IDs and no reset frames; the upgrade
+request's URL is the procedure and its headers are request metadata, so
+there is no envelope; and the WebSocket's own message boundaries delimit
+each message, so there are no length fields. A data message is the codec's
+output and nothing else.
+
+The only framing is the WebSocket opcode, which RFC 6455 already sends on
+every frame. Exactly one shape is reserved: an *empty text* message is the
+separator that ends a direction's data phase. Everything else is a message
+of the RPC, with position telling metadata from data. A payload travels as
+text when it is non-empty and valid UTF-8 — so a JSON stream is readable
+end to end in the browser's Network tab, at no cost in bytes — and as
+binary otherwise, including whenever it is empty: an empty protobuf message
+encodes to zero bytes, and must never read as a half-close. Unary RPCs never upgrade: they are dispatched as ordinary
+Connect HTTP requests, which is why draft 5 needs no path of its own and no
+composite transport. It is implemented as a fork of connect-go's
+`connecthttp`, so `draft5.Mount` stands in for `connecthttp.Mount` and each
+procedure URL answers `POST` with Connect and `GET`+`Upgrade` with this
+protocol.
 
 See the per-package READMEs for each draft's protocol reference, the
 [benchmarks](https://connect-bidi-web.kmcd.dev/#benchmarks) for what each

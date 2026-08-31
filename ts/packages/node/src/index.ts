@@ -16,9 +16,10 @@ export type {
   BidiWebSocketHandler,
   BidiWebSocketHandlerOptions,
 } from "./bidi-websocket-handler.js";
-export {
-  createBidiWebSocketDraft1Handler,
-  defaultBidiWebSocketDraft1Path,
+export { createBidiWebSocketDraft1Handler } from "./create-bidi-websocket-draft1-handler.js";
+export type {
+  BidiWebSocketDraft1Handler,
+  BidiWebSocketDraft1HandlerOptions,
 } from "./create-bidi-websocket-draft1-handler.js";
 export {
   createBidiWebSocketDraft3Handler,
@@ -29,5 +30,11 @@ export {
   createBidiWebSocketDraft4Handler,
   defaultBidiWebSocketDraft4Path,
 } from "./create-bidi-websocket-draft4-handler.js";
+export { createBidiWebSocketDraft5Handler } from "./create-bidi-websocket-draft5-handler.js";
+export type {
+  BidiWebSocketDraft5Handler,
+  BidiWebSocketDraft5HandlerOptions,
+} from "./create-bidi-websocket-draft5-handler.js";
 export { websocketToDuplexMessageStream } from "./websocket-duplex.js";
 export { websocketToDraft4DuplexMessageStream } from "./websocket-duplex-draft4.js";
+export { websocketToDraft5MessageStream } from "./websocket-duplex-draft5.js";

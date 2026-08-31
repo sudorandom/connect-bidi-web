@@ -114,7 +114,7 @@ export interface ConnectWebSocketDraft3TransportOptions {
   defaultTimeoutMs?: number;
   /**
    * Dial a dedicated WebSocket connection for each streaming RPC instead of
-   * multiplexing all RPCs onto one shared connection; see the draft 1 and 4
+   * multiplexing all RPCs onto one shared connection; see the draft 4
    * transports.
    */
   connectionPerStream?: boolean;

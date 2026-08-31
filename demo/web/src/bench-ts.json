@@ -1,174 +1,294 @@
 {
-  "generatedAt": "2026-08-25",
+  "generatedAt": "2026-08-28",
   "runtime": "Node 26.7.0",
   "rows": [
     {
-      "case": "ws-draft1/identity",
+      "case": "ws-draft3/json/identity",
       "workload": "bidi_small x1000",
-      "ms/op": 50.2,
-      "roundtrips/s": 19920.3,
-      "rx B/rt": 41.2,
-      "tx B/rt": 37.1
-    },
-    {
-      "case": "ws-draft1/identity",
-      "workload": "bidi_16KiB_repetitive x50",
-      "ms/op": 12,
-      "roundtrips/s": 4168.5,
-      "rx B/rt": 16419.6,
-      "tx B/rt": 16413.6
-    },
-    {
-      "case": "ws-draft1/identity",
-      "workload": "bidi_16KiB_random x50",
-      "ms/op": 10.7,
-      "roundtrips/s": 4656.1,
-      "rx B/rt": 16419.6,
-      "tx B/rt": 16413.6
-    },
-    {
-      "case": "ws-draft1/deflate",
-      "workload": "bidi_small x1000",
-      "ms/op": 47.5,
-      "roundtrips/s": 21068,
-      "rx B/rt": 41.2,
-      "tx B/rt": 37.1
-    },
-    {
-      "case": "ws-draft1/deflate",
-      "workload": "bidi_16KiB_repetitive x50",
-      "ms/op": 16.1,
-      "roundtrips/s": 3105.2,
-      "rx B/rt": 16419.6,
-      "tx B/rt": 141.5
-    },
-    {
-      "case": "ws-draft1/deflate",
-      "workload": "bidi_16KiB_random x50",
-      "ms/op": 21,
-      "roundtrips/s": 2379.5,
-      "rx B/rt": 16419.6,
-      "tx B/rt": 12381.6
-    },
-    {
-      "case": "ws-draft3/identity",
-      "workload": "bidi_small x1000",
-      "ms/op": 48,
-      "roundtrips/s": 20840.1,
+      "ms/op": 52.3,
+      "roundtrips/s": 19129.7,
       "rx B/rt": 37.2,
       "tx B/rt": 33.1
     },
     {
-      "case": "ws-draft3/identity",
+      "case": "ws-draft3/json/identity",
       "workload": "bidi_16KiB_repetitive x50",
-      "ms/op": 11,
-      "roundtrips/s": 4526,
+      "ms/op": 11.7,
+      "roundtrips/s": 4291,
       "rx B/rt": 16415.4,
       "tx B/rt": 16409.5
     },
     {
-      "case": "ws-draft3/identity",
+      "case": "ws-draft3/json/identity",
       "workload": "bidi_16KiB_random x50",
-      "ms/op": 10.2,
-      "roundtrips/s": 4886.7,
+      "ms/op": 10.8,
+      "roundtrips/s": 4610,
       "rx B/rt": 16415.4,
       "tx B/rt": 16409.5
     },
     {
-      "case": "ws-draft3/deflate",
+      "case": "ws-draft3/json/deflate",
       "workload": "bidi_small x1000",
-      "ms/op": 47.7,
-      "roundtrips/s": 20950.2,
+      "ms/op": 46.8,
+      "roundtrips/s": 21375.2,
       "rx B/rt": 37.2,
       "tx B/rt": 33.1
     },
     {
-      "case": "ws-draft3/deflate",
+      "case": "ws-draft3/json/deflate",
       "workload": "bidi_16KiB_repetitive x50",
-      "ms/op": 22.5,
-      "roundtrips/s": 2223.8,
+      "ms/op": 23.4,
+      "roundtrips/s": 2139.5,
       "rx B/rt": 140.9,
       "tx B/rt": 135
     },
     {
-      "case": "ws-draft3/deflate",
+      "case": "ws-draft3/json/deflate",
       "workload": "bidi_16KiB_random x50",
-      "ms/op": 32.6,
-      "roundtrips/s": 1533.7,
+      "ms/op": 33.8,
+      "roundtrips/s": 1477.5,
       "rx B/rt": 12375.7,
       "tx B/rt": 12369.8
     },
     {
-      "case": "ws-draft4/json",
+      "case": "ws-draft3/proto/identity",
       "workload": "bidi_small x1000",
-      "ms/op": 47.6,
-      "roundtrips/s": 21015.4,
-      "rx B/rt": 36.2,
-      "tx B/rt": 32.1
+      "ms/op": 46,
+      "roundtrips/s": 21744.9,
+      "rx B/rt": 24.2,
+      "tx B/rt": 20.1
     },
     {
-      "case": "ws-draft4/json",
+      "case": "ws-draft3/proto/identity",
       "workload": "bidi_16KiB_repetitive x50",
-      "ms/op": 11.3,
-      "roundtrips/s": 4437,
-      "rx B/rt": 16415,
-      "tx B/rt": 16409.1
-    },
-    {
-      "case": "ws-draft4/json",
-      "workload": "bidi_16KiB_random x50",
-      "ms/op": 10.2,
-      "roundtrips/s": 4924.4,
-      "rx B/rt": 16415.4,
-      "tx B/rt": 16409.5
-    },
-    {
-      "case": "ws-draft4/proto",
-      "workload": "bidi_small x1000",
-      "ms/op": 43.4,
-      "roundtrips/s": 23066.3,
-      "rx B/rt": 23.2,
-      "tx B/rt": 19.1
-    },
-    {
-      "case": "ws-draft4/proto",
-      "workload": "bidi_16KiB_repetitive x50",
-      "ms/op": 4.9,
-      "roundtrips/s": 10113,
-      "rx B/rt": 16404,
-      "tx B/rt": 16398.1
-    },
-    {
-      "case": "ws-draft4/proto",
-      "workload": "bidi_16KiB_random x50",
-      "ms/op": 4.7,
-      "roundtrips/s": 10528.1,
+      "ms/op": 5.1,
+      "roundtrips/s": 9713.4,
       "rx B/rt": 16404.4,
       "tx B/rt": 16398.5
     },
     {
-      "case": "ws-draft4/deflate",
+      "case": "ws-draft3/proto/identity",
+      "workload": "bidi_16KiB_random x50",
+      "ms/op": 4.7,
+      "roundtrips/s": 10724.8,
+      "rx B/rt": 16404.4,
+      "tx B/rt": 16398.5
+    },
+    {
+      "case": "ws-draft3/proto/deflate",
       "workload": "bidi_small x1000",
-      "ms/op": 45.3,
-      "roundtrips/s": 22061.7,
+      "ms/op": 43.9,
+      "roundtrips/s": 22793.3,
+      "rx B/rt": 24.2,
+      "tx B/rt": 20.1
+    },
+    {
+      "case": "ws-draft3/proto/deflate",
+      "workload": "bidi_16KiB_repetitive x50",
+      "ms/op": 15.8,
+      "roundtrips/s": 3154.8,
+      "rx B/rt": 130.7,
+      "tx B/rt": 124.8
+    },
+    {
+      "case": "ws-draft3/proto/deflate",
+      "workload": "bidi_16KiB_random x50",
+      "ms/op": 28.5,
+      "roundtrips/s": 1752.5,
+      "rx B/rt": 12365.8,
+      "tx B/rt": 12359.8
+    },
+    {
+      "case": "ws-draft4/json/identity",
+      "workload": "bidi_small x1000",
+      "ms/op": 43.8,
+      "roundtrips/s": 22840.4,
       "rx B/rt": 36.2,
       "tx B/rt": 32.1
     },
     {
-      "case": "ws-draft4/deflate",
+      "case": "ws-draft4/json/identity",
       "workload": "bidi_16KiB_repetitive x50",
-      "ms/op": 14,
-      "roundtrips/s": 3562.3,
+      "ms/op": 11.8,
+      "roundtrips/s": 4248.4,
+      "rx B/rt": 16415,
+      "tx B/rt": 16409.1
+    },
+    {
+      "case": "ws-draft4/json/identity",
+      "workload": "bidi_16KiB_random x50",
+      "ms/op": 10.3,
+      "roundtrips/s": 4865.4,
+      "rx B/rt": 16415.4,
+      "tx B/rt": 16409.5
+    },
+    {
+      "case": "ws-draft4/proto/identity",
+      "workload": "bidi_small x1000",
+      "ms/op": 45.3,
+      "roundtrips/s": 22079.4,
+      "rx B/rt": 23.2,
+      "tx B/rt": 19.1
+    },
+    {
+      "case": "ws-draft4/proto/identity",
+      "workload": "bidi_16KiB_repetitive x50",
+      "ms/op": 5.2,
+      "roundtrips/s": 9563.5,
+      "rx B/rt": 16404,
+      "tx B/rt": 16398.1
+    },
+    {
+      "case": "ws-draft4/proto/identity",
+      "workload": "bidi_16KiB_random x50",
+      "ms/op": 6,
+      "roundtrips/s": 8268.6,
+      "rx B/rt": 16404.4,
+      "tx B/rt": 16398.5
+    },
+    {
+      "case": "ws-draft4/json/deflate",
+      "workload": "bidi_small x1000",
+      "ms/op": 48.9,
+      "roundtrips/s": 20452.6,
+      "rx B/rt": 36.2,
+      "tx B/rt": 32.1
+    },
+    {
+      "case": "ws-draft4/json/deflate",
+      "workload": "bidi_16KiB_repetitive x50",
+      "ms/op": 15.8,
+      "roundtrips/s": 3163.9,
       "rx B/rt": 16415,
       "tx B/rt": 134.7
     },
     {
-      "case": "ws-draft4/deflate",
+      "case": "ws-draft4/json/deflate",
       "workload": "bidi_16KiB_random x50",
-      "ms/op": 20.4,
-      "roundtrips/s": 2446.6,
+      "ms/op": 23.2,
+      "roundtrips/s": 2156.6,
       "rx B/rt": 16415.4,
       "tx B/rt": 12370.6
+    },
+    {
+      "case": "ws-draft4/proto/deflate",
+      "workload": "bidi_small x1000",
+      "ms/op": 47.3,
+      "roundtrips/s": 21157.8,
+      "rx B/rt": 23.2,
+      "tx B/rt": 19.1
+    },
+    {
+      "case": "ws-draft4/proto/deflate",
+      "workload": "bidi_16KiB_repetitive x50",
+      "ms/op": 9.7,
+      "roundtrips/s": 5140.7,
+      "rx B/rt": 16404,
+      "tx B/rt": 125.3
+    },
+    {
+      "case": "ws-draft4/proto/deflate",
+      "workload": "bidi_16KiB_random x50",
+      "ms/op": 16.3,
+      "roundtrips/s": 3068.3,
+      "rx B/rt": 16404.4,
+      "tx B/rt": 12361.6
+    },
+    {
+      "case": "ws-draft5/json/identity",
+      "workload": "bidi_small x1000",
+      "ms/op": 50,
+      "roundtrips/s": 20012.5,
+      "rx B/rt": 32.6,
+      "tx B/rt": 28.2
+    },
+    {
+      "case": "ws-draft5/json/identity",
+      "workload": "bidi_16KiB_repetitive x50",
+      "ms/op": 13.6,
+      "roundtrips/s": 3674.4,
+      "rx B/rt": 16418.4,
+      "tx B/rt": 16407.8
+    },
+    {
+      "case": "ws-draft5/json/identity",
+      "workload": "bidi_16KiB_random x50",
+      "ms/op": 12.2,
+      "roundtrips/s": 4084.4,
+      "rx B/rt": 16418.4,
+      "tx B/rt": 16407.8
+    },
+    {
+      "case": "ws-draft5/proto/identity",
+      "workload": "bidi_small x1000",
+      "ms/op": 45.2,
+      "roundtrips/s": 22120.7,
+      "rx B/rt": 19.6,
+      "tx B/rt": 15.2
+    },
+    {
+      "case": "ws-draft5/proto/identity",
+      "workload": "bidi_16KiB_repetitive x50",
+      "ms/op": 7.3,
+      "roundtrips/s": 6868.9,
+      "rx B/rt": 16407.4,
+      "tx B/rt": 16396.8
+    },
+    {
+      "case": "ws-draft5/proto/identity",
+      "workload": "bidi_16KiB_random x50",
+      "ms/op": 5.8,
+      "roundtrips/s": 8590.1,
+      "rx B/rt": 16407.4,
+      "tx B/rt": 16396.8
+    },
+    {
+      "case": "ws-draft5/json/deflate",
+      "workload": "bidi_small x1000",
+      "ms/op": 45.7,
+      "roundtrips/s": 21862.7,
+      "rx B/rt": 32.6,
+      "tx B/rt": 28.3
+    },
+    {
+      "case": "ws-draft5/json/deflate",
+      "workload": "bidi_16KiB_repetitive x50",
+      "ms/op": 15.4,
+      "roundtrips/s": 3249.4,
+      "rx B/rt": 16418.4,
+      "tx B/rt": 134.4
+    },
+    {
+      "case": "ws-draft5/json/deflate",
+      "workload": "bidi_16KiB_random x50",
+      "ms/op": 21,
+      "roundtrips/s": 2385.9,
+      "rx B/rt": 16418.4,
+      "tx B/rt": 12370.5
+    },
+    {
+      "case": "ws-draft5/proto/deflate",
+      "workload": "bidi_small x1000",
+      "ms/op": 42.3,
+      "roundtrips/s": 23649.4,
+      "rx B/rt": 19.6,
+      "tx B/rt": 15.3
+    },
+    {
+      "case": "ws-draft5/proto/deflate",
+      "workload": "bidi_16KiB_repetitive x50",
+      "ms/op": 9.6,
+      "roundtrips/s": 5219,
+      "rx B/rt": 16407.4,
+      "tx B/rt": 125.5
+    },
+    {
+      "case": "ws-draft5/proto/deflate",
+      "workload": "bidi_16KiB_random x50",
+      "ms/op": 17,
+      "roundtrips/s": 2943.9,
+      "rx B/rt": 16407.4,
+      "tx B/rt": 12360.6
     }
   ]
 }

@@ -3,25 +3,44 @@
 Connect RPCs over WebSocket connections, with full bidirectional streaming
 from environments such as web browsers.
 
-The wire protocol exists in three **wire-incompatible drafts**, each in its
-own subpackage with its own constructors and default path, so their designs
-and implementations can be compared under identical benchmarks. The parent
+The wire protocol exists in several **wire-incompatible drafts**, each in
+its own subpackage with its own constructors, so their designs and
+implementations can be compared under identical benchmarks. The parent
 package itself holds only the draft-agnostic `CompositeTransport`.
 
-| Draft | Frame head | Compression negotiated via | Control payloads |
-| --- | --- | --- | --- |
-| [1](draft1/README.md) (`/websocket-draft1`) | 4-byte stream ID + 5-byte Connect envelope | `connect-*-encoding` metadata | JSON, per message |
-| [3](draft3/README.md) (`/websocket-draft3`) | 4-byte stream ID + 1 type/flag byte | `connect.bidi.d3.deflate` subprotocol | JSON |
-| [4](draft4/README.md) (`/websocket-draft4`) | ASCII `id\|flags\|` | permessage-deflate extension | JSON, always |
+| Draft | Multiplexed | Frame head | Compression negotiated via | Control payloads |
+| --- | --- | --- | --- | --- |
+| [1](draft1/README.md) (the procedure URLs) | no | 5-byte Connect envelope | permessage-deflate extension | JSON, always |
+| [3](draft3/README.md) (`/websocket-draft3`) | yes | 4-byte stream ID + 1 type/flag byte | `connect.bidi.d3.deflate` subprotocol | JSON |
+| [4](draft4/README.md) (`/websocket-draft4`) | yes | ASCII `id\|flags\|` | permessage-deflate extension | JSON, always |
+| [5](draft5/README.md) (the procedure URLs) | no | none | permessage-deflate extension | JSON, always |
+
+**Drafts [1](draft1/README.md) and [5](draft5/README.md) do not share what
+follows.** Drafts 3 and 4 differ only in how they encode the same four
+frames onto one multiplexed connection; drafts 1 and 5 refuse the premise.
+Each carries one RPC per WebSocket, so neither has stream IDs, a reset
+frame, or head-of-line blocking, and both take the procedure from the
+upgrade request's URL rather than from a frame. Read their own READMEs
+instead; nothing in the "Shared protocol" section below applies to them.
+
+What separates those two from each other is how much of Connect they keep.
+Draft 1 wraps every message in a Connect envelope and opens each direction
+with a headers frame, because a browser can neither set nor read headers on
+the handshake. Draft 5 takes the upgrade request's headers as the RPC's and
+has no frames at all — legible in a browser's Network tab, at the cost of
+metadata a browser cannot actually supply.
 
 Every draft runs over two bootstraps carrying identical frames: the classic
 HTTP/1.1 Upgrade handshake (`NewTransport`) and RFC 8441 extended CONNECT on
-HTTP/2 (`NewH2Transport`), which additionally needs the server process to
-run with `GODEBUG=http2xconnect=1`. Each draft's `NewHandler` serves both
-automatically.
+HTTP/2 (`NewH2Transport`, or `WithH2Bootstrap` in draft 5), which
+additionally needs the server process to run with
+`GODEBUG=http2xconnect=1`. Each draft's handler serves both automatically.
+The unmultiplexed drafts get the most out of the HTTP/2 bootstrap: a
+WebSocket per RPC is affordable when a WebSocket is one more stream on a
+connection that is already open.
 
 Each draft's README documents its own frame encoding and compression. What
-follows is everything they share.
+follows is everything drafts 3 and 4 share.
 
 ## Shared protocol
 
@@ -44,7 +63,7 @@ stream.
 
 Each WebSocket message carries exactly one frame. Message boundaries are
 significant: a frame never spans messages, and a message never carries more
-than one frame. Drafts 1 and 3 use binary messages only. Draft 4 treats the
+than one frame. Draft 3 uses binary messages only. Draft 4 treats the
 message type as a legibility hint and accepts either.
 
 ### Frame kinds

@@ -1,18 +1,19 @@
 # connectwebsocket/draft3
 
-Draft 3 of the WebSocket wire protocol. Drafts [1](../draft1/README.md)
-and [4](../draft4/README.md) coexist with it, each with its own
-constructors and default path (`/websocket-draft3`), so the designs can be
-compared. Everything the drafts share — connection mapping, control payload
-JSON, request and response sequences, cancellation, half-close — is
-documented once in the [parent README](../README.md#shared-protocol).
+Draft 3 of the WebSocket wire protocol. Drafts [4](../draft4/README.md)
+and [5](../draft5/README.md) coexist with it; drafts 3 and 4 each have
+their own constructors and default path (`/websocket-draft3` here), so the
+designs can be compared. Everything those two share — connection mapping,
+control payload JSON, request and response sequences, cancellation,
+half-close — is documented once in the
+[parent README](../README.md#shared-protocol); draft 5 shares none of it.
 
 Draft 3 pairs a minimal binary frame head with one idea: **compression is
 an option of the protocol itself**, negotiated once per connection through
 the WebSocket handshake and signaled per frame with one bit. The two
 alternatives both have measured problems that draft 3 exists to fix:
 
-- **Connect-metadata compression** (draft 1's `connect-*-encoding` headers
+- **Connect-metadata compression** (the `connect-*-encoding` headers
   and compressed envelope flag) has no size threshold, so per-message gzip
   compresses everything — the benchmarks show that makes tiny messages
   ~50% *larger* and bidi round trips ~2× slower. It also never covers the
@@ -138,7 +139,7 @@ request and response sequences, cancellation, half-close — is the
   flush at message boundaries and therefore cannot share a window.
 - Either peer may set `C` on any frame type with a non-empty payload —
   data, headers, and response end-stream alike (covering the JSON control
-  payloads is a measured win that draft 1's per-message scheme never
+  payloads is a measured win that a per-message scheme never
   had). Empty
   payloads (request end-stream, reset) are never compressed.
 - Senders decide per frame. They SHOULD leave payloads below ~512 bytes
@@ -152,9 +153,9 @@ request and response sequences, cancellation, half-close — is the
 
 ## Relationship to the other drafts
 
-| | Draft 1 | Draft 3 | Draft 4 |
-| --- | --- | --- | --- |
-| Frame head | 9 bytes (ID + Connect envelope) | 5 bytes (ID + C/type) | 4–15 bytes, ASCII |
+| | Draft 3 | Draft 4 |
+| --- | --- | --- |
+| Frame head | 5 bytes (ID + C/type) | 4–15 bytes, ASCII |
 | Payload length | explicit u32 | message boundary | message boundary |
 | Compression unit | per message (Connect gzip) | per frame (protocol deflate) | per message (permessage-deflate) |
 | Negotiated via | Connect metadata headers | WebSocket subprotocol | WebSocket extension |

@@ -91,7 +91,7 @@
         <div class="section-inner">
           <h2>What this is</h2>
           <p>
-            An experiment in progress, not a finished product. Three wire
+            An experiment in progress, not a finished product. Four wire
             protocol drafts for carrying Connect RPCs over a WebSocket, each
             implemented end to end in Go and TypeScript and served side by
             side, so the designs can be measured rather than argued about.
@@ -232,7 +232,7 @@
                 class="code-tab-btn active"
                 type="button"
               >
-                WebSocket Draft 1
+                WebSocket Draft 3
               </button>
               <button
                 id="code-tab-btn-ts-websocket-draft4"
@@ -259,7 +259,7 @@
 import { createConnectTransport } from &quot;@connectrpc/connect-web&quot;;
 import {
   createCompositeTransport,
-  createConnectWebSocketDraft1Transport,
+  createConnectWebSocketDraft3Transport,
 } from &quot;@sudorandom/connect-bidi-web&quot;;
 import { ElizaService } from &quot;./gen/connectbidi/eliza/v1/eliza_pb.js&quot;;
 
@@ -269,7 +269,7 @@ const transport = createCompositeTransport(
   // Streaming RPCs: multiplexed onto one shared WebSocket connection.
   // connectionPerStream: true dials a connection per RPC instead,
   // trading a handshake for freedom from head-of-line blocking.
-  createConnectWebSocketDraft1Transport({
+  createConnectWebSocketDraft3Transport({
     baseUrl: &quot;https://localhost:4433&quot;,
   }),
 );
@@ -363,7 +363,7 @@ const transport = createCompositeTransport(
                 class="code-tab-btn active"
                 type="button"
               >
-                WebSocket Draft 1
+                WebSocket Draft 3
               </button>
               <button
                 id="code-tab-btn-go-websocket-draft4"
@@ -391,7 +391,7 @@ elizav1connect.RegisterElizaServiceHandler(server, elizaServer{})
 
 // One WebSocket connection, many concurrent RPCs (demuxed by stream
 // ID), over a plain net/http handler.
-http.Handle(&quot;/websocket-draft1&quot;, draft1.NewHandler(server))</code></pre>
+http.Handle(&quot;/websocket-draft3&quot;, draft3.NewHandler(server))</code></pre>
             </article>
 
             <article class="code-card">
@@ -399,7 +399,7 @@ http.Handle(&quot;/websocket-draft1&quot;, draft1.NewHandler(server))</code></pr
                 <span class="code-lang">Go</span>
                 <span class="code-title">Client</span>
               </header>
-              <pre><code class="language-go">transport := draft1.NewTransport(&quot;wss://api.example.com/websocket-draft1&quot;)
+              <pre><code class="language-go">transport := draft3.NewTransport(&quot;wss://api.example.com/websocket-draft3&quot;)
 client := elizav1connect.NewElizaServiceClient(connect.NewClient(transport))
 
 stream := client.Converse(ctx)
@@ -502,9 +502,10 @@ client := elizav1connect.NewElizaServiceClient(connect.NewClient(transport))</co
                   <option value="webtransport">
                     WebTransport (HTTP/3 session)
                   </option>
-                  <option value="websocket">WebSocket Draft 1</option>
+                  <option value="websocket-draft1">WebSocket Draft 1</option>
                   <option value="websocket-draft3">WebSocket Draft 3</option>
                   <option value="websocket-draft4">WebSocket Draft 4</option>
+                  <option value="websocket-draft5">WebSocket Draft 5</option>
                 </select>
               </div>
               <div class="demo-toolbar-row">
@@ -697,20 +698,10 @@ just demo-worker   # Cloudflare workerd: http://localhost:8787
             trailers. What cannot survive the upgrade is what Connect
             borrows from HTTP — per-request headers, a way to tell
             concurrent RPCs apart, half-close, and <code>RST_STREAM</code>.
-            Four small frames replace them.
-          </p>
-          <p>
-            Adding only what a raw socket cannot provide is one strategy for
-            those frames, and the drafts sit at different points along it.
-            Draft 1 takes it most literally: it keeps Connect's own 5-byte
-            envelope untouched and prefixes a 4-byte stream ID, so nine
-            bytes buy strict fidelity. Draft 3 gives that up to save four,
-            replacing the envelope with a single descriptor byte and taking
-            ownership of compression. Draft 4 goes the other way entirely,
-            spending bytes on an ASCII head and JSON headers so the traffic
-            reads as text in the Network tab. Which is right depends on what
-            you are optimizing for — which is why the drafts coexist rather
-            than converge.
+            The frames below replace them, and the drafts disagree about how
+            many are needed: drafts 1 and 5 give each RPC its own socket, so
+            they need no stream ID and no reset; drafts 3 and 4 multiplex,
+            and pay for both.
           </p>
           <div class="findings">
             <div class="finding">
@@ -746,74 +737,74 @@ just demo-worker   # Cloudflare workerd: http://localhost:8787
               </p>
             </div>
           </div>
-          <h3 id="protocol-drafts">Three wire formats</h3>
+          <h3 id="protocol-drafts">Four wire formats</h3>
           <p>
-            Three wire-incompatible <strong>drafts</strong> coexist, on
-            different paths (<code>/websocket-draft1</code>,
-            <code>/websocket-draft3</code>, <code>/websocket-draft4</code>),
-            all selectable in the demo above. They disagree about one thing:
-            where framing and compression belong.
+            Four wire-incompatible <strong>drafts</strong> coexist, all
+            selectable in the demo above. Draft 1 is the proposal: one
+            WebSocket per streaming RPC, unary left on HTTP. Drafts 3 and 4
+            multiplex everything onto one connection and get a path each
+            (<code>/websocket-draft3</code>, <code>/websocket-draft4</code>),
+            disagreeing only about where framing and compression belong.
+            Draft 5 keeps draft 1's connection model and removes the
+            envelope.
           </p>
-          <article class="code-card wire-format-card">
+          <article class="code-card wire-format-card draft-1">
             <header class="code-card-header">
               <span class="code-lang">Draft 1</span>
               <span class="code-title"
-                >Stream ID + a standard Connect envelope</span
+                >One socket per RPC + Connect&apos;s own envelope</span
               >
             </header>
             <div class="wire-format">
-              <div class="wire-svg-scroll"><svg class="wire-svg" viewBox="0 0 640 139" role="img" aria-label="Draft 1 frame layout. A 4-byte stream ID followed by one standard Connect envelope: a 1-byte flag, a 4-byte big-endian payload length, and the payload." preserveAspectRatio="xMidYMid meet"><title>Draft 1 frame layout</title><desc>A 4-byte stream ID followed by one standard Connect envelope: a 1-byte flag, a 4-byte big-endian payload length, and the payload.</desc><rect class="cell id" x="8" y="22" width="148" height="52" rx="7"/><text class="lbl t-id" x="82" y="53" text-anchor="middle">stream ID</text><text class="sub" x="82" y="91" text-anchor="middle">4 bytes</text><rect class="cell flag" x="162" y="22" width="60" height="52" rx="7"/><text class="lbl t-flag" x="192" y="53" text-anchor="middle">flag</text><text class="sub" x="192" y="91" text-anchor="middle">1 byte</text><rect class="cell len" x="228" y="22" width="148" height="52" rx="7"/><text class="lbl t-len" x="302" y="53" text-anchor="middle">length</text><text class="sub" x="302" y="91" text-anchor="middle">4 bytes</text><rect class="cell payload" x="382" y="22" width="250" height="52" rx="7"/><text class="lbl t-payload" x="507" y="53" text-anchor="middle">payload …</text><text class="sub" x="507" y="91" text-anchor="middle">declared by length</text><path class="brace" d="M162 101 v6 H390 l7 8 l7 -8 H632 V101"/><text class="sub" x="397" y="131" text-anchor="middle">one standard Connect envelope</text></svg></div>
+              <div class="wire-svg-scroll"><svg class="wire-svg" viewBox="0 0 640 103" role="img" aria-label="Draft 1 frame layout. A one-byte flags field, a four-byte big-endian payload length, and the payload — a standard Connect envelope, with no stream ID in front of it." preserveAspectRatio="xMidYMid meet"><title>Draft 1 frame layout</title><desc>A one-byte flags field, a four-byte big-endian payload length, and the payload — a standard Connect envelope, with no stream ID in front of it.</desc><rect class="cell flag" x="8" y="22" width="100" height="52" rx="7"/><text class="lbl t-flag" x="58" y="53" text-anchor="middle">flags</text><text class="sub" x="58" y="91" text-anchor="middle">1 byte</text><rect class="cell id" x="114" y="22" width="164" height="52" rx="7"/><text class="lbl t-id" x="196" y="53" text-anchor="middle">payload length</text><text class="sub" x="196" y="91" text-anchor="middle">4 bytes, big-endian</text><rect class="cell payload" x="284" y="22" width="348" height="52" rx="7"/><text class="lbl t-payload" x="458" y="53" text-anchor="middle">payload …</text><text class="sub" x="458" y="91" text-anchor="middle">rest of the message</text></svg></div>
               <table class="flag-table">
                 <thead>
                   <tr>
-                    <th scope="col">Flag</th>
-                    <th scope="col">Frame</th>
+                    <th scope="col">Flags</th>
+                    <th scope="col">Meaning</th>
                   </tr>
                 </thead>
                 <tbody>
                   <tr>
                     <td><code>0x00</code></td>
-                    <td>data &mdash; one uncompressed RPC message</td>
-                  </tr>
-                  <tr>
-                    <td><code>0x01</code></td>
-                    <td>
-                      compressed data &mdash; one message, compressed with
-                      the negotiated algorithm
-                    </td>
+                    <td>data &mdash; one RPC message</td>
                   </tr>
                   <tr>
                     <td><code>0x02</code></td>
                     <td>
                       end-stream &mdash; empty on requests (half-close);
-                      EndStreamResponse JSON on responses
+                      Connect <code>EndStreamResponse</code> JSON on
+                      responses
                     </td>
                   </tr>
                   <tr>
                     <td><code>0x06</code></td>
                     <td>
-                      headers &mdash; opens every stream; JSON metadata with
-                      <code>:path</code>, <code>content-type</code>, &hellip;
+                      headers &mdash; opens each direction; JSON metadata.
+                      No <code>:path</code>: the URL already named the
+                      procedure.
                     </td>
-                  </tr>
-                  <tr>
-                    <td><code>0x07</code></td>
-                    <td>reset &mdash; empty; aborts one stream</td>
                   </tr>
                 </tbody>
               </table>
             </div>
             <p class="wire-format-note">
-              Everything after the stream ID is the Connect protocol's own
-              envelope: a flag byte, a 4-byte length, and the payload.
-              Compression is Connect's, per message. The client lists what
-              it accepts in <code>connect-accept-encoding</code>, the
-              server picks one, and compressed messages carry flag
-              <code>0x01</code>. Headers and end-stream JSON are never
-              compressed. Served on <code>/websocket-draft1</code>.
+              That is the standard 5-byte Connect envelope, unchanged, one
+              per binary WebSocket message; the length restates the message
+              boundary, which is what leaves the envelope Connect&apos;s own
+              byte for byte. There is no stream ID and no reset flag,
+              because one socket carries one RPC &mdash; cancelling is
+              closing it &mdash; and the compressed-data flag
+              (<code>0x01</code>) goes unused, since compression is
+              <code>permessage-deflate</code> with
+              <code>no_context_takeover</code>. The headers envelope opens
+              each direction, the server&apos;s too, because a browser can
+              neither set headers on the upgrade nor read them off the
+              response. Streaming RPCs dial the procedure&apos;s own URL;
+              unary never upgrades.
             </p>
           </article>
-          <article class="code-card wire-format-card">
+          <article class="code-card wire-format-card draft-3">
             <header class="code-card-header">
               <span class="code-lang">Draft 3</span>
               <span class="code-title"
@@ -874,7 +865,7 @@ just demo-worker   # Cloudflare workerd: http://localhost:8787
               Served on <code>/websocket-draft3</code>.
             </p>
           </article>
-          <article class="code-card wire-format-card">
+          <article class="code-card wire-format-card draft-4">
             <header class="code-card-header">
               <span class="code-lang">Draft 4</span>
               <span class="code-title"
@@ -931,25 +922,87 @@ just demo-worker   # Cloudflare workerd: http://localhost:8787
               <code>/websocket-draft4</code>.
             </p>
           </article>
+          <article class="code-card wire-format-card draft-5">
+            <header class="code-card-header">
+              <span class="code-lang">Draft 5</span>
+              <span class="code-title"
+                >No frame at all &mdash; the handshake is the request</span
+              >
+            </header>
+            <div class="wire-format wire-format-stacked">
+              <div class="wire-svg-scroll"><svg class="wire-svg" viewBox="0 0 600 726" role="img" aria-label="Draft 5 exchange. One RPC on one WebSocket. The upgrade request names the procedure; then each side sends a JSON metadata message, its RPC messages, and an empty text message ending its data, and the server adds a final metadata message carrying trailers and status. A message travels as text when its payload is non-empty and valid UTF-8, so a JSON conversation is readable end to end, and as binary otherwise -- including when it is empty, because an empty text message is the separator. A second exchange shows the same protocol carrying protobuf on a numeric method, where the payloads are not UTF-8 and one request message is legitimately empty." preserveAspectRatio="xMidYMid meet"><title>Draft 5 exchange</title><desc>One RPC on one WebSocket. The upgrade request names the procedure; then each side sends a JSON metadata message, its RPC messages, and an empty text message ending its data, and the server adds a final metadata message carrying trailers and status. A message travels as text when its payload is non-empty and valid UTF-8, so a JSON conversation is readable end to end, and as binary otherwise -- including when it is empty, because an empty text message is the separator. A second exchange shows the same protocol carrying protobuf on a numeric method, where the payloads are not UTF-8 and one request message is legitimately empty.</desc><text class="sub dim" x="8" y="14">one RPC, one WebSocket, dialed on the procedure's own URL:</text><text class="mono sm t-sep" x="8" y="36" textLength="403.2" lengthAdjust="spacing" font-size="12">GET /connectbidi.eliza.v1.ElizaService/Converse HTTP/1.1</text><text class="sub" x="424" y="36">the URL is the procedure</text><text class="mono sm t-sep" x="8" y="52" textLength="280.8" lengthAdjust="spacing" font-size="12">Sec-WebSocket-Protocol: connect.bidi.d5</text><text class="mono sm t-sep" x="8" y="68" textLength="165.6" lengthAdjust="spacing" font-size="12">101 Switching Protocols</text><text class="sub dim" x="26" y="96">opcode</text><text class="sub dim" x="94" y="96">payload</text><text class="mono t-sep" x="8" y="116" font-size="14">→</text><rect class="cell flag" x="26" y="103" width="58" height="17" rx="5"/><text class="mono sm t-flag" x="55" y="115.5" text-anchor="middle" font-size="11">text</text><text class="mono lit t-payload" x="94" y="116" textLength="478.8" lengthAdjust="spacing" font-size="14">{&quot;metadata&quot;:{&quot;content-type&quot;:[&quot;application/connect+json&quot;],</text><text class="mono lit t-payload" x="203.2" y="138" textLength="285.6" lengthAdjust="spacing" font-size="14">&quot;connect-protocol-version&quot;:[&quot;1&quot;]}}</text><text class="sub" x="504.8" y="137">required, first</text><text class="mono t-sep" x="8" y="160" font-size="14">→</text><rect class="cell flag" x="26" y="147" width="58" height="17" rx="5"/><text class="mono sm t-flag" x="55" y="159.5" text-anchor="middle" font-size="11">text</text><text class="mono lit t-payload" x="94" y="160" textLength="235.2" lengthAdjust="spacing" font-size="14">{&quot;sentence&quot;:&quot;Hello, Eliza!&quot;}</text><text class="mono t-sep" x="8" y="182" font-size="14">←</text><rect class="cell flag" x="26" y="169" width="58" height="17" rx="5"/><text class="mono sm t-flag" x="55" y="181.5" text-anchor="middle" font-size="11">text</text><text class="mono lit t-payload" x="94" y="182" textLength="487.2" lengthAdjust="spacing" font-size="14">{&quot;metadata&quot;:{&quot;content-type&quot;:[&quot;application/connect+json&quot;]}}</text><text class="mono t-sep" x="8" y="204" font-size="14">←</text><rect class="cell flag" x="26" y="191" width="58" height="17" rx="5"/><text class="mono sm t-flag" x="55" y="203.5" text-anchor="middle" font-size="11">text</text><text class="mono lit t-payload" x="94" y="204" textLength="344.4" lengthAdjust="spacing" font-size="14">{&quot;sentence&quot;:&quot;Eliza hears: Hello, Eliza!&quot;}</text><text class="mono t-sep" x="8" y="226" font-size="14">→</text><rect class="cell flag" x="26" y="213" width="58" height="17" rx="5"/><text class="mono sm t-flag" x="55" y="225.5" text-anchor="middle" font-size="11">text</text><text class="mono lit t-payload" x="94" y="226" textLength="226.8" lengthAdjust="spacing" font-size="14">{&quot;sentence&quot;:&quot;How are you?&quot;}</text><text class="mono t-sep" x="8" y="248" font-size="14">←</text><rect class="cell flag" x="26" y="235" width="58" height="17" rx="5"/><text class="mono sm t-flag" x="55" y="247.5" text-anchor="middle" font-size="11">text</text><text class="mono lit t-payload" x="94" y="248" textLength="336" lengthAdjust="spacing" font-size="14">{&quot;sentence&quot;:&quot;Eliza hears: How are you?&quot;}</text><text class="mono t-sep" x="8" y="270" font-size="14">→</text><rect class="cell flag" x="26" y="257" width="58" height="17" rx="5"/><text class="mono sm t-flag" x="55" y="269.5" text-anchor="middle" font-size="11">text</text><text class="mono sm t-sep" x="94" y="270" textLength="50.4" lengthAdjust="spacing" font-size="12">(empty)</text><text class="sub" x="300" y="269">half-close: no more requests</text><text class="mono t-sep" x="8" y="292" font-size="14">←</text><rect class="cell flag" x="26" y="279" width="58" height="17" rx="5"/><text class="mono sm t-flag" x="55" y="291.5" text-anchor="middle" font-size="11">text</text><text class="mono sm t-sep" x="94" y="292" textLength="50.4" lengthAdjust="spacing" font-size="12">(empty)</text><text class="sub" x="300" y="291">no more responses</text><text class="mono t-sep" x="8" y="314" font-size="14">←</text><rect class="cell flag" x="26" y="301" width="58" height="17" rx="5"/><text class="mono sm t-flag" x="55" y="313.5" text-anchor="middle" font-size="11">text</text><text class="mono lit t-payload" x="94" y="314" textLength="319.2" lengthAdjust="spacing" font-size="14">{&quot;metadata&quot;:{&quot;x-request-id&quot;:[&quot;7f3a&quot;]}}</text><text class="sub" x="429.2" y="313">trailers, and the status</text><text class="mono sm t-sep" x="94" y="336" textLength="72" lengthAdjust="spacing" font-size="12">close 1000</text><path class="divider" d="M8 362 H592"/><text class="sub dim" x="8" y="388">the same protocol with application/connect+proto, on a numeric method:</text><text class="mono sm t-sep" x="8" y="410" textLength="374.4" lengthAdjust="spacing" font-size="12">GET /connectbidi.ping.v1.PingService/CumSum HTTP/1.1</text><text class="mono sm t-sep" x="8" y="426" textLength="280.8" lengthAdjust="spacing" font-size="12">Sec-WebSocket-Protocol: connect.bidi.d5</text><text class="mono sm t-sep" x="8" y="442" textLength="165.6" lengthAdjust="spacing" font-size="12">101 Switching Protocols</text><text class="sub dim" x="26" y="470">opcode</text><text class="sub dim" x="94" y="470">payload</text><text class="mono t-sep" x="8" y="490" font-size="14">→</text><rect class="cell flag" x="26" y="477" width="58" height="17" rx="5"/><text class="mono sm t-flag" x="55" y="489.5" text-anchor="middle" font-size="11">text</text><text class="mono lit t-payload" x="94" y="490" textLength="487.2" lengthAdjust="spacing" font-size="14">{&quot;metadata&quot;:{&quot;content-type&quot;:[&quot;application/connect+proto&quot;],</text><text class="mono lit t-payload" x="203.2" y="512" textLength="285.6" lengthAdjust="spacing" font-size="14">&quot;connect-protocol-version&quot;:[&quot;1&quot;]}}</text><text class="mono t-sep" x="8" y="534" font-size="14">→</text><rect class="cell bits" x="26" y="521" width="58" height="17" rx="5"/><text class="mono sm t-bits" x="55" y="533.5" text-anchor="middle" font-size="11">binary</text><text class="mono sm t-sep" x="94" y="534" textLength="57.6" lengthAdjust="spacing" font-size="12">08 ac 02</text><text class="sub" x="300" y="533">CumSumRequest{number:300} — not UTF-8</text><text class="mono t-sep" x="8" y="556" font-size="14">←</text><rect class="cell flag" x="26" y="543" width="58" height="17" rx="5"/><text class="mono sm t-flag" x="55" y="555.5" text-anchor="middle" font-size="11">text</text><text class="mono lit t-payload" x="94" y="556" textLength="495.6" lengthAdjust="spacing" font-size="14">{&quot;metadata&quot;:{&quot;content-type&quot;:[&quot;application/connect+proto&quot;]}}</text><text class="mono t-sep" x="8" y="578" font-size="14">←</text><rect class="cell bits" x="26" y="565" width="58" height="17" rx="5"/><text class="mono sm t-bits" x="55" y="577.5" text-anchor="middle" font-size="11">binary</text><text class="mono sm t-sep" x="94" y="578" textLength="57.6" lengthAdjust="spacing" font-size="12">08 ac 02</text><text class="sub" x="300" y="577">CumSumResponse{sum:300}</text><text class="mono t-sep" x="8" y="600" font-size="14">→</text><rect class="cell bits" x="26" y="587" width="58" height="17" rx="5"/><text class="mono sm t-bits" x="55" y="599.5" text-anchor="middle" font-size="11">binary</text><text class="mono sm t-sep" x="94" y="600" textLength="50.4" lengthAdjust="spacing" font-size="12">(empty)</text><text class="sub" x="300" y="599">number:0 — a real message, not a half-close</text><text class="mono t-sep" x="8" y="622" font-size="14">←</text><rect class="cell bits" x="26" y="609" width="58" height="17" rx="5"/><text class="mono sm t-bits" x="55" y="621.5" text-anchor="middle" font-size="11">binary</text><text class="mono sm t-sep" x="94" y="622" textLength="57.6" lengthAdjust="spacing" font-size="12">08 ac 02</text><text class="sub" x="300" y="621">the sum is unchanged</text><text class="mono t-sep" x="8" y="644" font-size="14">→</text><rect class="cell flag" x="26" y="631" width="58" height="17" rx="5"/><text class="mono sm t-flag" x="55" y="643.5" text-anchor="middle" font-size="11">text</text><text class="mono sm t-sep" x="94" y="644" textLength="50.4" lengthAdjust="spacing" font-size="12">(empty)</text><text class="sub" x="300" y="643">half-close: no more requests</text><text class="mono t-sep" x="8" y="666" font-size="14">←</text><rect class="cell flag" x="26" y="653" width="58" height="17" rx="5"/><text class="mono sm t-flag" x="55" y="665.5" text-anchor="middle" font-size="11">text</text><text class="mono sm t-sep" x="94" y="666" textLength="50.4" lengthAdjust="spacing" font-size="12">(empty)</text><text class="sub" x="300" y="665">no more responses</text><text class="mono t-sep" x="8" y="688" font-size="14">←</text><rect class="cell flag" x="26" y="675" width="58" height="17" rx="5"/><text class="mono sm t-flag" x="55" y="687.5" text-anchor="middle" font-size="11">text</text><text class="mono lit t-payload" x="94" y="688" textLength="319.2" lengthAdjust="spacing" font-size="14">{&quot;metadata&quot;:{&quot;x-request-id&quot;:[&quot;9c1e&quot;]}}</text><text class="sub" x="429.2" y="687">trailers, and the status</text><text class="mono sm t-sep" x="94" y="710" textLength="72" lengthAdjust="spacing" font-size="12">close 1000</text></svg></div>
+              <table class="flag-table">
+                <thead>
+                  <tr>
+                    <th scope="col">WebSocket opcode</th>
+                    <th scope="col">Meaning</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td><code>text</code>, empty</td>
+                    <td>
+                      separator &mdash; and only this: the one message shape
+                      the protocol reserves
+                    </td>
+                  </tr>
+                  <tr>
+                    <td><code>text</code></td>
+                    <td>
+                      headers (first in each direction), the
+                      EndStreamResponse (last from the server), or an RPC
+                      message whose payload is non-empty UTF&#8209;8
+                    </td>
+                  </tr>
+                  <tr>
+                    <td><code>binary</code></td>
+                    <td>
+                      an RPC message that is empty or not UTF&#8209;8.
+                      Position tells data from metadata.
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <p class="wire-format-note">
+              There is no frame diagram because there is no frame: a data
+              message is exactly the bytes the codec produced. The only
+              framing is the opcode
+              <a href="https://datatracker.ietf.org/doc/html/rfc6455"
+                >RFC&nbsp;6455</a
+              >
+              already sends, with one shape reserved &mdash; an empty text
+              message is the separator, so empty payloads travel as binary
+              and a service whose messages are sometimes empty cannot
+              half-close by accident. The first message is metadata in both
+              directions, and mandatory, for the same reason
+              draft&nbsp;1&apos;s is. The URL is the procedure, so
+              draft&nbsp;5 has no path of its own; unary never upgrades; and
+              <code>permessage-deflate</code> is the only compression, with
+              no envelope to carry a compressed bit.
+            </p>
+          </article>
           <p>
-            The trade-offs: draft 1's gzip compresses everything, which
-            makes small messages bigger and slower, but it survives any
-            intermediary. Draft 3 owns its compression, so it works the same
-            on both bootstraps and in both directions no matter which client
-            connects. Draft 4 hands that to permessage-deflate — which works
+            The trade-offs: draft 3 owns its compression, so it works the
+            same on both bootstraps and in both directions no matter which
+            client connects. Draft 4 hands that to permessage-deflate — which works
             in a browser, but leaves the upload direction up to the client —
             in exchange for a wire you can read in the browser's Network
-            tab, and pays with a frame head that grows as a connection ages. All three carry
-            identical Connect semantics; the
+            tab, and pays with a frame head that grows as a connection ages.
+            Draft 5 spends nothing per message and pays per connection
+            instead: a handshake for every streaming RPC, which the
+            benchmarks show it earns back after roughly 75 messages. All
+            three carry identical Connect semantics; the
             <a href="#benchmarks">benchmarks</a> show what each costs.
           </p>
           <p>
             WebTransport needs almost none of this. QUIC already gives every
             RPC its own independently flow-controlled stream, with native
             half-close and cancellation, so there the protocol is exactly
-            Connect envelopes (draft 1's, without the stream ID) plus the
-            headers frame, and nothing else. The stream ID and reset frame
-            exist only where the transport can't do that job itself.
+            Connect's own envelopes plus a headers frame, and nothing else.
+            The stream ID and reset frame exist only where the transport
+            can't do that job itself &mdash; which is also the observation
+            draft 5 acts on, by giving every RPC a WebSocket of its own.
           </p>
           <p>
             Sharing one TCP connection costs
@@ -983,15 +1036,38 @@ just demo-worker   # Cloudflare workerd: http://localhost:8787
           <div id="bench-ts-tables"></div>
 
           <p>
-            Highlights worth noticing: draft 3 spends 5 bytes of
-            protocol per message where draft 1 spends 9; draft 1's
-            per-message gzip compresses <em>everything</em>, which makes
-            small messages larger and slower; and in this suite draft 3 is
-            the only variant that compresses what the client
-            <em>sends</em>, taking the compressible 16&nbsp;KiB upload down
-            to about 140 bytes. On incompressible text every deflate row
-            lands at the same ~12.4&nbsp;KB, which is what honest
-            compression looks like.
+            Highlights worth noticing: draft 3 spends 5 bytes of protocol
+            per message and draft 4 spends 4 to 15, while draft 5 spends
+            none &mdash; and still comes out cheapest over a 100-roundtrip
+            stream, handshake included. Draft 3 is the only variant here
+            that compresses what the client <em>sends</em>, taking the
+            compressible 16&nbsp;KiB upload down to about 140 bytes. On
+            incompressible text every deflate row lands at the same
+            ~12.4&nbsp;KB, which is what honest compression looks like.
+          </p>
+          <p>
+            Two rows are easy to misread. <strong>Draft 5's unary rows
+            measure a different transport</strong>: it never upgrades for
+            unary, so those numbers are an ordinary Connect POST, its
+            <code>identity</code>/<code>deflate</code> label does not apply,
+            and its 16&nbsp;KiB response comes back at ~294&nbsp;B because
+            Connect's own gzip covers it where the WebSocket drafts'
+            uncompressed rows carry the full payload. And on
+            <strong>Bidi&nbsp;&times;100</strong> every draft's deflate rows
+            match its identity rows &mdash; those messages are far too small
+            to compress &mdash; except draft 5's, which come out 102 bytes
+            <em>larger</em>: all that arrives is the permessage-deflate
+            negotiation in the handshake, which draft 5 pays on every RPC
+            where the multiplexing drafts pay it once per connection.
+          </p>
+          <p>
+            <strong>Bidi&nbsp;16&nbsp;KiB</strong> is the workload that
+            shows compression doing its job on a <em>stream</em> rather than
+            on a unary call, and it exists because its absence was
+            misleading: with only the unary rows to go on, draft 5's deflate
+            looked like it did nothing at all. It compresses 65&nbsp;KB down
+            to about 1.2&nbsp;KB, a little behind drafts 3 and 4 because a
+            per-RPC connection cannot amortize the handshake across calls.
           </p>
           <p>
             That upload column deserves a caveat, because it is measured
@@ -1012,16 +1088,18 @@ just demo-worker   # Cloudflare workerd: http://localhost:8787
         <div class="section-inner">
           <h2>Conclusions</h2>
           <p class="section-lede">
-            What four coexisting drafts and a byte-counting benchmark suite
-            settled.
+            What three coexisting drafts and a byte-counting benchmark
+            suite settled.
           </p>
           <div class="findings">
             <div class="finding">
               <h3>Don't duplicate the layer below</h3>
               <p>
-                A WebSocket message already carries its own length. Draft 1
-                states it again inside the frame. Dropping that saved 4
-                bytes per message and removed a whole class of error.
+                A WebSocket message already carries its own length, and
+                Connect's envelope states it again inside the frame. The
+                first draft kept that envelope untouched; dropping it saved
+                4 bytes per message and removed a whole class of error.
+                Draft 5 finishes the thought and drops the frame entirely.
               </p>
             </div>
             <div class="finding">
@@ -1063,12 +1141,14 @@ just demo-worker   # Cloudflare workerd: http://localhost:8787
             <div class="finding finding-recommendation">
               <h3>Recommendation</h3>
               <p>
-                <strong>Draft 4</strong> for browser-facing services: you
-                can read it in devtools, and it costs a frame head that
-                grows with connection age. <strong>Draft 3</strong> when
-                bytes matter, or when you need compression over HTTP/2.
-                Draft 1 for pluggable algorithms. WebTransport when you
-                control the UDP path.
+                <strong>Draft 5</strong> for long-lived streams: no framing
+                at all, the cheapest on the wire past about 75 messages, and
+                nothing to get wrong &mdash; at the price of a connection per
+                RPC. <strong>Draft 4</strong> when you want to read the
+                traffic in devtools. <strong>Draft 3</strong> when bytes
+                matter across many short, concurrent streams, or when you
+                need compression over HTTP/2. WebTransport when you control
+                the UDP path.
               </p>
             </div>
           </div>

@@ -12,11 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-export { createConnectWebSocketDraft1Transport } from "./connect-websocket-draft1-transport.js";
-export type {
-  ConnectWebSocketDraft1Transport,
-  ConnectWebSocketDraft1TransportOptions,
+export {
+  createConnectWebSocketDraft1Transport,
+  draft1Subprotocol,
 } from "./connect-websocket-draft1-transport.js";
+export type { ConnectWebSocketDraft1TransportOptions } from "./connect-websocket-draft1-transport.js";
 export { createConnectWebSocketDraft3Transport } from "./connect-websocket-draft3-transport.js";
 export type {
   ConnectWebSocketDraft3Transport,
@@ -27,6 +27,11 @@ export type {
   ConnectWebSocketDraft4Transport,
   ConnectWebSocketDraft4TransportOptions,
 } from "./connect-websocket-draft4-transport.js";
+export {
+  createConnectWebSocketDraft5Transport,
+  draft5Subprotocol,
+} from "./connect-websocket-draft5-transport.js";
+export type { ConnectWebSocketDraft5TransportOptions } from "./connect-websocket-draft5-transport.js";
 export { createConnectWebTransportTransport } from "./connect-webtransport-transport.js";
 export type { ConnectWebTransportTransportOptions } from "./connect-webtransport-transport.js";
 export type {

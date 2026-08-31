@@ -1,111 +1,151 @@
 # connectwebsocket/draft1
 
-Draft 1 of the WebSocket wire protocol, the one that stays closest to the
-Connect HTTP protocol: RPC messages travel in standard Connect envelopes,
-compressed per message and negotiated through `connect-*-encoding`
-metadata. Drafts [3](../draft3/README.md) and [4](../draft4/README.md)
-coexist with it, each wire-incompatible with the others, each with its own
-constructors and default path (`/websocket-draft1` here), so the designs
-can be compared.
+Draft 1 of the WebSocket wire protocol, and the shape the other drafts are
+variations on. Drafts [3](../draft3/README.md), [4](../draft4/README.md),
+[5](../draft5/README.md), and 6 coexist with it, each wire-incompatible
+with the others, so the designs can be compared.
 
-Like the other drafts, draft 1 runs over two bootstraps carrying identical
-frames: the HTTP/1.1 Upgrade handshake (`NewTransport`), and RFC 8441
-extended CONNECT on HTTP/2 (`NewH2Transport`; the server process must run
-with `GODEBUG=http2xconnect=1`). `NewHandler` serves both automatically.
-One practical difference: WebSocket extensions don't exist on the HTTP/2
-bootstrap, so permessage-deflate never applies there — draft 1's own
-Connect-metadata compression is unaffected.
+**Draft 1 does not share the [shared protocol](../README.md#shared-protocol)
+the multiplexing drafts document once in the parent README.** It has no
+stream IDs and no reset frame, because it has nothing to multiplex.
 
-## Design strategy
+## The proposal
 
-This transport reuses as much of the [Connect protocol](https://connectrpc.com/docs/protocol/) as possible. RPC
-messages use Connect codecs, per-message compression, and the standard 5-byte
-Connect envelope. Responses use Connect codes, error details, trailers, and
-the standard Connect EndStreamResponse JSON. Transport-specific protocol is
-limited to what a WebSocket cannot provide itself:
+The best way for Connect to support streaming in the browser is WebSockets.
+Draft 1 is the shape that proposes itself, made of four decisions.
 
-- a **stream ID** on every frame, so several RPCs can share one connection
-  and receivers can match each frame to the appropriate caller;
-- an initial **headers envelope**, standing in for the per-RPC HTTP headers
-  that disappear after the upgrade;
-- an explicit **end-stream envelope** on requests for half-close semantics;
-- a **reset envelope** to cancel one stream without closing the connection.
+**Each streaming RPC creates its own WebSocket.** Unary calls keep using
+HTTP. Multiplexing every RPC — unary and streaming — onto one connection was
+considered and rejected: it is too complicated and too easy to get wrong,
+and drafts 3 and 4 exist to show what it costs, in a stream ID on every
+frame and a reset frame in the protocol. Two consequences follow. Cancelling
+an RPC is closing its socket, so there is nothing else to design. And
+browsers enforce a global cap on how many WebSockets a page may hold open to
+one host — 255 in Chrome — which a page opening streams in a loop needs to
+know about.
 
-Each of these replaces something HTTP provides to the Connect protocol for
-free: stream identification, headers, half-close, and `RST_STREAM`.
+**The first message carries the headers.** Browser APIs cannot attach custom
+headers to the upgrade request, and cannot read custom headers off the
+response. So each direction opens with a metadata frame — like the existing
+Connect `EndStreamResponse`, but at the start, and sent by the server as
+well as the client.
+
+**Each Connect message is wrapped in a Connect envelope**, one envelope per
+WebSocket message. The envelope's length field is redundant once the message
+boundary already states it, and it is kept anyway: the envelope is Connect's
+own, byte for byte. The cost is that a JSON payload is no longer a
+prettified, expandable object in devtools — it is five bytes of head
+followed by the JSON. Draft 5 is the draft that takes the other side of that
+trade.
+
+**Compression is the native `permessage-deflate` extension.** It is
+transparent and every browser has it. It is negotiated only with
+`no_context_takeover` on both sides; if a peer will not agree to that,
+compression is disabled entirely rather than run with a window shared across
+messages. The alternative — Connect's own per-message compression inside the
+envelope — would make devtools show ciphertext-looking noise for every
+message, and buys little that the extension does not already provide.
+
+WebSocket support is **opt-in**. Most people do not need browser bidi
+streaming, so it stays off by default: a server and a client each have to
+initialize a WebSocket transport explicitly.
 
 ## Usage
 
-Server:
+Server. Draft 1 has no path of its own, so `Intercept` wraps the handler
+that already serves the Connect procedure URLs: each one answers `POST`
+with ordinary Connect over HTTP and `GET`+`Upgrade` with this protocol.
 
 ```go
 connectServer := connect.NewServer()
 pingv1connect.RegisterPingServiceHandler(connectServer, pingServer{})
 
-http.Handle("/websocket-draft1", draft1.NewHandler(connectServer))
+mux := http.NewServeMux()
+connecthttp.Mount(mux, connectServer)
+http.ListenAndServe(addr, draft1.Intercept(mux, connectServer))
 ```
 
-Use `WithAcceptOptions` to configure the WebSocket upgrade, including origin
-checks and WebSocket-level compression.
+Anything that is not a draft 1 upgrade passes straight through, so the
+wrapped handler keeps serving everything it did before — including some
+other WebSocket protocol on the same origin, which is how this repository's
+demo server runs several drafts at once.
 
-Client:
+`Mount` is the alternative, for serving draft 1 on URLs of its own:
+`draft1.Mount(mux, connectServer, draft1.DefaultPathPrefix)` registers one
+route per *streaming* procedure under that prefix. Two handlers cannot
+register the same pattern on one `http.ServeMux`, which is why co-mounting
+is `Intercept`'s job and not `Mount`'s.
+
+Use `WithAcceptOptions` to configure the upgrade, `OriginPatterns` in
+particular, which browsers need.
+
+Client. The WebSocket transport carries streaming RPCs only, so it is
+composed with an HTTP one:
 
 ```go
-transport := draft1.NewTransport("wss://example.com/websocket-draft1")
+transport := connectwebsocket.NewCompositeTransport(
+	connecthttp.NewTransport(httpClient, "https://example.com"),
+	draft1.NewTransport("wss://example.com"),
+)
 client := pingv1connect.NewPingServiceClient(connect.NewClient(transport))
-
-resp, err := client.Ping(ctx, &pingv1.PingRequest{Text: "hello"})
 ```
 
-The transport is reusable and safe for concurrent RPCs. All RPCs are
-multiplexed onto one shared WebSocket connection, dialed lazily on the first
-RPC and re-dialed if it fails. `WithDialOptions` configures those
-handshakes. The returned transport also implements `io.Closer`; `Close`
-closes the shared connection.
+The base URL is the endpoint the procedure is appended to, so a call to
+`/connectrpc.eliza.v1.ElizaService/Converse` dials
+`wss://example.com/connectrpc.eliza.v1.ElizaService/Converse`. An `https://`
+base URL is accepted and normalized, so a caller configuring one endpoint
+for both dispatch paths does not have to spell it twice.
 
-Because a shared connection is subject to head-of-line blocking (see
-[Cancellation and connection lifetime](#cancellation-and-connection-lifetime)),
-`WithConnectionPerStream` makes the transport dial a dedicated connection
-for each streaming RPC instead; unary RPCs stay on the shared connection.
-This is a client-side choice only — the server serves both patterns with no
-configuration, since a dedicated connection is simply a multiplexed
-connection carrying a single stream.
+In TypeScript the same composition is
+`createConnectWebSocketDraft1Transport` inside `createCompositeTransport`;
+see [`ts/packages/web`](../../ts/packages/web).
+
+To bootstrap over HTTP/2 extended CONNECT instead of an HTTP/1.1 upgrade,
+use `NewH2Transport` (`GODEBUG=http2xconnect=1` must be set in the *server*
+process, and Go clients must use `golang.org/x/net/http2` directly —
+`net/http` rejects the `:protocol` pseudo-header before HTTP/2 sees it):
+
+```go
+transport := draft1.NewH2Transport("https://example.com", &http2.Transport{})
+```
+
+`NewHandler` serves both bootstraps automatically.
 
 ## Protocol
 
 ### Connection mapping
 
-One WebSocket connection carries any number of concurrent RPCs:
+One WebSocket carries one streaming RPC, and closes when it ends:
 
 ```text
-RPC A (stream 1) ─┐
-RPC B (stream 2) ─┼─ WebSocket connection
-RPC C (stream 3) ─┘
+RPC A ── WebSocket connection 1
+RPC B ── WebSocket connection 2
+RPC C ── WebSocket connection 3
 ```
 
-Every frame begins with the ID of the stream it belongs to. Stream IDs are
-assigned by the client: the first stream on a connection is 1, and each new
-stream increments the ID by one. IDs are never reused within a connection,
-so a client may also choose to open a new connection per RPC (as
-`WithConnectionPerStream` does) — such a connection simply carries a single
-stream.
+The handshake must offer the `connect.bidi.d1` subprotocol; a server that
+does not select it does not speak this protocol. The subprotocol is where
+the version lives because it is the one thing a browser *can* set on the
+handshake.
+
+The URL names the procedure: it is the request path's last two segments,
+`/package.Service/Method`. Nothing in the protocol says what comes before
+them, so a handler serves whether it is mounted on the procedure URLs
+themselves or under a prefix — as this repository's demo server does, since
+several drafts share one origin.
 
 Only binary WebSocket messages are used. Each message carries exactly one
-frame: the stream ID followed by one complete Connect envelope. Message
-boundaries are significant — an envelope never spans messages, and a message
-never carries more than one envelope. Text messages are invalid protocol
-data.
+complete Connect envelope. Message boundaries are significant: an envelope
+never spans messages, and a message never carries more than one envelope.
+Text messages are invalid protocol data.
 
 ### Frame format
 
-Every frame is a 4-byte big-endian stream ID followed by a standard 5-byte
-Connect envelope and its payload:
+Every message is a standard 5-byte Connect envelope and its payload:
 
 ```text
   0                   1                   2                   3
   0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
- +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
- |                           Stream ID                           |
  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
  |     Flags     |              Payload length                   |
  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
@@ -113,11 +153,12 @@ Connect envelope and its payload:
  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 ```
 
-- `Stream ID` is an unsigned 32-bit big-endian integer.
 - `Flags` is one byte.
 - `Payload length` is an unsigned 32-bit big-endian integer.
 - The length counts payload bytes only and may be zero. It must equal the
-  remaining bytes of the WebSocket message.
+  remaining bytes of the WebSocket message — the message boundary already
+  states the same thing, and a disagreement between the two is a protocol
+  error.
 - The maximum representable payload is `2^32 - 1` bytes. Configured send and
   receive limits may impose smaller bounds.
 
@@ -125,18 +166,23 @@ The defined flag values are:
 
 | Value | Name | Payload |
 | --- | --- | --- |
-| `0x00` | data | One uncompressed RPC message encoded with the selected codec |
-| `0x01` | compressed data | One compressed, codec-encoded RPC message |
+| `0x00` | data | One RPC message encoded with the selected codec |
 | `0x02` | end-stream | Empty on requests; Connect `EndStreamResponse` JSON on responses |
 | `0x06` | headers | JSON metadata object (`{"metadata": ...}`) |
-| `0x07` | reset | Empty; aborts the stream |
 
-These are complete flag-byte values in this protocol, not bitmasks. Data
-and compressed-data envelopes are byte-for-byte the Connect protocol's
-envelopes; `0x06` and `0x07` are transport-specific frame types. Values
-`0x08` and up are reserved for extended flags. Other values, and a second
-headers envelope in the same direction of the same stream, are protocol
-errors.
+These are complete flag-byte values, not bitmasks. Data and end-stream
+envelopes are byte-for-byte the Connect protocol's; `0x06` is a
+transport-specific frame type. Values `0x08` and up are reserved for
+extended flags.
+
+Two flags the other drafts define are deliberately absent. Connect's
+compressed-data flag (`0x01`) is unused, because compression is
+permessage-deflate's job here — a receiver that sees it should treat it as a
+protocol error rather than guess at an encoding. The reset flag (`0x07`) is
+unused because a connection carrying one RPC cancels by closing.
+
+Other values, and a second headers envelope in the same direction, are
+protocol errors.
 
 ### Control payloads
 
@@ -145,14 +191,15 @@ The headers envelope (`0x06`) uses this JSON object schema:
 ```json
 {
   "metadata": {
-    ":path": ["/connectrpc.eliza.v1.ElizaService/Converse"],
     "content-type": ["application/connect+proto"]
   }
 }
 ```
 
-The response end-stream envelope (`0x02`) reuses the Connect protocol's standard JSON
-EndStreamResponse:
+There is no `:path`: the URL already named the procedure.
+
+The response end-stream envelope (`0x02`) reuses the Connect protocol's
+standard JSON EndStreamResponse:
 
 ```json
 {
@@ -175,119 +222,128 @@ EndStreamResponse:
 
 Both members are optional. Each detail maps directly to
 `connect.ErrorDetail`: `type` is the fully qualified protobuf message name,
-`value` is its unpadded base64-encoded binary value, and `debug` is an optional
-best-effort JSON representation. `metadata` contains response trailers as
-arrays of strings.
+`value` is its unpadded base64-encoded binary value, and `debug` is an
+optional best-effort JSON representation. `metadata` contains response
+trailers as arrays of strings.
 
 ### Request sequence
 
-For each stream, the client sends envelopes in this order:
+The client sends envelopes in this order:
 
 ```text
 headers, zero or more data messages, end stream
 ```
 
-A headers envelope with a previously unseen stream ID opens a new stream;
-the server routes every subsequent frame with that ID to the same RPC.
-Frames of concurrent streams may interleave arbitrarily, but each stream's
-own envelopes stay ordered.
-
 The request headers payload must include:
 
-- `:path`: the fully qualified RPC procedure, for example
-  `/connect.ping.v1.PingService/Ping`.
 - `Content-Type`: `application/connect+proto` or
   `application/connect+json`.
 
 It may also include application request headers and:
 
-- `Connect-Content-Encoding`: compression applied to compressed request data.
-- `Connect-Accept-Encoding`: response compression algorithms accepted by the
-  client.
 - `Connect-Timeout-Ms`: remaining RPC timeout in milliseconds.
+
+The upgrade request's own headers are the base of the request metadata, and
+the headers envelope overrides them key by key. That is what lets a Cookie
+the browser attached by itself still reach the handler, while anything the
+Connect client set explicitly wins. Handshake headers — `Connection`,
+`Upgrade`, and every `Sec-WebSocket-*` — are stripped.
 
 The request end-stream envelope has an empty payload. It represents
 `CloseSend`: no more request messages will be sent, while the stream stays
 open for response messages. This explicit envelope is necessary because
-neither the stream nor the WebSocket has a send-direction close of its own.
+neither the RPC nor the WebSocket has a send-direction close of its own —
+closing the socket would end the response too.
 
 ### Response sequence
 
-For each stream, the server sends:
+The server sends:
 
 ```text
 headers, zero or more data messages, end stream
 ```
 
 Response headers are always sent, including when the RPC fails before
-producing a message. They include the response `Content-Type` and, when used,
-`Connect-Content-Encoding`.
+producing a message: a browser cannot read them off the handshake, so this
+is the only place they can arrive. They include the response `Content-Type`.
 
 The final response end-stream payload is the Connect EndStreamResponse JSON
 described above. A successful RPC omits `error`; a failed RPC includes the
 Connect code, message, and error details. Application response trailers are
-carried in `metadata`. Receiving a successful end stream produces `io.EOF` for
-the caller. Closing the WebSocket before a valid response end stream is a
-protocol error for every stream still in flight.
+carried in `metadata`. Receiving a successful end stream produces `io.EOF`
+for the caller. Closing the WebSocket before a valid response end stream is
+a protocol error.
 
-Unary RPCs contain exactly one request data envelope and, on success, exactly
-one response data envelope. Client-, server-, and bidirectional-streaming RPCs
-use the same sequence with the number and timing of data envelopes appropriate
-to the method type.
+Client-, server-, and bidirectional-streaming RPCs all use this sequence,
+with the number and timing of data envelopes appropriate to the method type.
+Unary RPCs never appear: they are ordinary Connect HTTP requests, and a
+draft 1 transport refuses them with `unimplemented` rather than spending a
+handshake and one of the browser's connection slots on a single
+request-and-response.
 
 ### Compression
 
-Compression applies independently to each RPC message, not to headers or the
-end-stream payload. An uncompressed message uses `0x00`; a compressed message
-uses `0x01` and the applicable `Connect-Content-Encoding` header names the
-algorithm. Gzip is registered by default.
+Compression is the WebSocket's `permessage-deflate` extension (RFC 7692),
+negotiated in the handshake and applied to the whole message — envelope head
+included. It is transparent to everything above: the flag byte, the length,
+and the payload semantics are unchanged.
 
-WebSocket extension compression is a separate transport-layer feature. It may
-compress the binary WebSocket message containing a frame, but does not
-change the stream ID, Connect flags, or payload semantics.
+The extension is only accepted with `client_no_context_takeover` and
+`server_no_context_takeover`. A shared compression window across messages is
+what lets an attacker-influenced payload reveal the size of a secret one, so
+a peer that will not agree to no-context-takeover gets no compression at
+all. Every browser that offers permessage-deflate offers it with
+no-context-takeover, so this costs nothing in practice — beyond compressing
+long runs of small similar messages less well than a shared window would.
+
+`WithoutCompression` turns the extension off. That is worth considering for
+streams of small messages: nothing under a few hundred bytes compresses, so
+all that arrives is the negotiation in the handshake — which draft 1 pays
+once per RPC, having no connection reuse to amortize it over.
+
+On the HTTP/2 bootstrap the extension is implemented in this package rather
+than inherited from the WebSocket library, which cannot accept over HTTP/2.
+RFC 8441 §5 keeps `Sec-WebSocket-Extensions`, so the negotiation is the
+ordinary one; only the framing underneath is ours.
 
 ### Cancellation and connection lifetime
 
-Closing the connection cannot cancel one RPC without killing the others, so
-cancellation is a frame: a reset envelope (`0x07`, empty payload) aborts the
-stream it names. The client sends one when an RPC is canceled or abandoned
-before the response finished; the server cancels that RPC's context,
-stops sending frames for the stream, and keeps the connection and every
-other stream running. Frames that arrive for a stream that has already
-finished or been reset are dropped — stream IDs are never reused, so a late
-frame is unambiguous. This mirrors HTTP/2, where `END_STREAM` marks a
-graceful half-close and `RST_STREAM` aborts: both signals are needed, since
-a client that already half-closed (a server-streaming RPC, say) has no other
-way left to say "stop".
+The connection carries this RPC and nothing else, so closing it says
+everything a reset frame would. A client that cancels or abandons an RPC
+before its response finished tears the socket down; the server cancels that
+RPC's context and the handler stops. There is no reset envelope, and no
+question of what happens to the other streams on the connection, because
+there are none.
 
-The connection itself stays open across RPCs, saving a WebSocket handshake
-(and TLS setup) per call. Closing the connection terminates every stream on
-it; in-flight handlers are canceled.
+The server keeps reading past the client's half-close for exactly this
+reason. A server-streaming RPC half-closes immediately and then streams for
+as long as it likes; that outstanding read is the only thing that will
+notice a browser tab closing mid-stream.
 
-Multiplexing has one inherent cost: **head-of-line blocking**. All streams
-share one TCP connection and one ordered byte stream, so a large message or
-a stalled consumer on one stream delays frames of every other stream behind
-it. There is no per-stream flow control (unlike HTTP/2 or QUIC).
-`WithConnectionPerStream` restores full isolation by dialing a dedicated
-connection per streaming RPC, at the cost of a handshake each — the protocol
-is identical either way, so the server needs no configuration. WebTransport
-does not have this trade-off at all: QUIC streams are independently
-flow-controlled, which is why the WebTransport transport needs neither
-stream IDs nor reset frames.
+Head-of-line blocking cannot happen: there is no line to be at the head of.
+That is the compensation for the cost this design does pay, which is a
+handshake per streaming RPC.
 
-Standard HTTP is generally preferable for unary calls.
-`connectwebsocket.NewCompositeTransport` (in the [parent
-package](../doc.go)) can route unary calls over HTTP while using WebSockets
-for streaming calls.
+That cost is answered by the bootstrap rather than by the protocol. Over
+[RFC 8441](https://datatracker.ietf.org/doc/html/rfc8441) extended CONNECT,
+a new WebSocket is a new HTTP/2 stream on a connection that is already open:
+no TCP connection, no TLS handshake, HPACK compressing the repeated request
+headers down to a few bytes, and no per-host WebSocket slot consumed. On the
+HTTP/1.1 bootstrap the cost stands, and it is the honest price of the
+design. Draft 6 is the draft that answers it a second way, by pooling
+connections across RPCs.
 
 ## Relationship to the Connect HTTP protocol
 
-Message serialization, per-message compression, status codes, error details,
-and the 5-byte envelope layout follow Connect semantics. The stream ID,
-headers envelope, and reset envelope are transport-specific additions
-because a raw WebSocket provides none of what HTTP gives Connect: no way to
-tell concurrent RPCs apart, no per-RPC headers after the upgrade, and no
-per-RPC teardown. The end-stream flag and JSON payload are reused directly
-from the Connect streaming protocol. The overall exchange is still not the
-Connect HTTP wire protocol and is not intended for a normal Connect HTTP
-handler.
+Message serialization, status codes, error details, the 5-byte envelope
+layout, and the EndStreamResponse JSON follow Connect semantics exactly. The
+headers envelope is the one transport-specific addition, and it exists
+because a raw WebSocket gives Connect no per-RPC headers after the upgrade —
+in either direction. The overall exchange is still not the Connect HTTP wire
+protocol and is not intended for a normal Connect HTTP handler.
+
+---
+
+See the demo site's
+[conclusions](https://connect-bidi-web.kmcd.dev/#conclusions) for what
+comparing the drafts settled.

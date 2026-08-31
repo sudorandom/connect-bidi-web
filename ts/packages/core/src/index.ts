@@ -21,7 +21,16 @@ export type {
   DuplexMessageStream,
   HandleMuxedBidiSocketOptions,
 } from "./muxed-bidi-socket.js";
-export { handleMuxedBidiSocketDraft1 } from "./handle-muxed-bidi-socket-draft1.js";
+export { handleBidiSocketDraft1 } from "./handle-bidi-socket-draft1.js";
+export type { HandleBidiSocketDraft1Options } from "./handle-bidi-socket-draft1.js";
+export type { Draft1Envelope, Draft1MessageStream } from "./wire-draft1.js";
+export {
+  decodeDraft1Envelope,
+  draft1EnvelopeHeadLength,
+  draft1ProcedureFromPath,
+  draft1Subprotocol,
+  encodeDraft1Envelope,
+} from "./wire-draft1.js";
 export { handleMuxedBidiSocketDraft3 } from "./handle-muxed-bidi-socket-draft3.js";
 export type { HandleMuxedBidiSocketDraft3Options } from "./handle-muxed-bidi-socket-draft3.js";
 export {
@@ -45,3 +54,14 @@ export {
   draft4FrameTypeReset,
   encodeDraft4StreamFrame,
 } from "./wire-draft4.js";
+export { handleBidiSocketDraft5 } from "./handle-bidi-socket-draft5.js";
+export type {
+  Draft5Message,
+  Draft5MessageStream,
+  HandleBidiSocketDraft5Options,
+} from "./handle-bidi-socket-draft5.js";
+export {
+  draft5MessageText,
+  draft5Subprotocol,
+  draft5TextMessage,
+} from "./handle-bidi-socket-draft5.js";

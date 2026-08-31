@@ -31,9 +31,11 @@ import (
 	"time"
 
 	connect "connectrpc.com/connect/v2"
+	"connectrpc.com/connect/v2/connecthttp"
 	"github.com/coder/websocket"
 	"github.com/quic-go/quic-go/http3"
 	"github.com/quic-go/webtransport-go"
+	"github.com/sudorandom/connect-bidi-web/connectwebsocket"
 	"github.com/sudorandom/connect-bidi-web/connectwebsocket/draft1"
 	"github.com/sudorandom/connect-bidi-web/connectwebsocket/draft3"
 	"github.com/sudorandom/connect-bidi-web/connectwebsocket/draft4"
@@ -151,26 +153,30 @@ func exercise(ctx context.Context, t *testing.T, client elizav1connect.ElizaServ
 
 // startGoServer starts an in-process copy of the demo server stack: one
 // Connect server exposed over TLS on both a WebSocket endpoint (TCP) and a
-// WebTransport endpoint (UDP/HTTP3), on real localhost sockets.
-func startGoServer(t *testing.T) (wsURL, wtURL string) {
+// WebTransport endpoint (UDP/HTTP3), on real localhost sockets. wsBaseURL
+// has no path; each draft's test appends its own.
+func startGoServer(t *testing.T) (wsBaseURL, wtURL string) {
 	t.Helper()
 
 	connectServer := connect.NewServer()
 	elizav1connect.RegisterElizaServiceHandler(connectServer, elizaServer{})
-	websocketHandler := draft1.NewHandler(connectServer)
 	websocketDraft3Handler := draft3.NewHandler(connectServer)
 	websocketDraft4Handler := draft4.NewHandler(connectServer)
 	webtransportHandler := connectwebtransport.NewHandler(connectServer)
 
 	mux := http.NewServeMux()
-	mux.Handle("/websocket-draft1", websocketHandler)
 	mux.Handle("/websocket-draft3", websocketDraft3Handler)
 	mux.Handle("/websocket-draft4", websocketDraft4Handler)
+	// Draft 1 has no path of its own: it upgrades the Connect procedure
+	// URLs, which also have to answer POST for the unary half of its
+	// design. Intercept passes everything that is not a draft 1 upgrade
+	// through, so the draft 3 and 4 endpoints above are untouched.
+	connecthttp.Mount(mux, connectServer)
 
 	// WebSocket over TLS on TCP.
-	httpServer := httptest.NewTLSServer(mux)
+	httpServer := httptest.NewTLSServer(draft1.Intercept(mux, connectServer))
 	t.Cleanup(httpServer.Close)
-	wsURL = strings.Replace(httpServer.URL, "https://", "wss://", 1) + "/websocket-draft1"
+	wsBaseURL = strings.Replace(httpServer.URL, "https://", "wss://", 1)
 
 	// WebTransport over HTTP/3 on UDP.
 	cert, err := testcert.GenerateSelfSignedCert()
@@ -202,25 +208,30 @@ func startGoServer(t *testing.T) (wsURL, wtURL string) {
 
 	// Wait for the WebTransport server to start serving.
 	time.Sleep(100 * time.Millisecond)
-	return wsURL, wtURL
+	return wsBaseURL, wtURL
 }
 
-func TestGoClientGoServerWebSocket(t *testing.T) {
+// Draft 1 is exercised through a composite transport, because that is its
+// design: streaming RPCs upgrade, unary RPCs stay on plain Connect over
+// HTTP, and both use the same procedure URL.
+func TestGoClientGoServerWebSocketDraft1(t *testing.T) {
 	t.Parallel()
-	wsURL, _ := startGoServer(t)
+	wsBaseURL, _ := startGoServer(t)
+	httpBaseURL := strings.Replace(wsBaseURL, "wss://", "https://", 1)
 
 	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
 	defer cancel()
 
-	transport := draft1.NewTransport(
-		wsURL,
-		draft1.WithDialOptions(&websocket.DialOptions{
-			HTTPClient: &http.Client{
-				Transport: &http.Transport{
-					TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
-				},
-			},
-		}),
+	insecure := &http.Client{
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+		},
+	}
+	transport := connectwebsocket.NewCompositeTransport(
+		connecthttp.NewTransport(insecure, httpBaseURL),
+		draft1.NewTransport(wsBaseURL, draft1.WithDialOptions(&websocket.DialOptions{
+			HTTPClient: insecure,
+		})),
 	)
 	client := elizav1connect.NewElizaServiceClient(connect.NewClient(transport))
 	exercise(ctx, t, client)
@@ -228,8 +239,8 @@ func TestGoClientGoServerWebSocket(t *testing.T) {
 
 func TestGoClientGoServerWebSocketDraft3(t *testing.T) {
 	t.Parallel()
-	wsURL, _ := startGoServer(t)
-	wsDraft3URL := strings.TrimSuffix(wsURL, "/websocket-draft1") + "/websocket-draft3"
+	wsBaseURL, _ := startGoServer(t)
+	wsDraft3URL := wsBaseURL + "/websocket-draft3"
 
 	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
 	defer cancel()
@@ -250,8 +261,8 @@ func TestGoClientGoServerWebSocketDraft3(t *testing.T) {
 
 func TestGoClientGoServerWebSocketDraft4(t *testing.T) {
 	t.Parallel()
-	wsURL, _ := startGoServer(t)
-	wsDraft4URL := strings.TrimSuffix(wsURL, "/websocket-draft1") + "/websocket-draft4"
+	wsBaseURL, _ := startGoServer(t)
+	wsDraft4URL := wsBaseURL + "/websocket-draft4"
 
 	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
 	defer cancel()
@@ -274,8 +285,8 @@ func TestGoClientGoServerWebSocketDraft4(t *testing.T) {
 // every frame on the connection is a text WebSocket message.
 func TestGoClientGoServerWebSocketDraft4JSON(t *testing.T) {
 	t.Parallel()
-	wsURL, _ := startGoServer(t)
-	wsDraft4URL := strings.TrimSuffix(wsURL, "/websocket-draft1") + "/websocket-draft4"
+	wsBaseURL, _ := startGoServer(t)
+	wsDraft4URL := wsBaseURL + "/websocket-draft4"
 
 	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
 	defer cancel()
@@ -367,17 +378,10 @@ func TestGoClientNodeServerInterop(t *testing.T) {
 		t.Fatalf("interop server did not become ready: %v", err)
 	}
 
-	t.Run("Draft1", func(t *testing.T) {
-		transport := draft1.NewTransport(wsURL)
-		client := elizav1connect.NewElizaServiceClient(connect.NewClient(transport))
-		exercise(ctx, t, client)
-	})
-
 	// Go draft 3 client against the TS draft 3 server: exercises the
 	// subprotocol negotiation and per-frame deflate across languages.
 	t.Run("Draft3", func(t *testing.T) {
-		wsDraft3URL := strings.TrimSuffix(wsURL, "/websocket-draft1") + "/websocket-draft3"
-		transport := draft3.NewTransport(wsDraft3URL)
+		transport := draft3.NewTransport(wsURL)
 		client := elizav1connect.NewElizaServiceClient(connect.NewClient(transport))
 		exercise(ctx, t, client)
 	})
@@ -386,14 +390,14 @@ func TestGoClientNodeServerInterop(t *testing.T) {
 	// has to be parsed identically by both languages, and each side has to
 	// accept whichever message type the other chose.
 	t.Run("Draft4", func(t *testing.T) {
-		wsDraft4URL := strings.TrimSuffix(wsURL, "/websocket-draft1") + "/websocket-draft4"
+		wsDraft4URL := strings.TrimSuffix(wsURL, "/websocket-draft3") + "/websocket-draft4"
 		transport := draft4.NewTransport(wsDraft4URL)
 		client := elizav1connect.NewElizaServiceClient(connect.NewClient(transport))
 		exercise(ctx, t, client)
 	})
 
 	t.Run("Draft4JSON", func(t *testing.T) {
-		wsDraft4URL := strings.TrimSuffix(wsURL, "/websocket-draft1") + "/websocket-draft4"
+		wsDraft4URL := strings.TrimSuffix(wsURL, "/websocket-draft3") + "/websocket-draft4"
 		transport := draft4.NewTransport(wsDraft4URL, draft4.WithSendCodec(connect.CodecNameJSON))
 		client := elizav1connect.NewElizaServiceClient(connect.NewClient(transport))
 		exercise(ctx, t, client)

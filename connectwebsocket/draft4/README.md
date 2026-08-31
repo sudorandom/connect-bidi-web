@@ -1,18 +1,19 @@
 # connectwebsocket/draft4
 
-Draft 4 of the WebSocket wire protocol. Drafts [1](../draft1/README.md)
-and [3](../draft3/README.md) coexist with it, each with its own
-constructors and default path (`/websocket-draft4`), so the designs can be
-compared. Everything the drafts share — connection mapping, control payload
-JSON, request and response sequences, cancellation, half-close — is
-documented once in the [parent README](../README.md#shared-protocol).
+Draft 4 of the WebSocket wire protocol. Drafts [3](../draft3/README.md)
+and [5](../draft5/README.md) coexist with it; drafts 3 and 4 each have
+their own constructors and default path (`/websocket-draft4` here), so the
+designs can be compared. Everything those two share — connection mapping,
+control payload JSON, request and response sequences, cancellation,
+half-close — is documented once in the
+[parent README](../README.md#shared-protocol); draft 5 shares none of it.
 
 Draft 4 optimizes for the client that actually matters. This transport
 exists because **browsers** can't do bidirectional streaming over `fetch` —
 browsers are the primary WebSocket client, and the browser's own Network
-tab is where this traffic gets read. Drafts 1 through 3 are opaque there:
-binary frames render as hex or as a blob, so the one debugging surface
-every web developer already has is useless on them.
+tab is where this traffic gets read. Draft 3 is opaque there: binary
+frames render as hex or as a blob, so the one debugging surface every web
+developer already has is useless on it.
 
 Draft 4 fixes that, by making the frame text:
 
@@ -167,7 +168,7 @@ request and response sequences, cancellation, half-close — is the
 
 ## Negotiation
 
-Draft 4 defines no WebSocket subprotocol; like draft 1, it is
+Draft 4 defines no WebSocket subprotocol; unlike draft 3, it is
 identified by the path it is served on. Compression is negotiated purely as
 the permessage-deflate extension, which the handler accepts by default
 (`websocket.CompressionNoContextTakeover`) and `WithoutCompression()`
@@ -204,9 +205,9 @@ bytes.
 
 What the variable head buys is not performance:
 
-| | Draft 1 | Draft 3 | Draft 4 |
-| --- | --- | --- | --- |
-| Frame head | 9 bytes | 5 bytes | 4–15 bytes ASCII, growing with the stream counter |
+| | Draft 3 | Draft 4 |
+| --- | --- | --- |
+| Frame head | 5 bytes | 4–15 bytes ASCII, growing with the stream counter |
 | Readable without a decoder | no | no | **yes** |
 | Payload length | explicit u32 | message boundary | message boundary |
 | Compression unit | per message (Connect gzip) | per frame (protocol deflate) | per message (permessage-deflate) |

@@ -64,11 +64,18 @@ message CountUpResponse {
 message CumSumRequest {
   // A number to add to the cumulative sum.
   int64 number = 1;
+  // Text echoed back on the response, so a bidi workload can carry a
+  // payload worth compressing. The service's streaming methods otherwise
+  // send nothing but numbers, which leaves per-message compression on a
+  // *stream* unmeasurable.
+  string text = 2;
 }
 
 message CumSumResponse {
   // The cumulative sum of all numbers received so far.
   int64 sum = 1;
+  // The text from the request, echoed.
+  string text = 2;
 }
 
 service PingService {

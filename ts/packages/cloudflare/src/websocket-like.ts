@@ -15,6 +15,8 @@
 import type {
   Draft4DuplexMessageStream,
   Draft4OutgoingFrame,
+  Draft5Message,
+  Draft5MessageStream,
   DuplexMessageStream,
 } from "@sudorandom/connect-bidi-core";
 
@@ -45,7 +47,7 @@ export interface BidiWebSocketLike {
 /**
  * Adapts a `BidiWebSocketLike` (an accepted Workers `WebSocket`, or a mock
  * of one in tests) into the `DuplexMessageStream` that
- * `@sudorandom/connect-bidi-core`'s `handleMuxedBidiSocketDraft1` bridges to
+ * `@sudorandom/connect-bidi-core`'s `handleMuxedBidiSocketDraft3` bridges to
  * Connect `UniversalHandler`s. Message boundaries are preserved, as the
  * muxed protocol requires: each message becomes exactly one readable
  * chunk, and each written chunk is sent as one WebSocket message.
@@ -145,6 +147,81 @@ export function wrapDraft4WebSocket(
     },
   });
   return { readable, writable, close };
+}
+
+/**
+ * The draft 5 counterpart of `wrapWebSocket`, for `handleBidiSocketDraft5`.
+ * This one carries the message type in *both* directions, where the other
+ * adapters discard it on the way in: in draft 5 the opcode is the
+ * protocol's only framing, so a zero-length binary message is an empty
+ * protobuf message while a zero-length text message is the separator.
+ */
+export function wrapDraft5WebSocket(
+  socket: BidiWebSocketLike,
+): Draft5MessageStream {
+  socket.binaryType = "arraybuffer";
+  // As in wrapWebSocket: every listener must become a no-op once the stream
+  // has ended, because touching a closed controller throws and an exception
+  // escaping a Workers listener tears the connection down.
+  let ended = false;
+  const readable = new ReadableStream<Draft5Message>({
+    start(controller) {
+      socket.addEventListener("message", (event) => {
+        if (ended) {
+          return;
+        }
+        try {
+          controller.enqueue({
+            text: typeof event.data === "string",
+            data: toBytes(event.data),
+          });
+        } catch (err) {
+          ended = true;
+          controller.error(err);
+        }
+      });
+      socket.addEventListener("close", () => {
+        if (ended) {
+          return;
+        }
+        ended = true;
+        controller.close();
+      });
+      socket.addEventListener("error", () => {
+        if (ended) {
+          return;
+        }
+        ended = true;
+        controller.error(new Error("WebSocket error"));
+      });
+    },
+    cancel() {
+      ended = true;
+      closeQuietly(socket);
+    },
+  });
+
+  const writable = new WritableStream<Draft5Message>({
+    write(message) {
+      // Workers infers the opcode from the argument type: a string is a
+      // text message, bytes are a binary one.
+      socket.send(message.text ? decoder.decode(message.data) : message.data);
+    },
+    close() {
+      closeQuietly(socket);
+    },
+    abort() {
+      closeQuietly(socket);
+    },
+  });
+
+  return {
+    readable,
+    writable,
+    close: (code?: number, reason?: string) => {
+      closeQuietly(socket, code, reason);
+    },
+  };
 }
 
 const decoder = new TextDecoder();

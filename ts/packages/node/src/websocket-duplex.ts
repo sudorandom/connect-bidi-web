@@ -17,7 +17,7 @@ import type { RawData, WebSocket } from "ws";
 
 /**
  * Adapts a `ws` WebSocket connection to a `DuplexMessageStream` for
- * `handleMuxedBidiSocketDraft1`. Message boundaries are preserved, as the muxed
+ * `handleMuxedBidiSocketDraft3`. Message boundaries are preserved, as the muxed
  * protocol requires: each binary message becomes exactly one readable
  * chunk, and each written chunk is sent as one binary WebSocket message.
  * Closing or erroring the socket in either direction propagates to both
@@ -26,10 +26,19 @@ import type { RawData, WebSocket } from "ws";
 export function websocketToDuplexMessageStream(
   ws: WebSocket,
 ): DuplexMessageStream {
+  // The socket keeps firing events after the consumer cancels the stream --
+  // cancelling closes the socket, which fires "close" -- and touching the
+  // controller of a closed or cancelled stream throws. Every listener has to
+  // become a no-op once the stream has ended either way.
+  let ended = false;
   const readable = new ReadableStream<Uint8Array>({
     start(controller) {
       ws.on("message", (data: RawData, isBinary: boolean) => {
+        if (ended) {
+          return;
+        }
         if (!isBinary) {
+          ended = true;
           controller.error(
             new Error(
               "received a text WebSocket frame on a binary-only bidi connection",
@@ -40,13 +49,22 @@ export function websocketToDuplexMessageStream(
         controller.enqueue(toUint8Array(data));
       });
       ws.on("close", () => {
+        if (ended) {
+          return;
+        }
+        ended = true;
         controller.close();
       });
       ws.on("error", (err: Error) => {
+        if (ended) {
+          return;
+        }
+        ended = true;
         controller.error(err);
       });
     },
     cancel() {
+      ended = true;
       ws.close(1000);
     },
   });

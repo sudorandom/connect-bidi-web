@@ -16,15 +16,22 @@
 // the WebSocket wire protocol drafts in its subpackages.
 //
 // The drafts themselves are wire-incompatible with one another and each
-// lives in its own subpackage, with its own constructors and default path,
-// so their designs can be compared directly:
+// lives in its own subpackage, with its own constructors, so their designs
+// can be compared directly:
 //
 //   - [github.com/sudorandom/connect-bidi-web/connectwebsocket/draft1]:
-//     Connect envelopes and connect-*-encoding compression metadata.
+//     a WebSocket per streaming RPC, with every message wrapped in a
+//     standard 5-byte Connect envelope and each direction opening with a
+//     headers envelope. Unary RPCs stay on HTTP. It has no path of its
+//     own, mounting on the Connect procedure URLs instead.
 //   - [github.com/sudorandom/connect-bidi-web/connectwebsocket/draft3]:
 //     a 5-byte binary frame head, with per-frame DEFLATE negotiated by
 //     a WebSocket subprotocol.
 //   - [github.com/sudorandom/connect-bidi-web/connectwebsocket/draft4]:
 //     an ASCII text frame head ("id|type|payload") and JSON-only control
 //     payloads, for tool visibility.
+//   - [github.com/sudorandom/connect-bidi-web/connectwebsocket/draft5]:
+//     no framing and no multiplexing at all: one RPC per WebSocket, with
+//     the upgrade request serving as the RPC request. It has no path of
+//     its own, mounting on the Connect procedure URLs instead.
 package connectwebsocket

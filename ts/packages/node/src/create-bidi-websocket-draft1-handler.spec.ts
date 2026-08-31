@@ -12,38 +12,28 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import * as http from "node:http";
 import * as assert from "node:assert";
+import * as http from "node:http";
 import { describe, it } from "node:test";
 import { create, fromBinary, toBinary } from "@bufbuild/protobuf";
 import type { ServiceImpl } from "@connectrpc/connect";
-import { Code, ConnectError, createConnectRouter } from "@connectrpc/connect";
-import type {
-  EnvelopedMessage,
-  UniversalHandler,
-} from "@connectrpc/connect/protocol";
-import { encodeEnvelope } from "@connectrpc/connect/protocol";
+import type { Code } from "@connectrpc/connect";
+import { ConnectError, createConnectRouter } from "@connectrpc/connect";
+import type { UniversalHandler } from "@connectrpc/connect/protocol";
+import { endStreamFromJson } from "@connectrpc/connect/protocol-connect";
 import {
-  contentTypeStreamProto,
-  contentTypeUnaryProto,
-  endStreamFlag,
-  endStreamFromJson,
-  type EndStreamResponse,
-} from "@connectrpc/connect/protocol-connect";
+  decodeDraft1Envelope,
+  draft1Subprotocol,
+  encodeDraft1Envelope,
+} from "@sudorandom/connect-bidi-core";
+import type { RawData } from "ws";
 import { WebSocket } from "ws";
+import { createBidiWebSocketDraft1Handler } from "./create-bidi-websocket-draft1-handler.js";
 import {
   CumSumRequestSchema,
   CumSumResponseSchema,
-  FailRequestSchema,
-  PingRequestSchema,
-  PingResponseSchema,
   PingService,
 } from "./gen/connectbidi/ping/v1/ping_pb.js";
-import {
-  createBidiWebSocketDraft1Handler,
-  defaultBidiWebSocketDraft1Path,
-} from "./create-bidi-websocket-draft1-handler.js";
-import { websocketToDuplexMessageStream } from "./websocket-duplex.js";
 
 // -- Test service implementation ---------------------------------------------
 
@@ -79,35 +69,26 @@ function createTestHandlers(): UniversalHandler[] {
   return router.handlers;
 }
 
-function findHandler(
-  handlers: UniversalHandler[],
-  methodName: string,
-): UniversalHandler {
-  const handler = handlers.find((h) => h.method.name === methodName);
-  assert.ok(handler, `no handler registered for ${methodName}`);
-  return handler;
-}
+// -- Wire helpers -------------------------------------------------------------
 
-// -- Server + client test helpers ---------------------------------------------
+const flagData = 0x00;
+const flagEndStream = 0x02;
+const flagHeaders = 0x06;
+const encoder = new TextEncoder();
+const decoder = new TextDecoder();
+
+const cumSumPath = "/connectbidi.ping.v1.PingService/CumSum";
+const pingPath = "/connectbidi.ping.v1.PingService/Ping";
 
 interface RunningServer {
-  server: http.Server;
   port: number;
   clients: WebSocket[];
   close(): Promise<void>;
 }
 
-async function startServer(
-  handlers: UniversalHandler[],
-): Promise<RunningServer> {
-  const server = http.createServer((_req, res) => {
-    // Coexistence check: ordinary HTTP requests on this same server must
-    // keep working; the 'upgrade' listener added below is a separate event
-    // entirely and never intercepts these.
-    res.writeHead(200, { "content-type": "text/plain" });
-    res.end("ok");
-  });
-  createBidiWebSocketDraft1Handler(handlers).upgrade(server);
+async function startServer(): Promise<RunningServer> {
+  const server = http.createServer();
+  createBidiWebSocketDraft1Handler(createTestHandlers()).upgrade(server);
   await new Promise<void>((resolve) => {
     server.listen(0, "127.0.0.1", resolve);
   });
@@ -115,14 +96,13 @@ async function startServer(
   const port = typeof address === "object" && address ? address.port : 0;
   const clients: WebSocket[] = [];
   return {
-    server,
     port,
     clients,
     close: () => {
-      // A muxed connection stays open across RPCs, so the clients must be
-      // closed for server.close() to complete.
+      // An upgraded socket keeps the connection alive, so the clients must
+      // be gone for server.close() to complete.
       for (const ws of clients) {
-        ws.close();
+        ws.terminate();
       }
       return new Promise<void>((resolve, reject) => {
         server.close((err) => (err ? reject(err) : resolve()));
@@ -131,404 +111,185 @@ async function startServer(
   };
 }
 
-async function connectClient(running: RunningServer): Promise<WebSocket> {
-  const ws = new WebSocket(
-    `ws://127.0.0.1:${running.port}${defaultBidiWebSocketDraft1Path}`,
-  );
-  await new Promise<void>((resolve, reject) => {
-    ws.once("open", () => resolve());
-    ws.once("error", reject);
-  });
-  running.clients.push(ws);
-  return ws;
-}
-
-// -- Wire-level helpers (mirrors the wire protocol used by
-// @sudorandom/connect-bidi-core and @sudorandom/connect-bidi-web; see
-// those packages for the canonical definition). Every WebSocket message is
-// a 4-byte big-endian stream ID followed by one Connect envelope. ---------
-
-const flagEnvelopeHeaders = 0x06;
-const flagEnvelopeData = 0x00;
-const streamIdLength = 4;
-
-function prefixStreamId(streamId: number, envelope: Uint8Array): Uint8Array {
-  const frame = new Uint8Array(streamIdLength + envelope.byteLength);
-  new DataView(frame.buffer).setUint32(0, streamId);
-  frame.set(envelope, streamIdLength);
-  return frame;
-}
-
-function encodeHeadersEnvelope(
+/** Open a draft 1 socket to one procedure and collect its messages. */
+async function connect(
+  server: RunningServer,
   path: string,
-  contentType: string,
-  extraHeaders: Record<string, string> = {},
-): Uint8Array {
-  const metadata: Record<string, string[]> = {
-    ":path": [path],
-    "content-type": [contentType],
-    ...Object.fromEntries(
-      Object.entries(extraHeaders).map(([k, v]) => [k, [v]]),
-    ),
+): Promise<{
+  socket: WebSocket;
+  next: () => Promise<{ flag: number; payload: Uint8Array }>;
+}> {
+  const socket = new WebSocket(`ws://127.0.0.1:${server.port}${path}`, [
+    draft1Subprotocol,
+  ]);
+  server.clients.push(socket);
+  const queue: Uint8Array[] = [];
+  let waiting: ((message: Uint8Array | undefined) => void) | undefined;
+  const push = (message: Uint8Array | undefined) => {
+    if (waiting !== undefined) {
+      const resolve = waiting;
+      waiting = undefined;
+      resolve(message);
+      return;
+    }
+    if (message !== undefined) {
+      queue.push(message);
+    }
   };
-  const payload = new TextEncoder().encode(JSON.stringify({ metadata }));
-  return encodeEnvelope(flagEnvelopeHeaders, payload);
+  socket.on("message", (data: RawData, isBinary: boolean) => {
+    assert.ok(isBinary, "draft 1 messages must be binary");
+    push(new Uint8Array(data as Buffer));
+  });
+  socket.on("close", () => push(undefined));
+  await new Promise<void>((resolve, reject) => {
+    socket.on("open", resolve);
+    socket.on("error", reject);
+  });
+  assert.strictEqual(socket.protocol, draft1Subprotocol);
+  return {
+    socket,
+    next: async () => {
+      const message =
+        queue.shift() ??
+        (await new Promise<Uint8Array | undefined>((resolve) => {
+          waiting = resolve;
+        }));
+      assert.ok(message !== undefined, "socket closed before the next message");
+      return decodeDraft1Envelope(message);
+    },
+  };
 }
 
-function decodeHeadersEnvelope(payload: Uint8Array): Headers {
-  const parsed = JSON.parse(new TextDecoder().decode(payload)) as {
-    metadata?: Record<string, string[]>;
-  };
-  const headers = new Headers();
-  for (const [key, values] of Object.entries(parsed.metadata ?? {})) {
-    if (key.startsWith(":")) {
-      continue;
-    }
-    for (const value of values) {
-      headers.append(key, value);
-    }
-  }
-  return headers;
+function send(socket: WebSocket, flag: number, payload: Uint8Array): void {
+  socket.send(encodeDraft1Envelope(flag, payload));
 }
 
-async function writeEndStream(
-  writer: WritableStreamDefaultWriter<Uint8Array>,
-  streamId: number,
-): Promise<void> {
-  await writer.write(
-    prefixStreamId(streamId, encodeEnvelope(endStreamFlag, new Uint8Array())),
+function headersPayload(contentType: string): Uint8Array {
+  return encoder.encode(
+    JSON.stringify({ metadata: { "content-type": [contentType] } }),
   );
 }
 
-interface ParsedResponse {
-  headers: Headers;
-  dataEnvelopes: EnvelopedMessage[];
-  end: EndStreamResponse;
-}
-
-/**
- * Splits a message stream into per-stream envelope streams by stream ID,
- * so tests can run several RPCs on one connection and read each response
- * independently.
- */
-function demuxResponses(
-  readable: ReadableStream<Uint8Array>,
-): (streamId: number) => Promise<ParsedResponse> {
-  interface PendingStream {
-    envelopes: EnvelopedMessage[];
-    resolve?: () => void;
-  }
-  const byStream = new Map<number, PendingStream>();
-  const pending = (streamId: number): PendingStream => {
-    let entry = byStream.get(streamId);
-    if (entry === undefined) {
-      entry = { envelopes: [] };
-      byStream.set(streamId, entry);
-    }
-    return entry;
-  };
-  const readAll = (async () => {
-    const reader = readable.getReader();
-    for (;;) {
-      const { done, value } = await reader.read();
-      if (done) {
-        return;
-      }
-      assert.ok(
-        value.byteLength >= streamIdLength + 5,
-        `frame too short: ${value.byteLength} bytes`,
-      );
-      const view = new DataView(
-        value.buffer,
-        value.byteOffset,
-        value.byteLength,
-      );
-      const streamId = view.getUint32(0);
-      const flags = view.getUint8(streamIdLength);
-      const declared = view.getUint32(streamIdLength + 1);
-      const data = value.subarray(streamIdLength + 5);
-      assert.strictEqual(
-        declared,
-        data.byteLength,
-        "frame must carry exactly one complete envelope",
-      );
-      const entry = pending(streamId);
-      entry.envelopes.push({ flags, data });
-      entry.resolve?.();
-    }
-  })();
-  return async (streamId: number): Promise<ParsedResponse> => {
-    const entry = pending(streamId);
-    // Wait until this stream's end-stream envelope has arrived.
-    while (!entry.envelopes.some((env) => env.flags === endStreamFlag)) {
-      await Promise.race([
-        new Promise<void>((resolve) => {
-          entry.resolve = resolve;
-        }),
-        readAll,
-      ]);
-    }
-    const [first, ...rest] = entry.envelopes;
-    assert.strictEqual(first.flags, flagEnvelopeHeaders);
-    const headers = decodeHeadersEnvelope(first.data);
-    const dataEnvelopes: EnvelopedMessage[] = [];
-    let end: EndStreamResponse | undefined;
-    for (const env of rest) {
-      if (env.flags === endStreamFlag) {
-        end = endStreamFromJson(env.data);
-        break;
-      }
-      dataEnvelopes.push(env);
-    }
-    assert.ok(end, "expected an end-stream envelope");
-    return { headers, dataEnvelopes, end };
-  };
-}
-
-// -- Tests ---------------------------------------------------------------------
+// -- Tests --------------------------------------------------------------------
 
 describe("createBidiWebSocketDraft1Handler()", () => {
-  it("unary over a real WebSocket connection", async () => {
-    const handlers = createTestHandlers();
-    const handler = findHandler(handlers, "Ping");
-    const running = await startServer(handlers);
+  it("round-trips a bidi stream, one envelope per message", async () => {
+    const server = await startServer();
     try {
-      const ws = await connectClient(running);
-      const socket = websocketToDuplexMessageStream(ws);
-      const readStream = demuxResponses(socket.readable);
-
-      const streamId = 1;
-      const writer = socket.writable.getWriter();
-      await writer.write(
-        prefixStreamId(
-          streamId,
-          encodeHeadersEnvelope(handler.requestPath, contentTypeUnaryProto),
-        ),
-      );
-      await writer.write(
-        prefixStreamId(
-          streamId,
-          encodeEnvelope(
-            flagEnvelopeData,
-            toBinary(
-              PingRequestSchema,
-              create(PingRequestSchema, { number: BigInt(9), text: "hi" }),
-            ),
-          ),
-        ),
-      );
-      await writeEndStream(writer, streamId);
-
-      const response = await readStream(streamId);
-      assert.strictEqual(response.dataEnvelopes.length, 1);
-      const body = fromBinary(
-        PingResponseSchema,
-        response.dataEnvelopes[0].data,
-      );
-      assert.strictEqual(body.number, BigInt(9));
-      assert.strictEqual(body.text, "hi");
-      assert.strictEqual(response.end.error, undefined);
-    } finally {
-      await running.close();
-    }
-  });
-
-  it("unary error over a real WebSocket connection", async () => {
-    const handlers = createTestHandlers();
-    const handler = findHandler(handlers, "Fail");
-    const running = await startServer(handlers);
-    try {
-      const ws = await connectClient(running);
-      const socket = websocketToDuplexMessageStream(ws);
-      const readStream = demuxResponses(socket.readable);
-
-      const streamId = 1;
-      const writer = socket.writable.getWriter();
-      await writer.write(
-        prefixStreamId(
-          streamId,
-          encodeHeadersEnvelope(handler.requestPath, contentTypeUnaryProto),
-        ),
-      );
-      await writer.write(
-        prefixStreamId(
-          streamId,
-          encodeEnvelope(
-            flagEnvelopeData,
-            toBinary(
-              FailRequestSchema,
-              create(FailRequestSchema, { code: Code.NotFound }),
-            ),
-          ),
-        ),
-      );
-      await writeEndStream(writer, streamId);
-
-      const response = await readStream(streamId);
-      assert.strictEqual(response.dataEnvelopes.length, 0);
-      assert.ok(response.end.error);
-      assert.strictEqual(response.end.error?.code, Code.NotFound);
-    } finally {
-      await running.close();
-    }
-  });
-
-  it("bidi echo with client half-close over a real WebSocket connection", async () => {
-    const handlers = createTestHandlers();
-    const handler = findHandler(handlers, "CumSum");
-    const running = await startServer(handlers);
-    try {
-      const ws = await connectClient(running);
-      const socket = websocketToDuplexMessageStream(ws);
-      const readStream = demuxResponses(socket.readable);
-
-      const streamId = 1;
-      const writer = socket.writable.getWriter();
-      await writer.write(
-        prefixStreamId(
-          streamId,
-          encodeHeadersEnvelope(handler.requestPath, contentTypeStreamProto),
-        ),
-      );
-      for (const n of [1, 2, 3]) {
-        await writer.write(
-          prefixStreamId(
-            streamId,
-            encodeEnvelope(
-              flagEnvelopeData,
-              toBinary(
-                CumSumRequestSchema,
-                create(CumSumRequestSchema, { number: BigInt(n) }),
-              ),
-            ),
+      const { socket, next } = await connect(server, cumSumPath);
+      send(socket, flagHeaders, headersPayload("application/connect+proto"));
+      for (const number of [BigInt(1), BigInt(2), BigInt(3)]) {
+        send(
+          socket,
+          flagData,
+          toBinary(
+            CumSumRequestSchema,
+            create(CumSumRequestSchema, { number }),
           ),
         );
       }
-      // Explicit half-close marker, matching the WebSocket client's own
-      // behavior (a real WebSocket can't half-close the underlying
-      // connection the way a WebTransport stream can).
-      await writeEndStream(writer, streamId);
+      send(socket, flagEndStream, new Uint8Array(0));
 
-      const response = await readStream(streamId);
-      const sums = response.dataEnvelopes.map(
-        (env) => fromBinary(CumSumResponseSchema, env.data).sum,
-      );
-      assert.deepStrictEqual(sums, [BigInt(1), BigInt(3), BigInt(6)]);
-      assert.strictEqual(response.end.error, undefined);
-    } finally {
-      await running.close();
-    }
-  });
+      const first = await next();
+      assert.strictEqual(first.flag, flagHeaders);
 
-  it("multiplexes concurrent RPCs on one WebSocket connection", async () => {
-    const handlers = createTestHandlers();
-    const cumSum = findHandler(handlers, "CumSum");
-    const ping = findHandler(handlers, "Ping");
-    const running = await startServer(handlers);
-    try {
-      const ws = await connectClient(running);
-      const socket = websocketToDuplexMessageStream(ws);
-      const readStream = demuxResponses(socket.readable);
-      const writer = socket.writable.getWriter();
-
-      // Open two streams, interleaving their frames: a bidi stream (ID 1)
-      // that stays open while a unary RPC (ID 2) starts and finishes.
-      await writer.write(
-        prefixStreamId(
-          1,
-          encodeHeadersEnvelope(cumSum.requestPath, contentTypeStreamProto),
-        ),
-      );
-      await writer.write(
-        prefixStreamId(
-          1,
-          encodeEnvelope(
-            flagEnvelopeData,
-            toBinary(
-              CumSumRequestSchema,
-              create(CumSumRequestSchema, { number: BigInt(4) }),
-            ),
-          ),
-        ),
-      );
-      await writer.write(
-        prefixStreamId(
-          2,
-          encodeHeadersEnvelope(ping.requestPath, contentTypeUnaryProto),
-        ),
-      );
-      await writer.write(
-        prefixStreamId(
-          2,
-          encodeEnvelope(
-            flagEnvelopeData,
-            toBinary(
-              PingRequestSchema,
-              create(PingRequestSchema, { number: BigInt(9), text: "hi" }),
-            ),
-          ),
-        ),
-      );
-      await writeEndStream(writer, 2);
-
-      // The unary RPC completes while stream 1 is still open.
-      const pingResponse = await readStream(2);
-      assert.strictEqual(pingResponse.dataEnvelopes.length, 1);
-      assert.strictEqual(
-        fromBinary(PingResponseSchema, pingResponse.dataEnvelopes[0].data)
-          .number,
-        BigInt(9),
-      );
-
-      await writeEndStream(writer, 1);
-      const cumSumResponse = await readStream(1);
-      const sums = cumSumResponse.dataEnvelopes.map(
-        (env) => fromBinary(CumSumResponseSchema, env.data).sum,
-      );
-      assert.deepStrictEqual(sums, [BigInt(4)]);
-      assert.strictEqual(cumSumResponse.end.error, undefined);
-    } finally {
-      await running.close();
-    }
-  });
-
-  it("coexists with a normal HTTP request handler on the same server", async () => {
-    const handlers = createTestHandlers();
-    const running = await startServer(handlers);
-    try {
-      const response = await fetch(`http://127.0.0.1:${running.port}/`);
-      assert.strictEqual(response.status, 200);
-      assert.strictEqual(await response.text(), "ok");
-    } finally {
-      await running.close();
-    }
-  });
-
-  it("leaves upgrade requests for other paths alone", async () => {
-    const handlers = createTestHandlers();
-    const running = await startServer(handlers);
-    try {
-      // A second listener on the same server, for a different path, proves
-      // the handler's own listener does not swallow upgrades meant for
-      // someone else.
-      let otherPathHandled = false;
-      running.server.on("upgrade", (request, socket) => {
-        if (
-          new URL(request.url ?? "/", "http://bidi.invalid").pathname ===
-          "/other"
-        ) {
-          otherPathHandled = true;
-          socket.destroy();
+      const sums: bigint[] = [];
+      for (;;) {
+        const envelope = await next();
+        if (envelope.flag === flagEndStream) {
+          const { error } = endStreamFromJson(envelope.payload);
+          assert.strictEqual(error, undefined);
+          break;
         }
-      });
-      const ws = new WebSocket(`ws://127.0.0.1:${running.port}/other`);
-      await new Promise<void>((resolve) => {
-        ws.once("close", () => resolve());
-        ws.once("error", () => resolve());
-      });
-      assert.strictEqual(otherPathHandled, true);
+        assert.strictEqual(envelope.flag, flagData);
+        sums.push(fromBinary(CumSumResponseSchema, envelope.payload).sum);
+      }
+      assert.deepStrictEqual(sums, [BigInt(1), BigInt(3), BigInt(6)]);
+      socket.close();
     } finally {
-      await running.close();
+      await server.close();
+    }
+  });
+
+  it("reports an RPC error in the end-stream envelope", async () => {
+    const server = await startServer();
+    try {
+      const { socket, next } = await connect(server, cumSumPath);
+      send(socket, flagHeaders, headersPayload("application/connect+proto"));
+      // A data envelope that is not a valid CumSumRequest.
+      send(socket, flagData, encoder.encode("not a protobuf message"));
+      send(socket, flagEndStream, new Uint8Array(0));
+
+      assert.strictEqual((await next()).flag, flagHeaders);
+      for (;;) {
+        const envelope = await next();
+        if (envelope.flag !== flagEndStream) {
+          continue;
+        }
+        const { error } = endStreamFromJson(envelope.payload);
+        assert.ok(error, "expected an error in the end-stream envelope");
+        break;
+      }
+      socket.close();
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("serves the same procedure under a path prefix", async () => {
+    // The procedure is the path's last two segments, so a prefix in front
+    // of them changes nothing about which handler runs.
+    const server = await startServer();
+    try {
+      const { socket, next } = await connect(
+        server,
+        `/websocket-draft1${cumSumPath}`,
+      );
+      send(socket, flagHeaders, headersPayload("application/connect+json"));
+      send(socket, flagData, encoder.encode('{"number":"5"}'));
+      send(socket, flagEndStream, new Uint8Array(0));
+
+      assert.strictEqual((await next()).flag, flagHeaders);
+      const data = await next();
+      assert.strictEqual(data.flag, flagData);
+      assert.match(decoder.decode(data.payload), /"5"/);
+      socket.close();
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("refuses to upgrade a unary procedure", async () => {
+    const server = await startServer();
+    try {
+      const socket = new WebSocket(`ws://127.0.0.1:${server.port}${pingPath}`, [
+        draft1Subprotocol,
+      ]);
+      await new Promise<void>((resolve, reject) => {
+        socket.on("open", () =>
+          reject(new Error("unary procedure accepted an upgrade")),
+        );
+        socket.on("error", () => resolve());
+      });
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("refuses a handshake without the subprotocol", async () => {
+    const server = await startServer();
+    try {
+      const socket = new WebSocket(
+        `ws://127.0.0.1:${server.port}${cumSumPath}`,
+      );
+      await new Promise<void>((resolve, reject) => {
+        socket.on("open", () =>
+          reject(new Error("handshake without the subprotocol was accepted")),
+        );
+        socket.on("error", () => resolve());
+      });
+    } finally {
+      await server.close();
     }
   });
 });

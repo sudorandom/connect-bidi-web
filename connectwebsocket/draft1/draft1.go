@@ -13,53 +13,72 @@
 // limitations under the License.
 
 // Package draft1 provides a connect.Transport and an http.Handler that
-// carry Connect RPCs over WebSocket connections, enabling full
+// carry streaming Connect RPCs over WebSocket connections, enabling full
 // bidirectional streaming from environments such as web browsers.
 //
-// This is draft 1 of the WebSocket wire protocol, wire-incompatible with
-// the draft3 and draft4 subpackages alongside it. Draft 1 reuses
-// as much of the Connect protocol as it can: RPC messages travel in
-// standard 5-byte Connect envelopes, with Connect per-message compression
-// negotiated through connect-*-encoding metadata. All drafts coexist so
-// their implementations can be compared; serve them on different paths.
+// This is draft 1 of the WebSocket wire protocol, and the shape the other
+// drafts are variations on. Four decisions define it:
 //
-// Every frame carries a stream ID, so any number of concurrent RPCs are
-// multiplexed onto one shared WebSocket connection; WithConnectionPerStream
-// gives each streaming RPC a dedicated connection instead.
+// One WebSocket per streaming RPC. Multiplexing every RPC onto a shared
+// connection was considered and rejected as too complicated and too easy to
+// get wrong; drafts [3] and [4] show what it costs, in stream IDs on every
+// frame and a reset frame in the protocol. Here there is nothing to
+// multiplex, so cancelling an RPC is closing its socket. The price is a
+// handshake per streaming call, and a browser-enforced ceiling on how many
+// WebSockets a page may hold open to one host at once — 255 in Chrome, and
+// worth knowing before a page opens streams in a loop.
+//
+// Unary RPCs stay on HTTP. This transport carries streaming RPCs only; pair
+// it with an ordinary Connect HTTP transport through
+// [github.com/sudorandom/connect-bidi-web/connectwebsocket.NewCompositeTransport]
+// so unary calls keep the caching, proxies, and observability they already
+// have.
+//
+// Headers travel as the first message. Browser APIs cannot attach custom
+// headers to the upgrade request and cannot read them off the response, so
+// each direction opens with a metadata envelope rather than relying on the
+// handshake — the server's as well as the client's.
+//
+// Every message is a Connect envelope. One envelope per WebSocket message,
+// with Connect's own flag byte and length prefix. The length restates the
+// message boundary, which is redundant but keeps the envelope exactly
+// Connect's. Compression is the native permessage-deflate extension rather
+// than Connect's per-message compression: it is transparent, browsers all
+// have it, and it leaves the payload legible in devtools.
+//
+// [3]: https://pkg.go.dev/github.com/sudorandom/connect-bidi-web/connectwebsocket/draft3
+// [4]: https://pkg.go.dev/github.com/sudorandom/connect-bidi-web/connectwebsocket/draft4
 package draft1
 
 import (
 	"context"
 	"errors"
-	"sync"
+	"net/url"
+	"strings"
 
 	"connectrpc.com/connect/v2"
 	"github.com/coder/websocket"
-	"github.com/sudorandom/connect-bidi-web/internal/bidiprotocol"
 	"golang.org/x/net/http2"
 )
 
-// protocolName is surfaced through connect.CallInfo so callers can tell
-// which WebSocket protocol draft carried an RPC.
-const protocolName = "websocket-draft1"
-
-// Option configures NewTransport and NewHandler.
+// Option configures NewTransport, NewH2Transport, NewHandler, and Mount.
 type Option interface {
 	applyTransport(*transportOptions)
 	applyServer(*serverOptions)
 }
 
 type transportOptions struct {
-	bidiprotocol.Options
+	protocolOptions
 
-	dialOptions         *websocket.DialOptions
-	connectionPerStream bool
+	dialOptions        *websocket.DialOptions
+	withoutCompression bool
 }
 
 type serverOptions struct {
-	bidiprotocol.Options
+	protocolOptions
 
-	acceptOptions *websocket.AcceptOptions
+	acceptOptions      *websocket.AcceptOptions
+	withoutCompression bool
 }
 
 type optionFunc func(*transportOptions, *serverOptions)
@@ -67,7 +86,8 @@ type optionFunc func(*transportOptions, *serverOptions)
 func (f optionFunc) applyTransport(opts *transportOptions) { f(opts, nil) }
 func (f optionFunc) applyServer(opts *serverOptions)       { f(nil, opts) }
 
-// WithSendCodec selects the codec (by name) used for outgoing client requests.
+// WithSendCodec selects the codec (by name) used for outgoing client
+// requests.
 func WithSendCodec(name string) Option {
 	return optionFunc(func(topts *transportOptions, _ *serverOptions) {
 		if topts != nil {
@@ -80,45 +100,10 @@ func WithSendCodec(name string) Option {
 func WithCodecs(codecs ...connect.Codec) Option {
 	return optionFunc(func(topts *transportOptions, sopts *serverOptions) {
 		if topts != nil {
-			topts.AddCodecs(codecs...)
+			topts.addCodecs(codecs...)
 		}
 		if sopts != nil {
-			sopts.AddCodecs(codecs...)
-		}
-	})
-}
-
-// WithSendCompressor selects the compressor (by name) to apply to outgoing
-// client payloads.
-func WithSendCompressor(name string) Option {
-	return optionFunc(func(topts *transportOptions, _ *serverOptions) {
-		if topts != nil {
-			topts.SendCompressor = name
-		}
-	})
-}
-
-// WithCompressors registers connect.Compressor values.
-func WithCompressors(compressors ...connect.Compressor) Option {
-	return optionFunc(func(topts *transportOptions, sopts *serverOptions) {
-		if topts != nil {
-			topts.AddCompressors(compressors...)
-		}
-		if sopts != nil {
-			sopts.AddCompressors(compressors...)
-		}
-	})
-}
-
-// WithAcceptCompression overrides the compression algorithms the client
-// advertises for responses (Connect-Accept-Encoding). The algorithms must
-// be registered (gzip is by default; WithCompressors adds more), and this
-// option must come after WithCompressors when both are used. Passing no
-// names disables response compression entirely.
-func WithAcceptCompression(names ...string) Option {
-	return optionFunc(func(topts *transportOptions, _ *serverOptions) {
-		if topts != nil {
-			topts.CompressorNames = names
+			sopts.addCodecs(codecs...)
 		}
 	})
 }
@@ -147,8 +132,10 @@ func WithSendMaxBytes(maxBytes int) Option {
 	})
 }
 
-// WithDialOptions sets custom websocket.DialOptions. The options are used for
-// every connection opened by the transport.
+// WithDialOptions sets custom websocket.DialOptions, used for every
+// connection the transport opens. Subprotocols and CompressionMode are
+// overridden regardless: they are the protocol's, so custom options cannot
+// silently change what is spoken on the wire.
 func WithDialOptions(dialOpts *websocket.DialOptions) Option {
 	return optionFunc(func(topts *transportOptions, _ *serverOptions) {
 		if topts == nil {
@@ -163,71 +150,122 @@ func WithDialOptions(dialOpts *websocket.DialOptions) Option {
 	})
 }
 
-// WithConnectionPerStream configures the transport to dial a dedicated
-// WebSocket connection for each streaming RPC instead of multiplexing all
-// RPCs onto one shared connection. A shared connection is subject to
-// head-of-line blocking: one stream with a large message or a slow consumer
-// delays every other stream behind it. Dedicated connections trade a
-// WebSocket handshake per streaming RPC for full isolation. Unary RPCs
-// always use the shared multiplexed connection.
-func WithConnectionPerStream() Option {
-	return optionFunc(func(topts *transportOptions, _ *serverOptions) {
-		if topts != nil {
-			topts.connectionPerStream = true
-		}
-	})
-}
-
-// WithAcceptOptions sets custom websocket.AcceptOptions.
+// WithAcceptOptions sets custom websocket.AcceptOptions — OriginPatterns in
+// particular, which browsers need. Subprotocols and CompressionMode are
+// overridden regardless, for the reason given on [WithDialOptions].
 func WithAcceptOptions(acceptOpts *websocket.AcceptOptions) Option {
 	return optionFunc(func(_ *transportOptions, sopts *serverOptions) {
+		if sopts == nil {
+			return
+		}
+		if acceptOpts == nil {
+			sopts.acceptOptions = nil
+			return
+		}
+		cloned := *acceptOpts
+		sopts.acceptOptions = &cloned
+	})
+}
+
+// WithoutCompression disables permessage-deflate, which is draft 1's only
+// compression: the envelope has a compressed-data flag, but this draft
+// deliberately leaves it unused rather than compressing payloads a browser
+// would then show as noise.
+//
+// Worth considering for streams of small messages. Nothing under a few
+// hundred bytes compresses, so all that arrives is the negotiation in the
+// handshake — which draft 1 pays once per RPC, having no connection reuse
+// to amortize it over.
+func WithoutCompression() Option {
+	return optionFunc(func(topts *transportOptions, sopts *serverOptions) {
+		if topts != nil {
+			topts.withoutCompression = true
+		}
 		if sopts != nil {
-			sopts.acceptOptions = acceptOpts
+			sopts.withoutCompression = true
 		}
 	})
 }
 
+// transport dispatches streaming RPCs over WebSocket connections, one per
+// RPC.
 type transport struct {
-	url  string
-	opts transportOptions
-	// dialConn opens a new multiplexed connection: an HTTP/1.1 upgrade
-	// (NewTransport) or an RFC 8441 extended CONNECT stream on HTTP/2
-	// (NewH2Transport). The protocol above the connection is identical.
-	dialConn func(ctx context.Context) (*muxConn, error)
+	baseURL string
+	opts    transportOptions
+	// dial opens one connection for the given procedure: an HTTP/1.1
+	// upgrade (NewTransport) or an RFC 8441 extended CONNECT stream
+	// (NewH2Transport).
+	dial func(ctx context.Context, url string) (messageConn, error)
 	// h2 is the HTTP/2 client used by dialH2; nil for NewTransport.
 	h2 *http2.Transport
-
-	mu     sync.Mutex
-	shared *muxConn
 }
 
-// NewTransport returns a connect.Transport that dispatches RPCs over
-// WebSocket. RPCs are multiplexed onto one shared WebSocket connection,
-// dialed lazily on first use and re-dialed if it fails; every frame carries
-// the stream ID of the RPC it belongs to. With WithConnectionPerStream, each
-// streaming RPC dials a dedicated connection instead.
+// NewTransport returns a connect.Transport that dispatches streaming RPCs
+// over WebSocket using draft 1 of the wire protocol. Each RPC dials its own
+// connection against baseURL, with the procedure appended — so a call to
+// /connectrpc.eliza.v1.ElizaService/Converse against a base URL of
+// wss://example.com opens
+// wss://example.com/connectrpc.eliza.v1.ElizaService/Converse.
 //
-// The returned Transport also implements io.Closer: Close closes the shared
-// connection, terminating any RPCs still running on it. The transport
-// remains usable afterwards.
-func NewTransport(url string, opts ...Option) connect.Transport {
-	tOpts := transportOptions{Options: bidiprotocol.NewClientOptions()}
+// Unary RPCs are refused; compose this with an HTTP transport using
+// [github.com/sudorandom/connect-bidi-web/connectwebsocket.NewCompositeTransport].
+func NewTransport(baseURL string, opts ...Option) connect.Transport {
+	tOpts := transportOptions{protocolOptions: newClientProtocolOptions()}
 	for _, opt := range opts {
 		opt.applyTransport(&tOpts)
 	}
-	tOpts.Finalize()
+	tOpts.finalize()
 
-	t := &transport{
-		url:  url,
-		opts: tOpts,
-	}
-	t.dialConn = t.dialWebSocket
+	t := &transport{baseURL: normalizeWebSocketURL(baseURL), opts: tOpts}
+	t.dial = t.dialWebSocket
 	return t
 }
 
+// normalizeWebSocketURL accepts an http(s) base URL for the WebSocket dial,
+// so a caller configuring one endpoint for both dispatch paths does not
+// have to spell it twice.
+func normalizeWebSocketURL(rawURL string) string {
+	trimmed := strings.TrimSuffix(rawURL, "/")
+	if rest, ok := strings.CutPrefix(trimmed, "https://"); ok {
+		return "wss://" + rest
+	}
+	if rest, ok := strings.CutPrefix(trimmed, "http://"); ok {
+		return "ws://" + rest
+	}
+	return trimmed
+}
+
+// procedureURL returns the URL an RPC dials: the base URL with the
+// procedure appended.
+func (t *transport) procedureURL(procedure string) (string, error) {
+	if t.baseURL == "" {
+		return "", errors.New("connectwebsocket/draft1: empty base URL")
+	}
+	if !strings.HasPrefix(procedure, "/") {
+		procedure = "/" + procedure
+	}
+	full := t.baseURL + procedure
+	if _, err := url.Parse(full); err != nil {
+		return "", connect.Errorf(connect.CodeInternal, "invalid URL %q: %v", full, err)
+	}
+	return full, nil
+}
+
+// NewClientStream implements connect.Transport.
 func (t *transport) NewClientStream(ctx context.Context, spec connect.Spec) (connect.ClientStream, error) {
-	if t.url == "" {
-		return nil, errors.New("connectwebsocket/draft1: empty URL")
+	if spec.StreamType == connect.StreamTypeUnary {
+		// A WebSocket handshake to carry one request and one response is a
+		// bad trade, and it costs one of the browser's limited connection
+		// slots. Unary RPCs belong on plain Connect over HTTP.
+		return nil, connect.Errorf(
+			connect.CodeUnimplemented,
+			"connectwebsocket/draft1: unary RPCs are not carried over WebSocket; "+
+				"pair this transport with an HTTP one using connectwebsocket.NewCompositeTransport",
+		)
+	}
+	target, err := t.procedureURL(spec.Procedure)
+	if err != nil {
+		return nil, err
 	}
 
 	callInfo, _ := connect.CallInfoForClientContext(ctx)
@@ -235,78 +273,41 @@ func (t *transport) NewClientStream(ctx context.Context, spec connect.Spec) (con
 		callInfo.Protocol = protocolName
 	}
 
-	var stream *muxStream
-	if t.opts.connectionPerStream && spec.StreamType != connect.StreamTypeUnary {
-		mc, err := t.dialConn(ctx)
-		if err != nil {
-			return nil, err
-		}
-		stream, err = mc.newStream(ctx, true)
-		if err != nil {
-			_ = mc.shutdown()
-			return nil, err
-		}
-	} else {
-		var err error
-		stream, err = t.sharedStream(ctx)
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	return bidiprotocol.NewClientStream(
-		ctx,
-		spec,
-		stream,
-		callInfo,
-		t.opts.Options,
-	), nil
-}
-
-// Close closes the shared multiplexed connection, if one is open,
-// terminating any RPCs still running on it. The next RPC dials a new
-// connection.
-func (t *transport) Close() error {
-	t.mu.Lock()
-	shared := t.shared
-	t.shared = nil
-	t.mu.Unlock()
-	if shared == nil {
-		return nil
-	}
-	return shared.shutdown()
-}
-
-func (t *transport) dialWebSocket(ctx context.Context) (*muxConn, error) {
-	conn, _, err := websocket.Dial(ctx, t.url, t.opts.dialOptions) //nolint:bodyclose // coder/websocket closes the handshake response body itself
-	if err != nil {
-		return nil, connect.Errorf(connect.CodeUnavailable, "failed to dial WebSocket: %v", err)
-	}
-	// The connection outlives any single RPC, so neither the read loop nor
-	// writes use an RPC context; closing the connection ends them.
-	mc := newMuxConn(context.Background(), newCoderConn(conn))
-	go mc.readLoopClient(context.Background()) //nolint:contextcheck,gosec // G118: the shared connection deliberately outlives the RPC that dialed it
-	return mc, nil
-}
-
-// sharedStream opens a stream on the shared multiplexed connection, dialing
-// it on first use and replacing it if it has failed. Dialing holds the
-// transport lock, so concurrent RPCs wait for one shared connection instead
-// of racing to dial several.
-func (t *transport) sharedStream(ctx context.Context) (*muxStream, error) {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	if t.shared != nil {
-		stream, err := t.shared.newStream(ctx, false)
-		if err == nil {
-			return stream, nil
-		}
-		// The shared connection failed; dial a replacement.
-	}
-	mc, err := t.dialConn(ctx)
+	conn, err := t.dial(ctx, target)
 	if err != nil {
 		return nil, err
 	}
-	t.shared = mc
-	return mc.newStream(ctx, false)
+	return newClientStream(ctx, spec, conn, callInfo, t), nil
+}
+
+// dialWebSocket opens a WebSocket with an HTTP/1.1 Upgrade handshake.
+func (t *transport) dialWebSocket(ctx context.Context, target string) (messageConn, error) {
+	dialOpts := &websocket.DialOptions{}
+	if t.opts.dialOptions != nil {
+		cloned := *t.opts.dialOptions
+		dialOpts = &cloned
+	}
+	dialOpts.Subprotocols = []string{subprotocol}
+	// Context takeover is refused in both directions: a shared compression
+	// window across messages is what makes an attacker-influenced payload
+	// leak the size of a secret one, and every browser that offers
+	// permessage-deflate offers no_context_takeover with it.
+	dialOpts.CompressionMode = websocket.CompressionNoContextTakeover
+	if t.opts.withoutCompression {
+		dialOpts.CompressionMode = websocket.CompressionDisabled
+	}
+
+	conn, _, err := websocket.Dial(ctx, target, dialOpts) //nolint:bodyclose // coder/websocket closes the handshake response body itself
+	if err != nil {
+		return nil, connect.Errorf(connect.CodeUnavailable, "failed to dial WebSocket: %v", err)
+	}
+	if conn.Subprotocol() != subprotocol {
+		_ = conn.CloseNow()
+		return nil, connect.Errorf(
+			connect.CodeUnavailable,
+			"server did not select the %q subprotocol; it may not serve this protocol",
+			subprotocol,
+		)
+	}
+	return newCoderConn(conn), nil
 }

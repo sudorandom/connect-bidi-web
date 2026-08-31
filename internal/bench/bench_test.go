@@ -38,11 +38,14 @@ import (
 	"time"
 
 	connect "connectrpc.com/connect/v2"
+	"connectrpc.com/connect/v2/connecthttp"
 	"github.com/quic-go/quic-go/http3"
 	"github.com/quic-go/webtransport-go"
+	"github.com/sudorandom/connect-bidi-web/connectwebsocket"
 	"github.com/sudorandom/connect-bidi-web/connectwebsocket/draft1"
 	"github.com/sudorandom/connect-bidi-web/connectwebsocket/draft3"
 	"github.com/sudorandom/connect-bidi-web/connectwebsocket/draft4"
+	"github.com/sudorandom/connect-bidi-web/connectwebsocket/draft5"
 	"github.com/sudorandom/connect-bidi-web/connectwebtransport"
 	pingv1 "github.com/sudorandom/connect-bidi-web/internal/gen/connectbidi/ping/v1"
 	pingv1connect "github.com/sudorandom/connect-bidi-web/internal/gen/connectbidi/ping/v1/pingv1connect"
@@ -132,7 +135,7 @@ func (benchPingServer) CumSum(_ context.Context, stream pingv1connect.PingServic
 			return err
 		}
 		sum += req.GetNumber()
-		if err := stream.Send(&pingv1.CumSumResponse{Sum: sum}); err != nil {
+		if err := stream.Send(&pingv1.CumSumResponse{Sum: sum, Text: req.GetText()}); err != nil {
 			return err
 		}
 	}
@@ -230,17 +233,6 @@ func closeTransport(b *testing.B, transport connect.Transport) {
 	})
 }
 
-func setupDraft1H2(clientOpts ...draft1.Option) func(b *testing.B) (pingv1connect.PingServiceClient, *wireCounter) {
-	return func(b *testing.B) (pingv1connect.PingServiceClient, *wireCounter) {
-		b.Helper()
-		requireExtendedConnect(b)
-		url, counter := startWebSocketH2Server(b, draft1.NewHandler(newConnectServer()))
-		transport := draft1.NewH2Transport(url, newH2Transport(b), clientOpts...)
-		closeTransport(b, transport)
-		return pingv1connect.NewPingServiceClient(connect.NewClient(transport)), counter
-	}
-}
-
 func setupDraft3H2() func(b *testing.B) (pingv1connect.PingServiceClient, *wireCounter) {
 	return func(b *testing.B) (pingv1connect.PingServiceClient, *wireCounter) {
 		b.Helper()
@@ -272,22 +264,75 @@ func setupDraft4H2(compression bool, json bool) func(b *testing.B) (pingv1connec
 	}
 }
 
-func setupDraft1(clientOpts ...draft1.Option) func(b *testing.B) (pingv1connect.PingServiceClient, *wireCounter) {
+// setupDraft1 measures the shape the other drafts are variations on: one
+// WebSocket per streaming RPC, with every message wrapped in a standard
+// 5-byte Connect envelope. Against draft 5 the difference is exactly those
+// five bytes per message; against drafts 3 and 4 it is a handshake per RPC
+// instead of a stream ID per frame. The unary rows are plain Connect over
+// HTTP, because draft 1 never upgrades for them — which is why the client
+// is a composite transport rather than a WebSocket one.
+func setupDraft1(compression bool, json bool) func(b *testing.B) (pingv1connect.PingServiceClient, *wireCounter) {
 	return func(b *testing.B) (pingv1connect.PingServiceClient, *wireCounter) {
 		b.Helper()
-		url, counter := startWebSocketServer(b, draft1.NewHandler(newConnectServer()))
-		transport := draft1.NewTransport(url, clientOpts...)
+		var opts []draft1.Option
+		if !compression {
+			opts = append(opts, draft1.WithoutCompression())
+		}
+		if json {
+			opts = append(opts, draft1.WithSendCodec(connect.CodecNameJSON))
+		}
+		// The deployment shape draft 1 proposes: the Connect procedure URLs
+		// answer POST with ordinary Connect and GET+Upgrade with draft 1.
+		connectServer := newConnectServer()
+		mux := http.NewServeMux()
+		connecthttp.Mount(mux, connectServer)
+		url, counter := startWebSocketServer(b, draft1.Intercept(mux, connectServer, opts...))
+		httpURL := "http" + strings.TrimPrefix(url, "ws")
+		transport := connectwebsocket.NewCompositeTransport(
+			connecthttp.NewTransport(http.DefaultClient, httpURL),
+			draft1.NewTransport(url, opts...),
+		)
 		return pingv1connect.NewPingServiceClient(connect.NewClient(transport)), counter
 	}
 }
 
-func setupDraft3(compression bool) func(b *testing.B) (pingv1connect.PingServiceClient, *wireCounter) {
+// setupDraft1H2 is the bootstrap draft 1 wants: a new WebSocket is a new
+// HTTP/2 stream on a connection that is already open, which is what makes
+// one-socket-per-RPC affordable.
+func setupDraft1H2(compression bool, json bool) func(b *testing.B) (pingv1connect.PingServiceClient, *wireCounter) {
+	return func(b *testing.B) (pingv1connect.PingServiceClient, *wireCounter) {
+		b.Helper()
+		requireExtendedConnect(b)
+		var opts []draft1.Option
+		if !compression {
+			opts = append(opts, draft1.WithoutCompression())
+		}
+		if json {
+			opts = append(opts, draft1.WithSendCodec(connect.CodecNameJSON))
+		}
+		connectServer := newConnectServer()
+		mux := http.NewServeMux()
+		connecthttp.Mount(mux, connectServer)
+		url, counter := startWebSocketH2Server(b, draft1.Intercept(mux, connectServer, opts...))
+		h2 := newH2Transport(b)
+		transport := connectwebsocket.NewCompositeTransport(
+			connecthttp.NewTransport(&http.Client{Transport: h2}, url),
+			draft1.NewH2Transport(url, h2, opts...),
+		)
+		return pingv1connect.NewPingServiceClient(connect.NewClient(transport)), counter
+	}
+}
+
+func setupDraft3(compression bool, json bool) func(b *testing.B) (pingv1connect.PingServiceClient, *wireCounter) {
 	return func(b *testing.B) (pingv1connect.PingServiceClient, *wireCounter) {
 		b.Helper()
 		var clientOpts []draft3.Option
 		if !compression {
 			// Offer only the identity subprotocol, so nothing is compressed.
 			clientOpts = append(clientOpts, draft3.WithoutCompression())
+		}
+		if json {
+			clientOpts = append(clientOpts, draft3.WithSendCodec(connect.CodecNameJSON))
 		}
 		url, counter := startWebSocketServer(b, draft3.NewHandler(newConnectServer()))
 		transport := draft3.NewTransport(url, clientOpts...)
@@ -313,6 +358,53 @@ func setupDraft4(compression bool, json bool) func(b *testing.B) (pingv1connect.
 		}
 		url, counter := startWebSocketServer(b, draft4.NewHandler(newConnectServer(), serverOpts...))
 		transport := draft4.NewTransport(url, clientOpts...)
+		return pingv1connect.NewPingServiceClient(connect.NewClient(transport)), counter
+	}
+}
+
+// setupDraft5 measures a protocol with no per-message overhead at all,
+// which it pays for per *connection* instead: one WebSocket per streaming
+// RPC, so the bidi case includes a full handshake amortized over its 100
+// roundtrips. The unary rows are the other half of the design — draft 5
+// never upgrades for them, so they measure ordinary Connect over HTTP.
+func setupDraft5(compression bool, json bool) func(b *testing.B) (pingv1connect.PingServiceClient, *wireCounter) {
+	return func(b *testing.B) (pingv1connect.PingServiceClient, *wireCounter) {
+		b.Helper()
+		var opts []draft5.Option
+		if !compression {
+			opts = append(opts, draft5.WithoutCompression())
+		}
+		if json {
+			opts = append(opts, draft5.WithProtoJSON())
+		}
+		mux := http.NewServeMux()
+		draft5.Mount(mux, newConnectServer(), opts...)
+		url, counter := startWebSocketServer(b, mux)
+		transport := draft5.NewTransport(http.DefaultClient, url, opts...)
+		return pingv1connect.NewPingServiceClient(connect.NewClient(transport)), counter
+	}
+}
+
+// setupDraft5H2 is the bootstrap draft 5 is designed around: a new
+// WebSocket is a new HTTP/2 stream on a connection that is already open,
+// which is what makes one-socket-per-RPC affordable.
+func setupDraft5H2(compression bool, json bool) func(b *testing.B) (pingv1connect.PingServiceClient, *wireCounter) {
+	return func(b *testing.B) (pingv1connect.PingServiceClient, *wireCounter) {
+		b.Helper()
+		requireExtendedConnect(b)
+		var opts []draft5.Option
+		if !compression {
+			opts = append(opts, draft5.WithoutCompression())
+		}
+		if json {
+			opts = append(opts, draft5.WithProtoJSON())
+		}
+		mux := http.NewServeMux()
+		draft5.Mount(mux, newConnectServer(), opts...)
+		url, counter := startWebSocketH2Server(b, mux)
+		h2 := newH2Transport(b)
+		opts = append(opts, draft5.WithH2Bootstrap(h2))
+		transport := draft5.NewTransport(&http.Client{Transport: h2}, url, opts...)
 		return pingv1connect.NewPingServiceClient(connect.NewClient(transport)), counter
 	}
 }
@@ -398,50 +490,79 @@ func makePayloads() (repetitive, random string) {
 func BenchmarkTransports(b *testing.B) {
 	repetitive, random := makePayloads()
 
-	// Each transport runs in two variants: identity (no compression
-	// anywhere) and compressed (that transport's compression mechanism in
-	// both directions — per-message gzip for draft 1 and WebTransport,
+	// Case names are "<transport>[/h2]/<codec>/<compression>", so a row says
+	// on its face which encoding produced the payload — the byte counts mean
+	// nothing without it, and the Go and TypeScript suites do not default to
+	// the same codec.
+	//
+	// Every draft covers the full codec x compression grid on the HTTP/1.1
+	// bootstrap. Measuring JSON only uncompressed would libel it: JSON
+	// compresses far better than protobuf, so what the codec "costs" is a
+	// different number with deflate on. The h2 rows deliberately do not
+	// repeat the grid — they are there to test the bootstrap, not the
+	// codec.
+	//
+	// Each transport runs in two compression variants: identity (none
+	// anywhere) and compressed (that transport's own mechanism in both
+	// directions — per-message gzip for WebTransport,
 	// subprotocol DEFLATE for draft 3, permessage-deflate for draft 4).
 	cases := []struct {
 		name  string
 		setup func(b *testing.B) (pingv1connect.PingServiceClient, *wireCounter)
 	}{
-		{name: "ws-draft1/identity", setup: setupDraft1(
-			draft1.WithAcceptCompression(),
-		)},
-		{name: "ws-draft1/gzip", setup: setupDraft1(
-			draft1.WithSendCompressor(connect.CompressionNameGzip),
-		)},
+		// Draft 1: one WebSocket per streaming RPC, every message a
+		// standard 5-byte Connect envelope. Compare with draft 5, which is
+		// the same connection model with those five bytes removed, and the
+		// bidi rows show what a handshake per RPC costs when amortized over
+		// 100 roundtrips. The unary rows are plain Connect HTTP, because
+		// draft 1 never upgrades for them.
+		{name: "ws-draft1/proto/identity", setup: setupDraft1(false, false)},
+		{name: "ws-draft1/proto/deflate", setup: setupDraft1(true, false)},
+		{name: "ws-draft1/json/identity", setup: setupDraft1(false, true)},
+		{name: "ws-draft1/json/deflate", setup: setupDraft1(true, true)},
 		// Draft 3: compression is the protocol's own — negotiated by
 		// subprotocol, applied per frame as raw DEFLATE above the 512-byte
 		// threshold.
-		{name: "ws-draft3/identity", setup: setupDraft3(false)},
-		{name: "ws-draft3/deflate", setup: setupDraft3(true)},
+		{name: "ws-draft3/proto/identity", setup: setupDraft3(false, false)},
+		{name: "ws-draft3/proto/deflate", setup: setupDraft3(true, false)},
+		{name: "ws-draft3/json/identity", setup: setupDraft3(false, true)},
+		{name: "ws-draft3/json/deflate", setup: setupDraft3(true, true)},
 		// Draft 4: an ASCII frame head instead of five packed bytes, with
 		// compression back in permessage-deflate's hands. The json case is
 		// the all-text configuration the draft is designed around, and pays
 		// for legibility in the payload as well as the head.
-		{name: "ws-draft4/identity", setup: setupDraft4(false, false)},
-		{name: "ws-draft4/deflate", setup: setupDraft4(true, false)},
-		{name: "ws-draft4/json", setup: setupDraft4(false, true)},
+		{name: "ws-draft4/proto/identity", setup: setupDraft4(false, false)},
+		{name: "ws-draft4/proto/deflate", setup: setupDraft4(true, false)},
+		{name: "ws-draft4/json/identity", setup: setupDraft4(false, true)},
+		{name: "ws-draft4/json/deflate", setup: setupDraft4(true, true)},
+		// Draft 5: no framing at all, and no multiplexing — one WebSocket
+		// per streaming RPC. Its per-message overhead is zero, so the bidi
+		// rows show what a handshake per RPC costs when amortized over 100
+		// roundtrips; the unary rows are plain Connect HTTP, because draft
+		// 5 never upgrades for them.
+		{name: "ws-draft5/proto/identity", setup: setupDraft5(false, false)},
+		{name: "ws-draft5/proto/deflate", setup: setupDraft5(true, false)},
+		{name: "ws-draft5/json/identity", setup: setupDraft5(false, true)},
+		{name: "ws-draft5/json/deflate", setup: setupDraft5(true, true)},
 		// The same drafts over the HTTP/2 extended CONNECT bootstrap, each
 		// configured like its HTTP/1.1 namesake above: a row called
 		// deflate compresses, a row called json does not. Byte counts
 		// include TLS, so compare these rows with each other rather than
 		// with the HTTP/1.1 rows above.
-		{name: "ws-draft1/h2-gzip", setup: setupDraft1H2(
-			draft1.WithSendCompressor(connect.CompressionNameGzip),
-		)},
-		{name: "ws-draft3/h2-deflate", setup: setupDraft3H2()},
-		{name: "ws-draft4/h2-identity", setup: setupDraft4H2(false, false)},
-		{name: "ws-draft4/h2-deflate", setup: setupDraft4H2(true, false)},
-		{name: "ws-draft4/h2-json", setup: setupDraft4H2(false, true)},
+		{name: "ws-draft1/h2/proto/identity", setup: setupDraft1H2(false, false)},
+		{name: "ws-draft1/h2/proto/deflate", setup: setupDraft1H2(true, false)},
+		{name: "ws-draft3/h2/proto/deflate", setup: setupDraft3H2()},
+		{name: "ws-draft4/h2/proto/identity", setup: setupDraft4H2(false, false)},
+		{name: "ws-draft4/h2/proto/deflate", setup: setupDraft4H2(true, false)},
+		{name: "ws-draft4/h2/json/identity", setup: setupDraft4H2(false, true)},
+		{name: "ws-draft5/h2/proto/identity", setup: setupDraft5H2(false, false)},
+		{name: "ws-draft5/h2/proto/deflate", setup: setupDraft5H2(true, false)},
 		// WebTransport wire bytes include QUIC and TLS overhead, unlike the
 		// plaintext TCP the WebSocket drafts run on here.
-		{name: "webtransport/identity", setup: setupWebTransport(
+		{name: "webtransport/proto/identity", setup: setupWebTransport(
 			connectwebtransport.WithAcceptCompression(),
 		)},
-		{name: "webtransport/gzip", setup: setupWebTransport(
+		{name: "webtransport/proto/gzip", setup: setupWebTransport(
 			connectwebtransport.WithSendCompressor(connect.CompressionNameGzip),
 		)},
 	}
@@ -472,6 +593,49 @@ func BenchmarkTransports(b *testing.B) {
 			b.Run("unary_small", unary(""))
 			b.Run("unary_16KiB_repetitive", unary(repetitive))
 			b.Run("unary_16KiB_random", unary(random))
+
+			// Large payloads *on a stream*. The unary rows above cannot
+			// stand in for this: draft 5 dispatches unary over plain HTTP,
+			// so its per-message compression never appears there — the
+			// numbers made deflate look like it was doing nothing.
+			bidiPayload := func(text string) func(b *testing.B) {
+				return func(b *testing.B) {
+					runStream := func() error {
+						stream, err := client.CumSum(ctx)
+						if err != nil {
+							return err
+						}
+						for range 4 {
+							if err := stream.Send(&pingv1.CumSumRequest{Number: 1, Text: text}); err != nil {
+								return err
+							}
+							if _, err := stream.Receive(); err != nil {
+								return err
+							}
+						}
+						if err := stream.CloseSend(); err != nil {
+							return err
+						}
+						if _, err := stream.Receive(); !errors.Is(err, io.EOF) {
+							return err
+						}
+						return stream.Close()
+					}
+					if err := runStream(); err != nil {
+						b.Fatalf("warmup: %v", err)
+					}
+					counter.reset()
+					b.ResetTimer()
+					for range b.N {
+						if err := runStream(); err != nil {
+							b.Fatal(err)
+						}
+					}
+					b.StopTimer()
+					reportWireBytes(b, counter, b.N)
+				}
+			}
+			b.Run("bidi_16KiB_repetitive", bidiPayload(repetitive))
 
 			b.Run("bidi_100_roundtrips", func(b *testing.B) {
 				runBidi := func() error {

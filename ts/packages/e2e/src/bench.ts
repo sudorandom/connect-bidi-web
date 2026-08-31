@@ -43,15 +43,18 @@ import type { Socket } from "node:net";
 import type { ServiceImpl } from "@connectrpc/connect";
 import { createClient, createConnectRouter } from "@connectrpc/connect";
 import type { Transport } from "@connectrpc/connect";
+import { createConnectTransport } from "@connectrpc/connect-web";
 import {
+  createBidiWebSocketDraft1Handler,
   createBidiWebSocketDraft3Handler,
   createBidiWebSocketDraft4Handler,
-  createBidiWebSocketDraft1Handler,
+  createBidiWebSocketDraft5Handler,
 } from "@sudorandom/connect-bidi-node";
 import {
+  createConnectWebSocketDraft1Transport,
   createConnectWebSocketDraft3Transport,
   createConnectWebSocketDraft4Transport,
-  createConnectWebSocketDraft1Transport,
+  createConnectWebSocketDraft5Transport,
 } from "@sudorandom/connect-bidi-web";
 import { ElizaService } from "./gen/connectbidi/eliza/v1/eliza_pb.js";
 
@@ -66,6 +69,14 @@ const LARGE_ROUND_TRIPS = 50;
 /**
  * Builds the text for one round trip. The nonce makes every round trip's
  * payload distinct while keeping its size and compressibility fixed.
+ *
+ * Case names are "ws-draft<N>/<codec>/<compression>", so a row says on its
+ * face which encoding produced its byte counts. That matters across suites:
+ * these TypeScript transports default to the JSON codec, while the Go
+ * suite's equivalents default to protobuf, so two identically shaped rows
+ * in the two tables are not the same measurement. Every draft covers the
+ * full codec x compression grid, because JSON compresses far better than
+ * protobuf and measuring only one of the four corners misleads.
  *
  * Distinctness is the point. A workload reuses one connection for all of
  * its round trips, so sending the same bytes twice lets a DEFLATE
@@ -148,7 +159,7 @@ interface BenchServer {
   close(): Promise<void>;
 }
 
-type Draft = "draft1" | "draft3" | "draft4";
+type Draft = "draft1" | "draft3" | "draft4" | "draft5";
 
 function startServer(
   draft: Draft,
@@ -180,12 +191,16 @@ function startServer(
     },
   };
   if (draft === "draft1") {
+    // Draft 1 takes no path either: it upgrades the procedure URLs.
     createBidiWebSocketDraft1Handler(router, options).upgrade(server);
   } else if (draft === "draft3") {
     // Draft 3 negotiates its own compression; perMessageDeflate is unused.
     createBidiWebSocketDraft3Handler(router, options).upgrade(server);
-  } else {
+  } else if (draft === "draft4") {
     createBidiWebSocketDraft4Handler(router, options).upgrade(server);
+  } else {
+    // Draft 5 takes no path: it upgrades the procedure URLs themselves.
+    createBidiWebSocketDraft5Handler(router, options).upgrade(server);
   }
 
   return new Promise((resolve) => {
@@ -323,26 +338,7 @@ interface BenchCase {
 
 const cases: BenchCase[] = [
   {
-    name: "ws-draft1/identity",
-    draft: "draft1",
-    perMessageDeflate: false,
-    makeTransport: (baseUrl) =>
-      createConnectWebSocketDraft1Transport({ baseUrl }),
-  },
-  {
-    // Draft 1 with the server offering permessage-deflate. The TS client
-    // has no per-message (Connect gzip) compression, so this is the only
-    // compressed draft 1 variant available in TypeScript — and only in the
-    // server->client direction, since Node's WebSocket does not compress
-    // what it sends.
-    name: "ws-draft1/deflate",
-    draft: "draft1",
-    perMessageDeflate: true,
-    makeTransport: (baseUrl) =>
-      createConnectWebSocketDraft1Transport({ baseUrl }),
-  },
-  {
-    name: "ws-draft3/identity",
+    name: "ws-draft3/json/identity",
     draft: "draft3",
     perMessageDeflate: false,
     makeTransport: (baseUrl) =>
@@ -355,30 +351,50 @@ const cases: BenchCase[] = [
     // Draft 3's protocol-level compression: per-frame raw DEFLATE above
     // 512 bytes, negotiated by subprotocol — and unlike permessage-deflate,
     // the client compresses its own frames too.
-    name: "ws-draft3/deflate",
+    name: "ws-draft3/json/deflate",
     draft: "draft3",
     perMessageDeflate: false,
     makeTransport: (baseUrl) =>
       createConnectWebSocketDraft3Transport({ baseUrl }),
   },
   {
+    name: "ws-draft3/proto/identity",
+    draft: "draft3",
+    perMessageDeflate: false,
+    makeTransport: (baseUrl) =>
+      createConnectWebSocketDraft3Transport({
+        baseUrl,
+        withoutCompression: true,
+        useBinaryFormat: true,
+      }),
+  },
+  {
+    name: "ws-draft3/proto/deflate",
+    draft: "draft3",
+    perMessageDeflate: false,
+    makeTransport: (baseUrl) =>
+      createConnectWebSocketDraft3Transport({
+        baseUrl,
+        useBinaryFormat: true,
+      }),
+  },
+  {
     // Draft 4 with JSON, the all-text configuration it is designed around:
     // every frame on the connection is a readable text message. This case
     // measures what that legibility costs against draft 3's binary framing.
-    name: "ws-draft4/json",
+    name: "ws-draft4/json/identity",
     draft: "draft4",
     perMessageDeflate: false,
     makeTransport: (baseUrl) =>
       createConnectWebSocketDraft4Transport({ baseUrl }),
   },
   {
-    // The same protocol with protobuf payloads. NOTE: every other case in
-    // this suite uses the JSON codec (the web transports' default), so this
-    // row differs from them in *codec as well as draft* -- it is not a
-    // framing comparison. Read it against ws-draft4/json to see what the
-    // codec costs; read ws-draft4/json against ws-draft3/identity to see
-    // what the framing costs.
-    name: "ws-draft4/proto",
+    // The same protocol with protobuf payloads. Read it against
+    // ws-draft4/json/identity to see what the codec costs, and
+    // ws-draft4/json/identity against ws-draft3/json/identity to see what
+    // the framing costs -- each case name states its encoding, so the two
+    // comparisons stay separable.
+    name: "ws-draft4/proto/identity",
     draft: "draft4",
     perMessageDeflate: false,
     makeTransport: (baseUrl) =>
@@ -388,13 +404,119 @@ const cases: BenchCase[] = [
       }),
   },
   {
-    name: "ws-draft4/deflate",
+    name: "ws-draft4/json/deflate",
     draft: "draft4",
     perMessageDeflate: true,
     makeTransport: (baseUrl) =>
       createConnectWebSocketDraft4Transport({ baseUrl }),
   },
+  {
+    name: "ws-draft4/proto/deflate",
+    draft: "draft4",
+    perMessageDeflate: true,
+    makeTransport: (baseUrl) =>
+      createConnectWebSocketDraft4Transport({
+        baseUrl,
+        useBinaryFormat: true,
+      }),
+  },
+  {
+    // Draft 1 pays five bytes of Connect envelope on every message, and
+    // pays for its connection model the same way draft 5 does: one
+    // WebSocket handshake per streaming RPC, where every draft 3 and 4 case
+    // above reuses one connection for the whole workload. Read these rows
+    // against the draft 5 rows below to price the envelope alone.
+    name: "ws-draft1/json/identity",
+    draft: "draft1",
+    perMessageDeflate: false,
+    makeTransport: (baseUrl) => draft1Transport(baseUrl, false),
+  },
+  {
+    name: "ws-draft1/proto/identity",
+    draft: "draft1",
+    perMessageDeflate: false,
+    makeTransport: (baseUrl) => draft1Transport(baseUrl, true),
+  },
+  {
+    name: "ws-draft1/json/deflate",
+    draft: "draft1",
+    perMessageDeflate: true,
+    makeTransport: (baseUrl) => draft1Transport(baseUrl, false),
+  },
+  {
+    name: "ws-draft1/proto/deflate",
+    draft: "draft1",
+    perMessageDeflate: true,
+    makeTransport: (baseUrl) => draft1Transport(baseUrl, true),
+  },
+  {
+    // Draft 5 has no framing to measure: a data message is the codec's
+    // output and nothing else. What these rows show instead is the cost it
+    // moved from the message to the connection -- one WebSocket handshake
+    // per streaming RPC, where every case above reuses one connection for
+    // the whole workload.
+    name: "ws-draft5/json/identity",
+    draft: "draft5",
+    perMessageDeflate: false,
+    makeTransport: (baseUrl) => withNoopClose(baseUrl, false),
+  },
+  {
+    name: "ws-draft5/proto/identity",
+    draft: "draft5",
+    perMessageDeflate: false,
+    makeTransport: (baseUrl) => withNoopClose(baseUrl, true),
+  },
+  {
+    name: "ws-draft5/json/deflate",
+    draft: "draft5",
+    perMessageDeflate: true,
+    makeTransport: (baseUrl) => withNoopClose(baseUrl, false),
+  },
+  {
+    name: "ws-draft5/proto/deflate",
+    draft: "draft5",
+    perMessageDeflate: true,
+    makeTransport: (baseUrl) => withNoopClose(baseUrl, true),
+  },
 ];
+
+/**
+ * Draft 1's transport has no `close()`, for the same reason draft 5's does
+ * not: it holds no connection to close, because each RPC opened and closed
+ * its own. The bench calls close() between cases, so give it a no-op.
+ */
+function draft1Transport(
+  baseUrl: string,
+  useBinaryFormat: boolean,
+): Transport & { close(): void } {
+  const transport = createConnectWebSocketDraft1Transport({
+    baseUrl,
+    useBinaryFormat,
+    // Unary RPCs are not part of this suite; draft 1 would dispatch them
+    // here as ordinary Connect HTTP requests.
+    unaryTransport: createConnectTransport({ baseUrl }),
+  });
+  return { ...transport, close: () => {} };
+}
+
+/**
+ * Draft 5's transport has no `close()`: it holds no connection to close,
+ * because each RPC opened and closed its own. The bench calls close()
+ * between cases, so give it a no-op.
+ */
+function withNoopClose(
+  baseUrl: string,
+  useBinaryFormat: boolean,
+): Transport & { close(): void } {
+  const transport = createConnectWebSocketDraft5Transport({
+    baseUrl,
+    useBinaryFormat,
+    // Unary RPCs are not part of this suite; draft 5 would dispatch them
+    // here as ordinary Connect HTTP requests.
+    unaryTransport: createConnectTransport({ baseUrl }),
+  });
+  return { ...transport, close: () => {} };
+}
 
 async function main(): Promise<void> {
   const results: WorkloadResult[] = [];

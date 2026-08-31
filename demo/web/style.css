@@ -15,6 +15,21 @@
   --bubble-eliza-bg: #eef0ff;
   --success: #15803d;
   --danger: #b91c1c;
+
+  /* One identity hue per wire-protocol draft, used wherever a draft is
+     named: its card on this page, and its rows in the benchmarks. The
+     -on-dark shades are for the code cards and wire diagrams, which stay
+     dark in both themes; the plain ones follow the theme. */
+  --draft-1: #be123c;
+  --draft-3: #6d28d9;
+  --draft-4: #b45309;
+  --draft-5: #047857;
+  --draft-wt: #0369a1;
+  --draft-1-on-dark: #fda4af;
+  --draft-3-on-dark: #a78bfa;
+  --draft-4-on-dark: #fbbf24;
+  --draft-5-on-dark: #34d399;
+  --draft-wt-on-dark: #38bdf8;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -30,6 +45,11 @@
     --border-color: rgba(255, 255, 255, 0.09);
     --accent-primary: #6366f1;
     --accent-secondary: #818cf8;
+    --draft-1: #fda4af;
+    --draft-3: #a78bfa;
+    --draft-4: #fbbf24;
+    --draft-5: #34d399;
+    --draft-wt: #38bdf8;
     --accent-glow: rgba(99, 102, 241, 0.35);
     --bubble-eliza-bg: rgba(30, 41, 59, 0.85);
     --success: #4ade80;
@@ -522,6 +542,29 @@ h3 {
    own. */
 .wire-format-card {
   margin: 2rem 0;
+  border-top: 3px solid var(--draft-accent, var(--accent-secondary));
+}
+
+/* A draft's identity colour, set on its card and inherited by the chip in
+   its header. The hues are the -on-dark shades: the card is dark in both
+   themes. */
+.wire-format-card.draft-1 {
+  --draft-accent: var(--draft-1-on-dark);
+}
+.wire-format-card.draft-3 {
+  --draft-accent: var(--draft-3-on-dark);
+}
+.wire-format-card.draft-4 {
+  --draft-accent: var(--draft-4-on-dark);
+}
+.wire-format-card.draft-5 {
+  --draft-accent: var(--draft-5-on-dark);
+}
+
+/* The bright hues need dark ink rather than the chip's usual white. */
+.wire-format-card .code-lang {
+  background: var(--draft-accent, var(--accent-secondary));
+  color: #0b1220;
 }
 
 /* Prose note at the bottom of a wire-format card. The card is always dark
@@ -542,6 +585,31 @@ h3 {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
+}
+
+/* Draft 5's diagram is a message sequence rather than a byte layout, so it
+   is inherently wide: the side-by-side grid squeezes it to half a card and
+   scrolls away the half that matters. Give it the full width and put the
+   table underneath. */
+.wire-format-stacked {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.wire-format-stacked .wire-svg {
+  min-width: 600px;
+  max-width: 100%;
+}
+
+.wire-format-stacked .flag-table {
+  margin-top: 0;
+  /* Under a full-width diagram the table has the whole card to work with,
+     so the meaning column stops wrapping at 34ch. */
+  width: calc(100% - 3rem);
+}
+
+.wire-format-stacked .flag-table td,
+.wire-format-stacked .flag-table th {
+  max-width: none;
 }
 
 /* Wire-format frame diagrams (inline SVG, generated to a shared geometry;
@@ -1448,6 +1516,34 @@ a.badge:hover {
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 10.5px;
   fill: var(--text-main);
+}
+
+/* Draft identity, matching each draft's card in the wire-format section.
+   Colour is never the only cue: every row is also named in full. */
+.bench-chart-label.draft-1,
+.bench-case.draft-1 {
+  fill: var(--draft-1);
+  color: var(--draft-1);
+}
+.bench-chart-label.draft-3,
+.bench-case.draft-3 {
+  fill: var(--draft-3);
+  color: var(--draft-3);
+}
+.bench-chart-label.draft-4,
+.bench-case.draft-4 {
+  fill: var(--draft-4);
+  color: var(--draft-4);
+}
+.bench-chart-label.draft-5,
+.bench-case.draft-5 {
+  fill: var(--draft-5);
+  color: var(--draft-5);
+}
+.bench-chart-label.draft-wt,
+.bench-case.draft-wt {
+  fill: var(--draft-wt);
+  color: var(--draft-wt);
 }
 
 .bench-chart-value {

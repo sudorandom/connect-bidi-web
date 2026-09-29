@@ -20,6 +20,7 @@ import {
   createConnectWebSocketDraft3Transport,
   createConnectWebSocketDraft4Transport,
   createConnectWebSocketDraft5Transport,
+  createConnectWebSocketDraft7Transport,
   createConnectWebTransportTransport,
   createFallbackTransport,
 } from "@sudorandom/connect-bidi-web";
@@ -32,7 +33,8 @@ export type StreamingTransportChoice =
   | "websocket-draft1"
   | "websocket-draft3"
   | "websocket-draft4"
-  | "websocket-draft5";
+  | "websocket-draft5"
+  | "websocket-draft7";
 
 export interface DemoTransportOptions {
   /**
@@ -97,8 +99,8 @@ export function createDemoTransport(
   }
 
   if (choice === "auto") {
-    // The degrading ladder: WebTransport first, WebSocket (draft 3) as the
-    // fallback. The WebTransport rung is included whenever the API and URL
+    // The degrading ladder: WebTransport first, WebSocket (draft 7, the
+    // specification) as the fallback. The WebTransport rung is included whenever the API and URL
     // scheme allow a dial attempt and the server hasn't already said no —
     // whether it actually works beyond that (HTTP/3 reachability,
     // certificates) is exactly what the ladder finds out, remembers, and
@@ -111,7 +113,14 @@ export function createDemoTransport(
     if (webTransportPossible) {
       rungs.push(createWebTransportStreaming(serverUrl));
     }
-    rungs.push(createConnectWebSocketDraft3Transport({ baseUrl: serverUrl }));
+    rungs.push(
+      createConnectWebSocketDraft7Transport({
+        baseUrl: serverUrl,
+        pathPrefix: "/websocket-draft7",
+        useBinaryFormat: false,
+        unaryTransport: unary,
+      }),
+    );
     return {
       transport: createCompositeTransport(
         unary,
@@ -119,11 +128,11 @@ export function createDemoTransport(
       ),
       description: webTransportPossible
         ? "Degrading transport: WebTransport is tried first, and the " +
-          "connection falls back to WebSocket (draft 3) if it can't be " +
+          "connection falls back to WebSocket (draft 7) if it can't be " +
           "established. The rung that works is remembered."
         : "Degrading transport: WebTransport is not available in this " +
           "browser or on this server, so the ladder starts at WebSocket " +
-          "(draft 3).",
+          "(draft 7).",
     };
   }
 
@@ -183,6 +192,33 @@ export function createDemoTransport(
     };
   }
 
+  if (choice === "websocket-draft7") {
+    // Draft 7 is the Connect-over-WebSocket specification. Like draft 5
+    // it routes unary RPCs to the plain Connect transport itself and dials
+    // one WebSocket per streaming RPC, so the connection-per-RPC toggle
+    // does not apply. The demo server mounts it under a prefix, which the
+    // specification provides for, because draft 5 has the bare URLs.
+    return {
+      transport: createConnectWebSocketDraft7Transport({
+        baseUrl: serverUrl,
+        pathPrefix: "/websocket-draft7",
+        // JSON, so the messages in the Network tab read as the JSON they
+        // are: an M, B, C, or S marker, then the payload.
+        useBinaryFormat: false,
+        unaryTransport: unary,
+      }),
+      description:
+        "Draft 7 wire protocol \u2014 the Connect-over-WebSocket " +
+        "specification. Each lane below opens its own WebSocket under " +
+        "/websocket-draft7 on the RPC's own URL, and every message is one " +
+        "marker byte and a payload: M for the leading metadata that opens " +
+        "each direction, B for a body, C when the client is done, S for " +
+        "the server's EndStreamResponse. The codec is selected by the " +
+        "subprotocol (connectrpc.1+json here, so every message is a " +
+        "readable text frame), and the deadline rides on the handshake URI.",
+    };
+  }
+
   const connectionPerStream = options.connectionPerStream === true;
 
   // With connectionPerStream, each lane below dials its own WebSocket
@@ -228,7 +264,8 @@ export function createDemoTransport(
     };
   }
 
-  // Draft 3 is the default.
+  // Any remaining choice is draft 3 (currentChoice() maps unknown values
+  // to draft 7 before reaching here).
   const streaming = createConnectWebSocketDraft3Transport({
     baseUrl: serverUrl,
     connectionPerStream,

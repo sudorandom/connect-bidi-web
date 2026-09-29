@@ -49,12 +49,14 @@ import {
   createBidiWebSocketDraft3Handler,
   createBidiWebSocketDraft4Handler,
   createBidiWebSocketDraft5Handler,
+  createBidiWebSocketDraft7Handler,
 } from "@sudorandom/connect-bidi-node";
 import {
   createConnectWebSocketDraft1Transport,
   createConnectWebSocketDraft3Transport,
   createConnectWebSocketDraft4Transport,
   createConnectWebSocketDraft5Transport,
+  createConnectWebSocketDraft7Transport,
 } from "@sudorandom/connect-bidi-web";
 import { ElizaService } from "./gen/connectbidi/eliza/v1/eliza_pb.js";
 
@@ -159,7 +161,7 @@ interface BenchServer {
   close(): Promise<void>;
 }
 
-type Draft = "draft1" | "draft3" | "draft4" | "draft5";
+type Draft = "draft1" | "draft3" | "draft4" | "draft5" | "draft7";
 
 function startServer(
   draft: Draft,
@@ -198,9 +200,12 @@ function startServer(
     createBidiWebSocketDraft3Handler(router, options).upgrade(server);
   } else if (draft === "draft4") {
     createBidiWebSocketDraft4Handler(router, options).upgrade(server);
-  } else {
+  } else if (draft === "draft5") {
     // Draft 5 takes no path: it upgrades the procedure URLs themselves.
     createBidiWebSocketDraft5Handler(router, options).upgrade(server);
+  } else {
+    // Draft 7 likewise. Its handler forces no context takeover itself.
+    createBidiWebSocketDraft7Handler(router, options).upgrade(server);
   }
 
   return new Promise((resolve) => {
@@ -478,7 +483,52 @@ const cases: BenchCase[] = [
     perMessageDeflate: true,
     makeTransport: (baseUrl) => withNoopClose(baseUrl, true),
   },
+  {
+    // Draft 7 is draft 5's connection model plus a one-byte marker on
+    // every message: the specification's framing, priced against the
+    // draft it grew out of.
+    name: "ws-draft7/json/identity",
+    draft: "draft7",
+    perMessageDeflate: false,
+    makeTransport: (baseUrl) => draft7Transport(baseUrl, false),
+  },
+  {
+    name: "ws-draft7/proto/identity",
+    draft: "draft7",
+    perMessageDeflate: false,
+    makeTransport: (baseUrl) => draft7Transport(baseUrl, true),
+  },
+  {
+    name: "ws-draft7/json/deflate",
+    draft: "draft7",
+    perMessageDeflate: true,
+    makeTransport: (baseUrl) => draft7Transport(baseUrl, false),
+  },
+  {
+    name: "ws-draft7/proto/deflate",
+    draft: "draft7",
+    perMessageDeflate: true,
+    makeTransport: (baseUrl) => draft7Transport(baseUrl, true),
+  },
 ];
+
+/**
+ * Draft 7's transport has no `close()` either: each RPC opens and closes
+ * its own connection.
+ */
+function draft7Transport(
+  baseUrl: string,
+  useBinaryFormat: boolean,
+): Transport & { close(): void } {
+  const transport = createConnectWebSocketDraft7Transport({
+    baseUrl,
+    useBinaryFormat,
+    // Unary RPCs are not part of this suite; draft 7 would dispatch them
+    // here as ordinary Connect HTTP requests.
+    unaryTransport: createConnectTransport({ baseUrl }),
+  });
+  return { ...transport, close: () => {} };
+}
 
 /**
  * Draft 1's transport has no `close()`, for the same reason draft 5's does

@@ -38,3 +38,9 @@ export type {
 export { websocketToDuplexMessageStream } from "./websocket-duplex.js";
 export { websocketToDraft4DuplexMessageStream } from "./websocket-duplex-draft4.js";
 export { websocketToDraft5MessageStream } from "./websocket-duplex-draft5.js";
+export { createBidiWebSocketDraft7Handler } from "./create-bidi-websocket-draft7-handler.js";
+export type {
+  BidiWebSocketDraft7Handler,
+  BidiWebSocketDraft7HandlerOptions,
+} from "./create-bidi-websocket-draft7-handler.js";
+export { websocketToDraft7MessageStream } from "./websocket-duplex-draft7.js";

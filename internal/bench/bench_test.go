@@ -46,6 +46,7 @@ import (
 	"github.com/sudorandom/connect-bidi-web/connectwebsocket/draft3"
 	"github.com/sudorandom/connect-bidi-web/connectwebsocket/draft4"
 	"github.com/sudorandom/connect-bidi-web/connectwebsocket/draft5"
+	"github.com/sudorandom/connect-bidi-web/connectwebsocket/draft7"
 	"github.com/sudorandom/connect-bidi-web/connectwebtransport"
 	pingv1 "github.com/sudorandom/connect-bidi-web/internal/gen/connectbidi/ping/v1"
 	pingv1connect "github.com/sudorandom/connect-bidi-web/internal/gen/connectbidi/ping/v1/pingv1connect"
@@ -409,6 +410,53 @@ func setupDraft5H2(compression bool, json bool) func(b *testing.B) (pingv1connec
 	}
 }
 
+// setupDraft7 measures the Connect-over-WebSocket specification: draft
+// 5's connection model — one WebSocket per RPC, so the bidi rows include
+// a handshake amortized over 100 roundtrips — plus a one-byte marker on
+// every message. Like draft 5 it keeps unary on HTTP by default, so the
+// unary rows measure ordinary Connect over HTTP.
+func setupDraft7(compression bool, json bool) func(b *testing.B) (pingv1connect.PingServiceClient, *wireCounter) {
+	return func(b *testing.B) (pingv1connect.PingServiceClient, *wireCounter) {
+		b.Helper()
+		var opts []draft7.Option
+		if !compression {
+			opts = append(opts, draft7.WithoutCompression())
+		}
+		if json {
+			opts = append(opts, draft7.WithProtoJSON())
+		}
+		mux := http.NewServeMux()
+		draft7.Mount(mux, newConnectServer(), opts...)
+		url, counter := startWebSocketServer(b, mux)
+		transport := draft7.NewTransport(http.DefaultClient, url, opts...)
+		return pingv1connect.NewPingServiceClient(connect.NewClient(transport)), counter
+	}
+}
+
+// setupDraft7H2 is the bootstrap the specification does not adopt and the
+// implementation serves anyway: a new WebSocket is a new HTTP/2 stream on
+// a connection that is already open.
+func setupDraft7H2(compression bool, json bool) func(b *testing.B) (pingv1connect.PingServiceClient, *wireCounter) {
+	return func(b *testing.B) (pingv1connect.PingServiceClient, *wireCounter) {
+		b.Helper()
+		requireExtendedConnect(b)
+		var opts []draft7.Option
+		if !compression {
+			opts = append(opts, draft7.WithoutCompression())
+		}
+		if json {
+			opts = append(opts, draft7.WithProtoJSON())
+		}
+		mux := http.NewServeMux()
+		draft7.Mount(mux, newConnectServer(), opts...)
+		url, counter := startWebSocketH2Server(b, mux)
+		h2 := newH2Transport(b)
+		opts = append(opts, draft7.WithH2Bootstrap(h2))
+		transport := draft7.NewTransport(&http.Client{Transport: h2}, url, opts...)
+		return pingv1connect.NewPingServiceClient(connect.NewClient(transport)), counter
+	}
+}
+
 func setupWebTransport(clientOpts ...connectwebtransport.Option) func(b *testing.B) (pingv1connect.PingServiceClient, *wireCounter) {
 	return func(b *testing.B) (pingv1connect.PingServiceClient, *wireCounter) {
 		return setupWebTransportClient(b, clientOpts...)
@@ -544,6 +592,13 @@ func BenchmarkTransports(b *testing.B) {
 		{name: "ws-draft5/proto/deflate", setup: setupDraft5(true, false)},
 		{name: "ws-draft5/json/identity", setup: setupDraft5(false, true)},
 		{name: "ws-draft5/json/deflate", setup: setupDraft5(true, true)},
+		// Draft 7: the specification. Draft 5's connection model with a
+		// one-byte marker per message, so the bidi rows should land one
+		// byte per message above draft 5's.
+		{name: "ws-draft7/proto/identity", setup: setupDraft7(false, false)},
+		{name: "ws-draft7/proto/deflate", setup: setupDraft7(true, false)},
+		{name: "ws-draft7/json/identity", setup: setupDraft7(false, true)},
+		{name: "ws-draft7/json/deflate", setup: setupDraft7(true, true)},
 		// The same drafts over the HTTP/2 extended CONNECT bootstrap, each
 		// configured like its HTTP/1.1 namesake above: a row called
 		// deflate compresses, a row called json does not. Byte counts
@@ -557,6 +612,8 @@ func BenchmarkTransports(b *testing.B) {
 		{name: "ws-draft4/h2/json/identity", setup: setupDraft4H2(false, true)},
 		{name: "ws-draft5/h2/proto/identity", setup: setupDraft5H2(false, false)},
 		{name: "ws-draft5/h2/proto/deflate", setup: setupDraft5H2(true, false)},
+		{name: "ws-draft7/h2/proto/identity", setup: setupDraft7H2(false, false)},
+		{name: "ws-draft7/h2/proto/deflate", setup: setupDraft7H2(true, false)},
 		// WebTransport wire bytes include QUIC and TLS overhead, unlike the
 		// plaintext TCP the WebSocket drafts run on here.
 		{name: "webtransport/proto/identity", setup: setupWebTransport(

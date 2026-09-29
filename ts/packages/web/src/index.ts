@@ -49,3 +49,11 @@ export {
   encodeHeadersFrame,
   type HeadersMessage,
 } from "./headers-frame.js";
+export { createConnectWebSocketDraft7Transport } from "./connect-websocket-draft7-transport.js";
+export type { ConnectWebSocketDraft7TransportOptions } from "./connect-websocket-draft7-transport.js";
+export type { Draft7Codec } from "./wire-draft7.js";
+export {
+  draft7SubprotocolForCodec,
+  draft7Subprotocols,
+  draft7TimeoutQueryParameter,
+} from "./wire-draft7.js";

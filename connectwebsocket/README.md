@@ -14,27 +14,35 @@ package itself holds only the draft-agnostic `CompositeTransport`.
 | [3](draft3/README.md) (`/websocket-draft3`) | yes | 4-byte stream ID + 1 type/flag byte | `connect.bidi.d3.deflate` subprotocol | JSON |
 | [4](draft4/README.md) (`/websocket-draft4`) | yes | ASCII `id\|flags\|` | permessage-deflate extension | JSON, always |
 | [5](draft5/README.md) (the procedure URLs) | no | none | permessage-deflate extension | JSON, always |
+| [7](draft7/README.md) (the procedure URLs, or a prefix) | no | 1 marker byte (`M`/`B`/`C`/`S`) | permessage-deflate, no context takeover required | JSON, always |
 
-**Drafts [1](draft1/README.md) and [5](draft5/README.md) do not share what
-follows.** Drafts 3 and 4 differ only in how they encode the same four
-frames onto one multiplexed connection; drafts 1 and 5 refuse the premise.
-Each carries one RPC per WebSocket, so neither has stream IDs, a reset
-frame, or head-of-line blocking, and both take the procedure from the
-upgrade request's URL rather than from a frame. Read their own READMEs
-instead; nothing in the "Shared protocol" section below applies to them.
+**Drafts [1](draft1/README.md), [5](draft5/README.md), and
+[7](draft7/README.md) do not share what follows.** Drafts 3 and 4 differ
+only in how they encode the same four frames onto one multiplexed
+connection; drafts 1, 5, and 7 refuse the premise. Each carries one RPC per
+WebSocket, so none has stream IDs, a reset frame, or head-of-line
+blocking, and all take the procedure from the upgrade request's URL rather
+than from a frame. Read their own READMEs instead; nothing in the "Shared
+protocol" section below applies to them.
 
-What separates those two from each other is how much of Connect they keep.
+What separates those three from each other is how much framing they keep.
 Draft 1 wraps every message in a Connect envelope and opens each direction
 with a headers frame, because a browser can neither set nor read headers on
 the handshake. Draft 5 takes the upgrade request's headers as the RPC's and
 has no frames at all — legible in a browser's Network tab, at the cost of
-metadata a browser cannot actually supply.
+metadata a browser cannot actually supply. Draft 7 is the written
+specification, and the shape the drafts converged on: draft 5's model with
+one marker byte put back so a message says what it is, the codec chosen by
+subprotocol, the deadline on the handshake URI, and a rule for every
+metadata key.
 
 Every draft runs over two bootstraps carrying identical frames: the classic
 HTTP/1.1 Upgrade handshake (`NewTransport`) and RFC 8441 extended CONNECT on
-HTTP/2 (`NewH2Transport`, or `WithH2Bootstrap` in draft 5), which
+HTTP/2 (`NewH2Transport`, or `WithH2Bootstrap` in drafts 5 and 7), which
 additionally needs the server process to run with
 `GODEBUG=http2xconnect=1`. Each draft's handler serves both automatically.
+Draft 7's specification does not adopt RFC 8441; its implementation serves
+it anyway, for reasons its README gives.
 The unmultiplexed drafts get the most out of the HTTP/2 bootstrap: a
 WebSocket per RPC is affordable when a WebSocket is one more stream on a
 connection that is already open.

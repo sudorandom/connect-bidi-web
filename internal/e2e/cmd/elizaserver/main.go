@@ -21,9 +21,10 @@
 // Connect procedure URLs themselves, which is why draft5.Mount stands in
 // for connecthttp.Mount here rather than being registered alongside it —
 // the same handler serves POST as ordinary Connect and GET+Upgrade as
-// draft 5. Draft 1 would want those URLs too, so on this one server it
-// takes a prefix instead; the procedure is the path's last two segments
-// either way.
+// draft 5. Drafts 1 and 7 would want those URLs too, so on this one server
+// each takes a prefix instead; the procedure is the path's last two
+// segments either way, and draft 7's specification provides for exactly
+// this deployment shape.
 package main
 
 import (
@@ -42,6 +43,7 @@ import (
 	"github.com/sudorandom/connect-bidi-web/connectwebsocket/draft3"
 	"github.com/sudorandom/connect-bidi-web/connectwebsocket/draft4"
 	"github.com/sudorandom/connect-bidi-web/connectwebsocket/draft5"
+	"github.com/sudorandom/connect-bidi-web/connectwebsocket/draft7"
 	elizav1 "github.com/sudorandom/connect-bidi-web/internal/gen/connectbidi/eliza/v1"
 	"github.com/sudorandom/connect-bidi-web/internal/gen/connectbidi/eliza/v1/elizav1connect"
 )
@@ -92,6 +94,7 @@ func main() {
 	mux := http.NewServeMux()
 	draft5.Mount(mux, connectServer)
 	draft1.Mount(mux, connectServer, draft1.DefaultPathPrefix)
+	draft7.MountWebSocket(mux, connectServer, draft7.WithPathPrefix("/websocket-draft7"))
 	mux.Handle("/websocket-draft3", draft3.NewHandler(connectServer))
 	mux.Handle("/websocket-draft4", draft4.NewHandler(connectServer))
 

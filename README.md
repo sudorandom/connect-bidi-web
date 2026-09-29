@@ -32,7 +32,7 @@ from JavaScript.
 
 | Package | What it is |
 |---|---|
-| [`github.com/sudorandom/connect-bidi-web/connectwebsocket`](https://pkg.go.dev/github.com/sudorandom/connect-bidi-web/connectwebsocket) | Go client transports + `http.Handler` servers, one subpackage per wire protocol draft (`draft1`, `draft3`…`draft5`) |
+| [`github.com/sudorandom/connect-bidi-web/connectwebsocket`](https://pkg.go.dev/github.com/sudorandom/connect-bidi-web/connectwebsocket) | Go client transports + `http.Handler` servers, one subpackage per wire protocol draft (`draft1`, `draft3`…`draft7`) |
 | [`github.com/sudorandom/connect-bidi-web/connectwebtransport`](https://pkg.go.dev/github.com/sudorandom/connect-bidi-web/connectwebtransport) | Go client transport + WebTransport session handler |
 | [`github.com/sudorandom/connect-bidi-web/connectfallback`](https://pkg.go.dev/github.com/sudorandom/connect-bidi-web/connectfallback) | Go degrading transport: tries a ladder of transports, best-first |
 | [`@sudorandom/connect-bidi-web`](https://www.npmjs.com/package/@sudorandom/connect-bidi-web) | Browser client transports (WebSocket, WebTransport, composite) |
@@ -54,20 +54,28 @@ API references: [Go on pkg.go.dev](https://pkg.go.dev/github.com/sudorandom/conn
 
 ## Usage
 
+The examples use draft 7, the Connect-over-WebSocket specification and
+the default in the demo. The other drafts have the same shape with their
+own constructors; see their READMEs.
+
 ### Go server
 
 ```go
 server := connect.NewServer()
 elizav1connect.RegisterElizaServiceHandler(server, &elizaServer{})
 
-// Serve Connect RPCs over WebSocket alongside regular HTTP handlers:
-http.Handle("/websocket-draft3", draft3.NewHandler(server))
+// Every procedure URL answers POST as Connect over HTTP and an upgrade as
+// Connect-over-WebSocket; draft7.Mount stands in for connecthttp.Mount.
+mux := http.NewServeMux()
+draft7.Mount(mux, server)
 ```
 
 ### Go client
 
 ```go
-transport := draft3.NewTransport("wss://api.example.com/websocket-draft3")
+// Unary RPCs over the HTTP client; streaming RPCs each dial a WebSocket
+// against the same base URL.
+transport := draft7.NewTransport(http.DefaultClient, "https://api.example.com")
 client := elizav1connect.NewElizaServiceClient(connect.NewClient(transport))
 ```
 
@@ -76,15 +84,13 @@ client := elizav1connect.NewElizaServiceClient(connect.NewClient(transport))
 ```ts
 import { createClient } from "@connectrpc/connect";
 import { createConnectTransport } from "@connectrpc/connect-web";
-import {
-  createCompositeTransport,
-  createConnectWebSocketDraft3Transport,
-} from "@sudorandom/connect-bidi-web";
+import { createConnectWebSocketDraft7Transport } from "@sudorandom/connect-bidi-web";
 
-const transport = createCompositeTransport(
-  createConnectTransport({ baseUrl: "https://api.example.com" }), // unary
-  createConnectWebSocketDraft3Transport({ baseUrl: "https://api.example.com" }), // streams
-);
+const baseUrl = "https://api.example.com";
+const transport = createConnectWebSocketDraft7Transport({
+  baseUrl,
+  unaryTransport: createConnectTransport({ baseUrl }), // unary stays on HTTP
+});
 const client = createClient(ElizaService, transport);
 ```
 
@@ -92,8 +98,9 @@ const client = createClient(ElizaService, transport);
 
 The WebSocket transport exists in several wire-incompatible drafts so their
 designs and implementations can be compared; WebTransport has a single
-protocol. Drafts 3 and 4 are served on paths of their own; drafts 1 and 5
-are served on the Connect procedure URLs themselves.
+protocol. Drafts 3 and 4 are served on paths of their own; drafts 1, 5, and
+7 are served on the Connect procedure URLs themselves (draft 7 optionally
+under a path prefix).
 
 **WebTransport** (`connectwebtransport`) uses Connect-style envelopes: a
 flag byte and a big-endian u32 payload length. `0x00` data, `0x01`
@@ -106,7 +113,7 @@ Every draft runs over two bootstraps carrying identical frames: the
 classic HTTP/1.1 upgrade, and **HTTP/2 extended CONNECT**
 ([RFC 8441](https://datatracker.ietf.org/doc/html/rfc8441)) — one
 WebSocket per h2 stream on a shared connection — via each package's
-`NewH2Transport` (`WithH2Bootstrap` in draft 5); the handlers serve both
+`NewH2Transport` (`WithH2Bootstrap` in drafts 5 and 7); the handlers serve both
 automatically. The server
 process must run with `GODEBUG=http2xconnect=1` for HTTP/2 bootstrapping,
 which is how browsers pick it too.
@@ -173,6 +180,24 @@ composite transport. It is implemented as a fork of connect-go's
 `connecthttp`, so `draft5.Mount` stands in for `connecthttp.Mount` and each
 procedure URL answers `POST` with Connect and `GET`+`Upgrade` with this
 protocol.
+
+**WebSocket draft 7** (`connectwebsocket/draft7`) is the written
+**Connect-over-WebSocket Protocol** specification, and where the drafts
+converged. It keeps draft 5's connection model — one RPC per WebSocket, the
+handshake naming the procedure — and puts back exactly one byte of framing:
+a printable marker on every message (`M` leading metadata, `B` body, `C`
+client end-of-stream, `S` server end-of-stream), so a message says what it
+is. The WebSocket frame type names the encoding — JSON is text, Protobuf is
+binary — and the codec is selected by subprotocol (`connectrpc.1+proto`,
+`connectrpc.1+json`). The deadline rides on the handshake URI as
+`connect-timeout-ms`; metadata is a flat JSON object with a rule for every
+key, including a reserved-name list a server must enforce; compression is
+`permessage-deflate` with `no_context_takeover` required; cross-origin
+handshakes are refused unless permitted. The specification calls for an
+HTTP/1.1 handshake only; this implementation also serves RFC 8441 extended
+CONNECT, because browsers that have seen the setting on an HTTP/2
+connection use it with no fallback. A deployment may confine upgrades to a
+path prefix, which is how the demo serves it beside draft 5.
 
 See the per-package READMEs for each draft's protocol reference, the
 [benchmarks](https://connect-bidi-web.kmcd.dev/#benchmarks) for what each

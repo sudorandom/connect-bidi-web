@@ -29,6 +29,7 @@ import {
   createBidiWebSocketDraft1Handler,
   createBidiWebSocketDraft3Handler,
   createBidiWebSocketDraft4Handler,
+  createBidiWebSocketDraft7Handler,
   defaultBidiWebSocketDraft3Path,
 } from "../src/index.js";
 import { ElizaService } from "../src/gen/connectbidi/eliza/v1/eliza_pb.js";
@@ -61,6 +62,13 @@ createBidiWebSocketDraft1Handler(router, {
 createBidiWebSocketDraft3Handler(router).upgrade(server);
 // Draft 4, likewise ("/websocket-draft4").
 createBidiWebSocketDraft4Handler(router).upgrade(server);
+// Draft 7 takes the procedure from the URL too, under the prefix the Go
+// fixture uses. The Go client dials from another host in some environments,
+// so the same-host origin rule is relaxed to any origin here.
+createBidiWebSocketDraft7Handler(router, {
+  pathPrefix: "/websocket-draft7",
+  allowedOrigins: () => true,
+}).upgrade(server);
 
 const port = Number(process.env.PORT ?? process.argv[2] ?? 8080);
 // Bind on all interfaces: this fixture is meant to be driven by a client

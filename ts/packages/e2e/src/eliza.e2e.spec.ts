@@ -44,6 +44,7 @@ import {
   createBidiWebSocketDraft3Handler,
   createBidiWebSocketDraft4Handler,
   createBidiWebSocketDraft5Handler,
+  createBidiWebSocketDraft7Handler,
 } from "@sudorandom/connect-bidi-node";
 import type {
   ConnectWebSocketDraft3Transport,
@@ -55,6 +56,7 @@ import {
   createConnectWebSocketDraft3Transport,
   createConnectWebSocketDraft4Transport,
   createConnectWebSocketDraft5Transport,
+  createConnectWebSocketDraft7Transport,
 } from "@sudorandom/connect-bidi-web";
 import type { ConverseRequestSchema } from "./gen/connectbidi/eliza/v1/eliza_pb.js";
 import { ElizaService } from "./gen/connectbidi/eliza/v1/eliza_pb.js";
@@ -763,6 +765,181 @@ describe("TS Draft5 JSON WebSocket client <-> Go server", {
 
   after(async () => {
     await goServer.stop();
+  });
+
+  exerciseStreams(() => client);
+});
+
+// -- Draft 7: the Connect-over-WebSocket specification -------------------------
+
+describe("TS Draft7 WebSocket client <-> TS Node server", () => {
+  let server: http.Server;
+  let client: ElizaClient;
+  let overSocket: ElizaClient;
+  let upgrades = 0;
+
+  before(async () => {
+    const router = createConnectRouter();
+    router.service(ElizaService, elizaImpl);
+    // The very same server answers unary RPCs over plain Connect HTTP...
+    server = http.createServer(
+      connectNodeAdapter({
+        routes: (routes) => {
+          routes.service(ElizaService, elizaImpl);
+        },
+      }),
+    );
+    server.on("upgrade", () => {
+      upgrades++;
+    });
+    // ...and every RPC by upgrading the same URLs.
+    createBidiWebSocketDraft7Handler(router).upgrade(server);
+    await new Promise<void>((resolve) => {
+      server.listen(0, "127.0.0.1", resolve);
+    });
+    const address = server.address();
+    const port =
+      typeof address === "object" && address !== null ? address.port : 0;
+    const baseUrl = `http://127.0.0.1:${port}`;
+    client = createClient(
+      ElizaService,
+      createConnectWebSocketDraft7Transport({
+        baseUrl,
+        unaryTransport: createConnectTransport({ baseUrl }),
+      }),
+    );
+    overSocket = createClient(
+      ElizaService,
+      createConnectWebSocketDraft7Transport({ baseUrl }),
+    );
+  });
+
+  after(
+    () =>
+      new Promise<void>((resolve, reject) => {
+        server.close((err) => (err ? reject(err) : resolve()));
+      }),
+  );
+
+  it("unary: say stays on HTTP with a unary transport", async () => {
+    const before = upgrades;
+    const res = await client.say({ sentence: "unary hello" });
+    assert.ok(
+      res.sentence.includes("unary hello"),
+      `response ${JSON.stringify(res.sentence)} does not echo the request`,
+    );
+    assert.strictEqual(upgrades, before, "a unary RPC opened a WebSocket");
+  });
+
+  it("unary: say upgrades without one", async () => {
+    const before = upgrades;
+    const res = await overSocket.say({ sentence: "socket hello" });
+    assert.ok(
+      res.sentence.includes("socket hello"),
+      `response ${JSON.stringify(res.sentence)} does not echo the request`,
+    );
+    assert.strictEqual(
+      upgrades,
+      before + 1,
+      "expected exactly one upgrade for one unary RPC over the socket",
+    );
+  });
+
+  it("streaming: one socket per RPC", async () => {
+    const before = upgrades;
+    for await (const _ of client.introduce({ name: "counted" })) {
+      // Drain.
+    }
+    assert.strictEqual(
+      upgrades,
+      before + 1,
+      "expected exactly one upgrade for one streaming RPC",
+    );
+  });
+
+  it("deadline: a silent client is answered, not parked", async () => {
+    // A deadline shorter than the handler's work: the server ends the RPC
+    // with deadline_exceeded in S rather than holding the socket.
+    const input =
+      createPushIterable<MessageInitShape<typeof ConverseRequestSchema>>();
+    const responses = client
+      .converse(input, { timeoutMs: 200 })
+      [Symbol.asyncIterator]();
+    await assert.rejects(
+      () => responses.next(),
+      (err: unknown) => err instanceof Error && /deadline/i.test(err.message),
+    );
+  });
+
+  exerciseStreams(() => client);
+});
+
+// Draft 7 across languages. The Go fixture mounts draft 7's WebSocket side
+// under a prefix — the specification's own provision for sharing an origin
+// — so the client is told the prefix too.
+describe("TS Draft7 WebSocket client <-> Go server", {
+  skip: goAvailable ? false : "go not found in PATH",
+}, () => {
+  let goServer: GoServer;
+  let client: ElizaClient;
+
+  before(async () => {
+    goServer = await startGoServer();
+    client = createClient(
+      ElizaService,
+      createConnectWebSocketDraft7Transport({
+        baseUrl: goServer.baseUrl,
+        pathPrefix: "/websocket-draft7",
+        unaryTransport: createConnectTransport({ baseUrl: goServer.baseUrl }),
+      }),
+    );
+  });
+
+  after(async () => {
+    await goServer.stop();
+  });
+
+  it("unary: say over plain Connect HTTP", async () => {
+    const res = await client.say({ sentence: "unary hello" });
+    assert.ok(
+      res.sentence.includes("unary hello"),
+      `response ${JSON.stringify(res.sentence)} does not echo the request`,
+    );
+  });
+
+  exerciseStreams(() => client);
+});
+
+// The same with JSON — every message a text frame — and unary carried
+// over the socket as the specification's worked example has it.
+describe("TS Draft7 JSON WebSocket client <-> Go server", {
+  skip: goAvailable ? false : "go not found in PATH",
+}, () => {
+  let goServer: GoServer;
+  let client: ElizaClient;
+
+  before(async () => {
+    goServer = await startGoServer();
+    client = createClient(
+      ElizaService,
+      createConnectWebSocketDraft7Transport({
+        baseUrl: goServer.baseUrl,
+        pathPrefix: "/websocket-draft7",
+        useBinaryFormat: false,
+      }),
+    );
+  });
+
+  after(async () => {
+    await goServer.stop();
+  });
+
+  it("unary: say over the socket", async () => {
+    const res = await client.say({ sentence: "unary hello" });
+    assert.ok(
+      res.sentence.includes("unary hello"),
+      `response ${JSON.stringify(res.sentence)} does not echo the request`,
+    );
   });
 
   exerciseStreams(() => client);

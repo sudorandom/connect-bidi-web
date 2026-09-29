@@ -36,6 +36,7 @@ import (
 	"github.com/sudorandom/connect-bidi-web/connectwebsocket/draft3"
 	"github.com/sudorandom/connect-bidi-web/connectwebsocket/draft4"
 	"github.com/sudorandom/connect-bidi-web/connectwebsocket/draft5"
+	"github.com/sudorandom/connect-bidi-web/connectwebsocket/draft7"
 	"github.com/sudorandom/connect-bidi-web/connectwebtransport"
 	elizav1 "github.com/sudorandom/connect-bidi-web/internal/gen/connectbidi/eliza/v1"
 	"github.com/sudorandom/connect-bidi-web/internal/gen/connectbidi/eliza/v1/elizav1connect"
@@ -155,6 +156,17 @@ func main() {
 	)
 	draft1.Mount(mux, connectServer, draft1.DefaultPathPrefix,
 		draft1.WithAcceptOptions(&websocket.AcceptOptions{
+			InsecureSkipVerify: true,
+		}),
+	)
+	// Draft 7 — the Connect-over-WebSocket specification — also names the
+	// procedure in the URL. Its specification provides for a path prefix,
+	// which is what lets it share this origin with draft 5: only its
+	// WebSocket side is mounted here, under the prefix, and the bare
+	// procedure URLs stay draft 5's.
+	draft7.MountWebSocket(mux, connectServer,
+		draft7.WithPathPrefix("/websocket-draft7"),
+		draft7.WithWebSocketAcceptOptions(&websocket.AcceptOptions{
 			InsecureSkipVerify: true,
 		}),
 	)

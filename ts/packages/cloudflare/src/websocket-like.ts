@@ -17,6 +17,8 @@ import type {
   Draft4OutgoingFrame,
   Draft5Message,
   Draft5MessageStream,
+  Draft7Message,
+  Draft7MessageStream,
   DuplexMessageStream,
 } from "@sudorandom/connect-bidi-core";
 
@@ -205,6 +207,77 @@ export function wrapDraft5WebSocket(
     write(message) {
       // Workers infers the opcode from the argument type: a string is a
       // text message, bytes are a binary one.
+      socket.send(message.text ? decoder.decode(message.data) : message.data);
+    },
+    close() {
+      closeQuietly(socket);
+    },
+    abort() {
+      closeQuietly(socket);
+    },
+  });
+
+  return {
+    readable,
+    writable,
+    close: (code?: number, reason?: string) => {
+      closeQuietly(socket, code, reason);
+    },
+  };
+}
+
+/**
+ * The draft 7 counterpart of `wrapWebSocket`, for `handleBidiSocketDraft7`.
+ * Like draft 5's, it carries the frame type in both directions: in draft 7
+ * the frame type names the payload encoding, text for JSON and binary for
+ * Protobuf, and a receiver checks it against the negotiated codec.
+ */
+export function wrapDraft7WebSocket(
+  socket: BidiWebSocketLike,
+): Draft7MessageStream {
+  socket.binaryType = "arraybuffer";
+  let ended = false;
+  const readable = new ReadableStream<Draft7Message>({
+    start(controller) {
+      socket.addEventListener("message", (event) => {
+        if (ended) {
+          return;
+        }
+        try {
+          controller.enqueue({
+            text: typeof event.data === "string",
+            data: toBytes(event.data),
+          });
+        } catch (err) {
+          ended = true;
+          controller.error(err);
+        }
+      });
+      socket.addEventListener("close", () => {
+        if (ended) {
+          return;
+        }
+        ended = true;
+        controller.close();
+      });
+      socket.addEventListener("error", () => {
+        if (ended) {
+          return;
+        }
+        ended = true;
+        controller.error(new Error("WebSocket error"));
+      });
+    },
+    cancel() {
+      ended = true;
+      closeQuietly(socket);
+    },
+  });
+
+  const writable = new WritableStream<Draft7Message>({
+    write(message) {
+      // Workers infers the frame type from the argument type: a string is
+      // a text message, bytes are a binary one.
       socket.send(message.text ? decoder.decode(message.data) : message.data);
     },
     close() {

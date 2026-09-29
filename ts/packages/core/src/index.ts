@@ -65,3 +65,38 @@ export {
   draft5Subprotocol,
   draft5TextMessage,
 } from "./handle-bidi-socket-draft5.js";
+export {
+  draft7DefaultServerTimeoutMs,
+  draft7MessageText,
+  draft7TextMessage,
+  handleBidiSocketDraft7,
+} from "./handle-bidi-socket-draft7.js";
+export type { HandleBidiSocketDraft7Options } from "./handle-bidi-socket-draft7.js";
+export type {
+  Draft7Codec,
+  Draft7Message,
+  Draft7MessageStream,
+} from "./wire-draft7.js";
+export {
+  checkDraft7BodyFrame,
+  decodeDraft7Message,
+  decodeDraft7Metadata,
+  draft7DefaultInfrastructureHeaders,
+  draft7MarkerBody,
+  draft7MarkerClientEndStream,
+  draft7MarkerLeadingMetadata,
+  draft7MarkerServerEndStream,
+  draft7OriginIsSameHost,
+  draft7ProtocolControlledHeaders,
+  draft7ReservedHeaderReason,
+  draft7SubprotocolForCodec,
+  draft7Subprotocols,
+  draft7TimeoutQueryParameter,
+  encodeDraft7Message,
+  encodeDraft7Metadata,
+  parseDraft7Timeout,
+  parseSubprotocolHeader,
+  selectDraft7Subprotocol,
+  supportedDraft7Subprotocols,
+  unknownDraft7MarkerError,
+} from "./wire-draft7.js";

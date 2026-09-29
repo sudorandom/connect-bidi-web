@@ -34,4 +34,9 @@
 //     no framing and no multiplexing at all: one RPC per WebSocket, with
 //     the upgrade request serving as the RPC request. It has no path of
 //     its own, mounting on the Connect procedure URLs instead.
+//   - [github.com/sudorandom/connect-bidi-web/connectwebsocket/draft7]:
+//     the Connect-over-WebSocket specification: draft 5's connection
+//     model with a one-byte marker on every message, the codec selected
+//     by subprotocol, and the deadline on the handshake URI. It mounts on
+//     the procedure URLs, or under a path prefix.
 package connectwebsocket

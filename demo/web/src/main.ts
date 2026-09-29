@@ -38,26 +38,63 @@ function transportLabel(
   if (choice === "webtransport") {
     return "WebTransport";
   }
-  if (choice === "websocket-draft1" || choice === "websocket-draft5") {
-    // Drafts 1 and 5 are always one connection per RPC; the toggle does
-    // not apply.
-    const draft = choice === "websocket-draft1" ? "1" : "5";
+  if (
+    choice === "websocket-draft1" ||
+    choice === "websocket-draft5" ||
+    choice === "websocket-draft7"
+  ) {
+    // Drafts 1, 5, and 7 are always one connection per RPC; the toggle
+    // does not apply.
+    const draft = choice.slice("websocket-draft".length);
     return `WebSocket Draft ${draft} (connection per RPC)`;
   }
   const draft =
     choice === "websocket-draft4" ? "WebSocket Draft 4" : "WebSocket Draft 3";
+  // Only drafts 3 and 4 reach here; every other WebSocket choice returned
+  // above.
   return connectionPerStream
     ? `${draft} (connection per RPC)`
     : `${draft} (multiplexed)`;
+}
+
+/**
+ * Most of the page's detail sits behind <details>. A link into one of them
+ * — the README's #benchmarks, a draft card's id — would otherwise land on
+ * a closed fold, so the fold containing the fragment target is opened on
+ * load and whenever the hash changes.
+ */
+function openDetailsForHash(): void {
+  const hash = window.location.hash;
+  if (hash.length < 2) {
+    return;
+  }
+  let target: Element | null;
+  try {
+    target = document.querySelector(hash);
+  } catch {
+    return;
+  }
+  for (let node = target; node !== null; node = node.parentElement) {
+    if (node instanceof HTMLDetailsElement) {
+      node.open = true;
+    }
+  }
+  target?.scrollIntoView();
 }
 
 /** Wires up the live demo: transport/server controls, tabs, and RPC views. */
 function main(): void {
   highlightCodeExamples();
   renderBenchmarks();
+  openDetailsForHash();
+  window.addEventListener("hashchange", openDetailsForHash);
 
-  // Transport tabs on the code example sections (WebSocket is the default).
+  // Transport tabs on the code example sections (draft 7 is the default).
   initTabs([
+    {
+      buttonId: "code-tab-btn-ts-websocket-draft7",
+      panelId: "code-panel-ts-websocket-draft7",
+    },
     {
       buttonId: "code-tab-btn-ts-websocket",
       panelId: "code-panel-ts-websocket",
@@ -72,6 +109,10 @@ function main(): void {
     },
   ]);
   initTabs([
+    {
+      buttonId: "code-tab-btn-go-websocket-draft7",
+      panelId: "code-panel-go-websocket-draft7",
+    },
     {
       buttonId: "code-tab-btn-go-websocket",
       panelId: "code-panel-go-websocket",
@@ -120,7 +161,7 @@ function main(): void {
     // the Cloudflare Workers deployment.
     realitySection.classList.toggle("hidden", available);
     if (!available && transportSelect.value === "webtransport") {
-      transportSelect.value = "websocket";
+      transportSelect.value = "websocket-draft7";
       applyTransportChange();
     } else if (transportSelect.value === "auto") {
       // The Auto ladder was built before the probe answered; rebuild it so
@@ -166,8 +207,12 @@ function main(): void {
         return "websocket-draft4";
       case "websocket-draft5":
         return "websocket-draft5";
-      default:
+      case "websocket-draft3":
         return "websocket-draft3";
+      default:
+        // Draft 7 is the default: the specification, and where the drafts
+        // converged.
+        return "websocket-draft7";
     }
   }
 
@@ -196,7 +241,7 @@ function main(): void {
   // state are reconciled by the refreshWebTransportAvailability() call
   // further down, once the swap machinery it pokes actually exists.
   if (!webTransportPossible() && transportSelect.value === "webtransport") {
-    transportSelect.value = "websocket";
+    transportSelect.value = "websocket-draft7";
   }
 
   const initial = createDemoTransport(currentChoice(), serverUrl, {

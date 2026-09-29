@@ -27,6 +27,7 @@ import {
   createBidiWebSocketDraft3Handler,
   createBidiWebSocketDraft4Handler,
   createBidiWebSocketDraft5Handler,
+  createBidiWebSocketDraft7Handler,
 } from "@sudorandom/connect-bidi-cloudflare";
 import { ElizaService } from "./gen/connectbidi/eliza/v1/eliza_pb.js";
 
@@ -88,7 +89,7 @@ const webSocketUpgradeHandlers: Record<
   ),
 };
 
-// Drafts 1 and 5 both take the procedure from the URL, so neither is looked
+// Drafts 1, 5, and 7 all take the procedure from the URL, so none is looked
 // up by an exact path: each is consulted for every request and returns null
 // for anything that is not an upgrade addressed to a streaming procedure,
 // which is how unary RPCs fall through to the Connect fetch handler on the
@@ -103,6 +104,17 @@ const draft5Upgrade = createBidiWebSocketDraft5Handler(router.handlers, {
 });
 const draft1Upgrade = createBidiWebSocketDraft1Handler(router.handlers, {
   pathPrefix: "/websocket-draft1",
+  onError: bidiSocketOptions.onError,
+});
+// Draft 7 — the Connect-over-WebSocket specification — likewise takes a
+// prefix, which its specification provides for exactly this reason. The
+// demo site may be served from another origin than the Worker, so the
+// same-host origin rule is relaxed here; a deployment of its own would
+// list the origins it serves.
+const draft7Upgrade = createBidiWebSocketDraft7Handler(router.handlers, {
+  pathPrefix: "/websocket-draft7",
+  allowedOrigins: () => true,
+  serverTimeoutMs: 60_000,
   onError: bidiSocketOptions.onError,
 });
 
@@ -149,6 +161,13 @@ export default {
     const upgradedDraft5 = draft5Upgrade(request);
     if (upgradedDraft5 !== null) {
       return upgradedDraft5;
+    }
+    // Draft 7 comes after draft 5 on purpose: with a prefix configured it
+    // answers an upgrade at a bare procedure URL with 400, and on this
+    // origin those URLs are draft 5's.
+    const upgradedDraft7 = draft7Upgrade(request);
+    if (upgradedDraft7 !== null) {
+      return upgradedDraft7;
     }
 
     if (request.method === "OPTIONS") {

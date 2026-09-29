@@ -24,11 +24,13 @@
   --draft-3: #6d28d9;
   --draft-4: #b45309;
   --draft-5: #047857;
+  --draft-7: #0e7490;
   --draft-wt: #0369a1;
   --draft-1-on-dark: #fda4af;
   --draft-3-on-dark: #a78bfa;
   --draft-4-on-dark: #fbbf24;
   --draft-5-on-dark: #34d399;
+  --draft-7-on-dark: #67e8f9;
   --draft-wt-on-dark: #38bdf8;
 }
 
@@ -49,6 +51,7 @@
     --draft-3: #a78bfa;
     --draft-4: #fbbf24;
     --draft-5: #34d399;
+    --draft-7: #67e8f9;
     --draft-wt: #38bdf8;
     --accent-glow: rgba(99, 102, 241, 0.35);
     --bubble-eliza-bg: rgba(30, 41, 59, 0.85);
@@ -537,12 +540,94 @@ h3 {
   overflow-x: auto;
 }
 
+/* Expandable detail: the page leads with what each section settles and
+   folds the evidence — code, tables, per-draft cards, benchmark numbers —
+   behind a summary line, so the whole page skims in one pass. */
+.section-details {
+  margin: 1.5rem 0;
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  background: var(--bg-card);
+}
+.section-details > summary {
+  cursor: pointer;
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.85rem 1.1rem;
+  font-weight: 600;
+  font-size: 1rem;
+  color: var(--text-main);
+}
+.section-details > summary::-webkit-details-marker {
+  display: none;
+}
+.section-details > summary::before {
+  content: "";
+  flex: none;
+  width: 0.5rem;
+  height: 0.5rem;
+  border-right: 2px solid var(--text-muted);
+  border-bottom: 2px solid var(--text-muted);
+  transform: rotate(-45deg);
+  transition: transform 0.15s ease;
+}
+.section-details[open] > summary::before {
+  transform: rotate(45deg);
+}
+.section-details > summary:hover {
+  color: var(--accent-secondary);
+}
+.section-details[open] > summary {
+  border-bottom: 1px solid var(--border-color);
+}
+.section-details > :not(summary) {
+  margin-left: 1.1rem;
+  margin-right: 1.1rem;
+}
+.section-details > :not(summary):last-child {
+  margin-bottom: 1.1rem;
+}
+.section-details > .code-tabs,
+.section-details > .findings,
+.section-details > .table-scroll {
+  margin-top: 1rem;
+}
+.section-details > p:first-of-type {
+  margin-top: 1rem;
+}
+
 /* Breathing room between the feature cards above and the paragraphs
    below; the surrounding grid and paragraphs bring no margins of their
-   own. */
+   own. The card is a <details>, and its header is the summary that opens
+   it. */
 .wire-format-card {
-  margin: 2rem 0;
+  margin: 1.25rem 0;
   border-top: 3px solid var(--draft-accent, var(--accent-secondary));
+}
+.wire-format-card > summary {
+  cursor: pointer;
+  list-style: none;
+}
+.wire-format-card > summary::-webkit-details-marker {
+  display: none;
+}
+.wire-format-card > summary::after {
+  content: "";
+  margin-left: auto;
+  width: 0.45rem;
+  height: 0.45rem;
+  border-right: 2px solid #94a3b8;
+  border-bottom: 2px solid #94a3b8;
+  transform: rotate(-45deg);
+  transition: transform 0.15s ease;
+}
+.wire-format-card[open] > summary::after {
+  transform: rotate(45deg);
+}
+.wire-format-card:not([open]) > summary {
+  border-bottom: none;
 }
 
 /* A draft's identity colour, set on its card and inherited by the chip in
@@ -559,6 +644,9 @@ h3 {
 }
 .wire-format-card.draft-5 {
   --draft-accent: var(--draft-5-on-dark);
+}
+.wire-format-card.draft-7 {
+  --draft-accent: var(--draft-7-on-dark);
 }
 
 /* The bright hues need dark ink rather than the chip's usual white. */
@@ -1539,6 +1627,11 @@ a.badge:hover {
 .bench-case.draft-5 {
   fill: var(--draft-5);
   color: var(--draft-5);
+}
+.bench-chart-label.draft-7,
+.bench-case.draft-7 {
+  fill: var(--draft-7);
+  color: var(--draft-7);
 }
 .bench-chart-label.draft-wt,
 .bench-case.draft-wt {

@@ -39,6 +39,7 @@ import (
 	"github.com/sudorandom/connect-bidi-web/connectwebsocket/draft1"
 	"github.com/sudorandom/connect-bidi-web/connectwebsocket/draft3"
 	"github.com/sudorandom/connect-bidi-web/connectwebsocket/draft4"
+	"github.com/sudorandom/connect-bidi-web/connectwebsocket/draft7"
 	"github.com/sudorandom/connect-bidi-web/connectwebtransport"
 	elizav1 "github.com/sudorandom/connect-bidi-web/internal/gen/connectbidi/eliza/v1"
 	"github.com/sudorandom/connect-bidi-web/internal/gen/connectbidi/eliza/v1/elizav1connect"
@@ -167,6 +168,11 @@ func startGoServer(t *testing.T) (wsBaseURL, wtURL string) {
 	mux := http.NewServeMux()
 	mux.Handle("/websocket-draft3", websocketDraft3Handler)
 	mux.Handle("/websocket-draft4", websocketDraft4Handler)
+	// Draft 7 takes the procedure from the URL too. On this shared server
+	// it gets a path prefix, which the specification provides for, and
+	// only its WebSocket side is mounted: the Connect HTTP handlers below
+	// already answer the bare procedure URLs.
+	draft7.MountWebSocket(mux, connectServer, draft7.WithPathPrefix(draft7PathPrefix))
 	// Draft 1 has no path of its own: it upgrades the Connect procedure
 	// URLs, which also have to answer POST for the unary half of its
 	// design. Intercept passes everything that is not a draft 1 upgrade
@@ -209,6 +215,59 @@ func startGoServer(t *testing.T) (wsBaseURL, wtURL string) {
 	// Wait for the WebTransport server to start serving.
 	time.Sleep(100 * time.Millisecond)
 	return wsBaseURL, wtURL
+}
+
+// draft7PathPrefix is where the Go fixtures serve draft 7 upgrades, so the
+// bare procedure URLs stay with the drafts that need them.
+const draft7PathPrefix = "/websocket-draft7"
+
+// Draft 7 dispatches unary RPCs over HTTP itself, so its transport is
+// used on its own, pointed at the HTTP base URL with the prefix the
+// server was mounted under.
+func TestGoClientGoServerWebSocketDraft7(t *testing.T) {
+	t.Parallel()
+	wsBaseURL, _ := startGoServer(t)
+	httpBaseURL := strings.Replace(wsBaseURL, "wss://", "https://", 1)
+
+	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
+	defer cancel()
+
+	insecure := &http.Client{
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+		},
+	}
+	transport := draft7.NewTransport(insecure, httpBaseURL,
+		draft7.WithPathPrefix(draft7PathPrefix),
+		draft7.WithWebSocketDialOptions(&websocket.DialOptions{HTTPClient: insecure}),
+	)
+	client := elizav1connect.NewElizaServiceClient(connect.NewClient(transport))
+	exercise(ctx, t, client)
+}
+
+// The JSON codec, selected by the connectrpc.1+json subprotocol, with
+// every message a text frame; and unary carried over the socket too.
+func TestGoClientGoServerWebSocketDraft7JSON(t *testing.T) {
+	t.Parallel()
+	wsBaseURL, _ := startGoServer(t)
+	httpBaseURL := strings.Replace(wsBaseURL, "wss://", "https://", 1)
+
+	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
+	defer cancel()
+
+	insecure := &http.Client{
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+		},
+	}
+	transport := draft7.NewTransport(insecure, httpBaseURL,
+		draft7.WithPathPrefix(draft7PathPrefix),
+		draft7.WithProtoJSON(),
+		draft7.WithUnaryOverWebSocket(),
+		draft7.WithWebSocketDialOptions(&websocket.DialOptions{HTTPClient: insecure}),
+	)
+	client := elizav1connect.NewElizaServiceClient(connect.NewClient(transport))
+	exercise(ctx, t, client)
 }
 
 // Draft 1 is exercised through a composite transport, because that is its
@@ -399,6 +458,30 @@ func TestGoClientNodeServerInterop(t *testing.T) {
 	t.Run("Draft4JSON", func(t *testing.T) {
 		wsDraft4URL := strings.TrimSuffix(wsURL, "/websocket-draft3") + "/websocket-draft4"
 		transport := draft4.NewTransport(wsDraft4URL, draft4.WithSendCodec(connect.CodecNameJSON))
+		client := elizav1connect.NewElizaServiceClient(connect.NewClient(transport))
+		exercise(ctx, t, client)
+	})
+
+	// Go draft 7 client against the TS draft 7 server: the marker framing,
+	// the subprotocol codec selection, and the flat metadata object have
+	// to agree across languages. The TS fixture serves unary over the
+	// socket as well, so unary rides the WebSocket here.
+	baseURL := strings.TrimSuffix(wsURL, "/websocket-draft3")
+	t.Run("Draft7", func(t *testing.T) {
+		transport := draft7.NewTransport(http.DefaultClient, baseURL,
+			draft7.WithPathPrefix("/websocket-draft7"),
+			draft7.WithUnaryOverWebSocket(),
+		)
+		client := elizav1connect.NewElizaServiceClient(connect.NewClient(transport))
+		exercise(ctx, t, client)
+	})
+
+	t.Run("Draft7JSON", func(t *testing.T) {
+		transport := draft7.NewTransport(http.DefaultClient, baseURL,
+			draft7.WithPathPrefix("/websocket-draft7"),
+			draft7.WithProtoJSON(),
+			draft7.WithUnaryOverWebSocket(),
+		)
 		client := elizav1connect.NewElizaServiceClient(connect.NewClient(transport))
 		exercise(ctx, t, client)
 	})

@@ -15,6 +15,23 @@
   --bubble-eliza-bg: #eef0ff;
   --success: #15803d;
   --danger: #b91c1c;
+
+  /* One identity hue per wire-protocol draft, used wherever a draft is
+     named: its card on this page, and its rows in the benchmarks. The
+     -on-dark shades are for the code cards and wire diagrams, which stay
+     dark in both themes; the plain ones follow the theme. */
+  --draft-1: #be123c;
+  --draft-3: #6d28d9;
+  --draft-4: #b45309;
+  --draft-5: #047857;
+  --draft-7: #0e7490;
+  --draft-wt: #0369a1;
+  --draft-1-on-dark: #fda4af;
+  --draft-3-on-dark: #a78bfa;
+  --draft-4-on-dark: #fbbf24;
+  --draft-5-on-dark: #34d399;
+  --draft-7-on-dark: #67e8f9;
+  --draft-wt-on-dark: #38bdf8;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -30,6 +47,12 @@
     --border-color: rgba(255, 255, 255, 0.09);
     --accent-primary: #6366f1;
     --accent-secondary: #818cf8;
+    --draft-1: #fda4af;
+    --draft-3: #a78bfa;
+    --draft-4: #fbbf24;
+    --draft-5: #34d399;
+    --draft-7: #67e8f9;
+    --draft-wt: #38bdf8;
     --accent-glow: rgba(99, 102, 241, 0.35);
     --bubble-eliza-bg: rgba(30, 41, 59, 0.85);
     --success: #4ade80;
@@ -280,9 +303,50 @@ h3 {
 }
 
 /* Feature grid */
+/* Conclusions read as prose, not as a card grid. Nine findings of very
+   uneven length turned auto-fit 220px columns into narrow strips with
+   headings broken mid-phrase, and equal-height grid rows padded every
+   short card with dead space to match the tallest. A single readable
+   measure fixes both. (.feature-card is still used by other sections, so
+   these are deliberately their own classes rather than a change to it.) */
+.findings {
+  margin-top: 1.75rem;
+  max-width: 72ch;
+}
+
+.finding + .finding {
+  margin-top: 1.7rem;
+}
+
+.finding h3 {
+  margin: 0 0 0.4rem;
+  font-size: 1.02rem;
+}
+
+.finding p {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.95rem;
+  line-height: 1.65;
+}
+
+/* The recommendation is the payoff: set it apart with one hairline rule
+   rather than by boxing it. */
+.finding-recommendation {
+  margin-top: 2.25rem;
+  padding-top: 1.6rem;
+  border-top: 1px solid var(--border-color);
+}
+
+.finding-recommendation p {
+  color: var(--text-main);
+}
+
 .feature-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  /* 260px, not 220: at four cards a 220px floor squeezes them to ~24
+     characters a line on a laptop. This wraps to three instead. */
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
   gap: 1.1rem;
   margin-top: 1.75rem;
 }
@@ -306,6 +370,30 @@ h3 {
 }
 
 /* Deployment warning on the WebTransport card. */
+/* Two columns for the short parallel items (the transport rundown); the
+   long-form findings stay single-column. */
+.findings-2col {
+  max-width: none;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 1.6rem 2.5rem;
+}
+
+.findings-2col .finding + .finding {
+  margin-top: 0;
+}
+
+.finding .feature-caveat,
+.finding .feature-links {
+  margin-top: 0.7rem;
+  font-size: 0.85rem;
+}
+
+.finding .feature-caveat {
+  padding-left: 0.7rem;
+  border-left: 2px solid var(--danger);
+}
+
 .feature-card .feature-caveat {
   margin-top: 0.8rem;
   padding-left: 0.7rem;
@@ -452,11 +540,130 @@ h3 {
   overflow-x: auto;
 }
 
+/* Expandable detail: the page leads with what each section settles and
+   folds the evidence — code, tables, per-draft cards, benchmark numbers —
+   behind a summary line, so the whole page skims in one pass. */
+.section-details {
+  margin: 1.5rem 0;
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  background: var(--bg-card);
+}
+.section-details > summary {
+  cursor: pointer;
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.85rem 1.1rem;
+  font-weight: 600;
+  font-size: 1rem;
+  color: var(--text-main);
+}
+.section-details > summary::-webkit-details-marker {
+  display: none;
+}
+.section-details > summary::before {
+  content: "";
+  flex: none;
+  width: 0.5rem;
+  height: 0.5rem;
+  border-right: 2px solid var(--text-muted);
+  border-bottom: 2px solid var(--text-muted);
+  transform: rotate(-45deg);
+  transition: transform 0.15s ease;
+}
+.section-details[open] > summary::before {
+  transform: rotate(45deg);
+}
+.section-details > summary:hover {
+  color: var(--accent-secondary);
+}
+.section-details[open] > summary {
+  border-bottom: 1px solid var(--border-color);
+}
+.section-details > :not(summary) {
+  margin-left: 1.1rem;
+  margin-right: 1.1rem;
+}
+.section-details > :not(summary):last-child {
+  margin-bottom: 1.1rem;
+}
+.section-details > .code-tabs,
+.section-details > .findings,
+.section-details > .table-scroll {
+  margin-top: 1rem;
+}
+.section-details > p:first-of-type {
+  margin-top: 1rem;
+}
+
 /* Breathing room between the feature cards above and the paragraphs
    below; the surrounding grid and paragraphs bring no margins of their
-   own. */
+   own. The card is a <details>, and its header is the summary that opens
+   it. */
 .wire-format-card {
-  margin: 2rem 0;
+  margin: 1.25rem 0;
+  border-top: 3px solid var(--draft-accent, var(--accent-secondary));
+}
+.wire-format-card > summary {
+  cursor: pointer;
+  list-style: none;
+}
+.wire-format-card > summary::-webkit-details-marker {
+  display: none;
+}
+.wire-format-card > summary::after {
+  content: "";
+  margin-left: auto;
+  width: 0.45rem;
+  height: 0.45rem;
+  border-right: 2px solid #94a3b8;
+  border-bottom: 2px solid #94a3b8;
+  transform: rotate(-45deg);
+  transition: transform 0.15s ease;
+}
+.wire-format-card[open] > summary::after {
+  transform: rotate(45deg);
+}
+.wire-format-card:not([open]) > summary {
+  border-bottom: none;
+}
+
+/* A draft's identity colour, set on its card and inherited by the chip in
+   its header. The hues are the -on-dark shades: the card is dark in both
+   themes. */
+.wire-format-card.draft-1 {
+  --draft-accent: var(--draft-1-on-dark);
+}
+.wire-format-card.draft-3 {
+  --draft-accent: var(--draft-3-on-dark);
+}
+.wire-format-card.draft-4 {
+  --draft-accent: var(--draft-4-on-dark);
+}
+.wire-format-card.draft-5 {
+  --draft-accent: var(--draft-5-on-dark);
+}
+.wire-format-card.draft-7 {
+  --draft-accent: var(--draft-7-on-dark);
+}
+
+/* The bright hues need dark ink rather than the chip's usual white. */
+.wire-format-card .code-lang {
+  background: var(--draft-accent, var(--accent-secondary));
+  color: #0b1220;
+}
+
+/* Prose note at the bottom of a wire-format card. The card is always dark
+   (like the code samples), so the color is fixed rather than theme-driven. */
+.wire-format-note {
+  margin: 0;
+  padding: 0 1.5rem 1.25rem;
+  font-size: 0.9rem;
+  line-height: 1.55;
+  color: #94a3b8;
+  max-width: 640px;
 }
 
 /* Wire-format card: frame diagram beside the flag-value table on wide
@@ -466,6 +673,179 @@ h3 {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
+}
+
+/* Draft 5's diagram is a message sequence rather than a byte layout, so it
+   is inherently wide: the side-by-side grid squeezes it to half a card and
+   scrolls away the half that matters. Give it the full width and put the
+   table underneath. */
+.wire-format-stacked {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.wire-format-stacked .wire-svg {
+  min-width: 600px;
+  max-width: 100%;
+}
+
+.wire-format-stacked .flag-table {
+  margin-top: 0;
+  /* Under a full-width diagram the table has the whole card to work with,
+     so the meaning column stops wrapping at 34ch. */
+  width: calc(100% - 3rem);
+}
+
+.wire-format-stacked .flag-table td,
+.wire-format-stacked .flag-table th {
+  max-width: none;
+}
+
+/* Wire-format frame diagrams (inline SVG, generated to a shared geometry;
+   see the .wire-format cards in index.html). The card is dark in both color
+   schemes, so this is one fixed palette rather than a theme-driven one.
+   Fields are told apart by hue, and the payload — the one variable-length
+   field in every draft — is dashed. */
+/* The diagram scrolls rather than scaling below legibility: a 640-unit
+   viewBox squeezed into a phone-width column would render the 13px labels
+   at around 6px. min-width keeps them readable and hands narrow screens a
+   swipe instead, which is what the <pre> it replaced did too. */
+.wire-svg-scroll {
+  margin: 1.35rem 1.5rem 0.5rem;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+}
+
+.wire-svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  min-width: 440px;
+  max-width: 560px;
+  overflow: visible;
+}
+
+.wire-svg .cell {
+  fill: rgba(148, 163, 184, 0.14);
+  stroke: #64748b;
+  stroke-width: 1.25;
+}
+
+/* Field hues. Each stays well clear of the others for viewers with color
+   vision deficiency, and each is also distinguished by its position and
+   label, so hue is never the only cue. */
+.wire-svg .cell.id {
+  fill: rgba(129, 140, 248, 0.16);
+  stroke: #818cf8;
+}
+.wire-svg .cell.flag {
+  fill: rgba(251, 191, 36, 0.15);
+  stroke: #fbbf24;
+}
+.wire-svg .cell.len {
+  fill: rgba(244, 114, 182, 0.15);
+  stroke: #f472b6;
+}
+.wire-svg .cell.bits {
+  fill: rgba(148, 163, 184, 0.1);
+  stroke: #64748b;
+}
+.wire-svg .cell.sep {
+  fill: rgba(148, 163, 184, 0.2);
+  stroke: #94a3b8;
+}
+/* The payload is the only field whose length the frame never states, in
+   every draft; dashing it says so without a caption. */
+.wire-svg .cell.payload {
+  fill: rgba(52, 211, 153, 0.1);
+  stroke: #34d399;
+  stroke-dasharray: 5 4;
+}
+
+.wire-svg .t-id {
+  fill: #a5b4fc;
+}
+.wire-svg .t-flag {
+  fill: #fcd34d;
+}
+.wire-svg .t-len {
+  fill: #f9a8d4;
+}
+.wire-svg .t-payload {
+  fill: #6ee7b7;
+}
+.wire-svg .t-bits {
+  fill: #cbd5e1;
+}
+
+.wire-svg .lbl {
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.wire-svg .mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.wire-svg .mono.sm {
+  font-size: 12px;
+}
+
+.wire-svg .sub {
+  font-family: inherit;
+  font-size: 11px;
+  fill: #94a3b8;
+}
+
+.wire-svg .sub.dim {
+  fill: #7c8798;
+}
+
+/* Draft 4's diagram is text, not cells: thin leaders and rules instead of
+   boxes, so the frame reads the way a browser's Network tab shows it. */
+.wire-svg .lit {
+  font-weight: 500;
+}
+
+.wire-svg .leader {
+  fill: none;
+  stroke: #475569;
+  stroke-width: 1;
+}
+
+.wire-svg .rule {
+  fill: none;
+  stroke: #94a3b8;
+  stroke-width: 1.5;
+}
+
+.wire-svg .rule.t-flag-s {
+  stroke: #fbbf24;
+}
+
+.wire-svg .t-sep {
+  fill: #64748b;
+}
+
+.wire-svg .divider {
+  stroke: #fbbf24;
+  stroke-width: 1.25;
+  stroke-dasharray: 3 3;
+}
+
+.wire-svg .brace {
+  fill: none;
+  stroke: #64748b;
+  stroke-width: 1.25;
+}
+
+@media (max-width: 720px) {
+  .wire-svg-scroll {
+    margin-left: 1rem;
+    margin-right: 1rem;
+  }
 }
 
 .flag-table {
@@ -480,9 +860,13 @@ h3 {
   text-align: left;
   padding: 0.3rem 0;
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  /* The meaning column carries prose now; wrap it instead of widening
+     the card. */
+  max-width: 34ch;
 }
 
-.flag-table td:first-child {
+.flag-table td:first-child,
+.flag-table th:first-child {
   padding-right: 1.1rem;
 }
 
@@ -508,10 +892,6 @@ h3 {
 @media (max-width: 720px) {
   .wire-format {
     grid-template-columns: minmax(0, 1fr);
-  }
-
-  .wire-format pre {
-    padding-bottom: 0.5rem;
   }
 
   .flag-table {
@@ -661,6 +1041,21 @@ h3 {
   font-weight: 600;
   color: var(--text-muted);
   white-space: nowrap;
+}
+
+/* The connection-per-RPC toggle: a full-sentence label, so it wraps. */
+.demo-toolbar-row label.demo-checkbox {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.45rem;
+  font-weight: 500;
+  white-space: normal;
+  cursor: pointer;
+}
+
+.demo-checkbox:has(input:disabled) {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .demo-toolbar-row select {
@@ -1083,6 +1478,270 @@ a.badge:hover {
     order: 4;
     flex-basis: 100%;
   }
+}
+
+/* Benchmarks */
+.bench-meta {
+  margin: 0.25rem 0 0.9rem;
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  max-width: 720px;
+}
+
+#benchmarks h3 {
+  margin: 1.75rem 0 0.25rem;
+}
+
+.bench-table-scroll {
+  margin-bottom: 1.5rem;
+}
+
+#benchmarks h4 {
+  margin: 1.25rem 0 0.5rem;
+  font-size: 0.95rem;
+}
+
+.bench-table {
+  min-width: 520px;
+}
+
+/* The winning value in each metric column. */
+.bench-best {
+  color: var(--accent-secondary);
+  font-weight: 650;
+}
+
+/* Seam between the identity rows and the compressed rows. */
+.bench-table tr/* Labeled divider between benchmark blocks measured on different bases
+   (plaintext TCP vs TLS vs QUIC+TLS). Not decoration: it marks where the
+   numbers stop being comparable. */
+/* Benchmark summary chart: a grouped butterfly. Bytes grow left, time grows
+   right, one bar per workload. The two halves are separate plots sharing a
+   category column, and within a half each workload is scaled to its own
+   maximum — so bar lengths compare down a colour, never across colours or
+   across sides. Hues are categorical slots 1-4, validated on both surfaces;
+   two of them fall under 3:1 on the light surface, which the legend and the
+   per-workload tables discharge. */
+.bench-tab-switcher {
+  margin: 0.75rem 0 1rem;
+}
+
+.bench-summary h4 {
+  margin: 0 0 0.6rem;
+  font-size: 1rem;
+}
+
+.bench-chart-scroll {
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+}
+
+.bench-chart {
+  display: block;
+  width: 100%;
+  height: auto;
+  min-width: 620px;
+}
+
+.bench-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 1.1rem;
+  margin: 0 0 0.5rem;
+  padding: 0;
+  list-style: none;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+
+.bench-legend li {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.bench-swatch {
+  width: 11px;
+  height: 11px;
+  border-radius: 3px;
+  flex: none;
+}
+
+.bench-chart-bar.s1,
+.bench-swatch.s1 {
+  fill: #2a78d6;
+  background: #2a78d6;
+}
+
+.bench-chart-bar.s2,
+.bench-swatch.s2 {
+  fill: #eb6834;
+  background: #eb6834;
+}
+
+.bench-chart-bar.s3,
+.bench-swatch.s3 {
+  fill: #1baf7a;
+  background: #1baf7a;
+}
+
+.bench-chart-bar.s4,
+.bench-swatch.s4 {
+  fill: #eda100;
+  background: #eda100;
+}
+
+.bench-chart-unit {
+  font-family: inherit;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  fill: var(--text-muted);
+}
+
+.bench-chart-label {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 10.5px;
+  fill: var(--text-main);
+}
+
+/* Draft identity, matching each draft's card in the wire-format section.
+   Colour is never the only cue: every row is also named in full. */
+.bench-chart-label.draft-1,
+.bench-case.draft-1 {
+  fill: var(--draft-1);
+  color: var(--draft-1);
+}
+.bench-chart-label.draft-3,
+.bench-case.draft-3 {
+  fill: var(--draft-3);
+  color: var(--draft-3);
+}
+.bench-chart-label.draft-4,
+.bench-case.draft-4 {
+  fill: var(--draft-4);
+  color: var(--draft-4);
+}
+.bench-chart-label.draft-5,
+.bench-case.draft-5 {
+  fill: var(--draft-5);
+  color: var(--draft-5);
+}
+.bench-chart-label.draft-7,
+.bench-case.draft-7 {
+  fill: var(--draft-7);
+  color: var(--draft-7);
+}
+.bench-chart-label.draft-wt,
+.bench-case.draft-wt {
+  fill: var(--draft-wt);
+  color: var(--draft-wt);
+}
+
+.bench-chart-value {
+  font-family: inherit;
+  font-size: 10.5px;
+  fill: var(--text-muted);
+}
+
+/* A value riding inside its bar reads against the fill, not the surface. */
+/* A value riding inside its bar sits on whichever series colour happens to
+   be there, so it carries a halo rather than relying on one fill's
+   contrast. */
+.bench-chart-value.inside {
+  fill: #fff;
+  font-weight: 600;
+  paint-order: stroke;
+  stroke: rgba(0, 0, 0, 0.55);
+  stroke-width: 2.5px;
+  stroke-linejoin: round;
+}
+
+.bench-chart-group {
+  font-family: inherit;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  fill: var(--text-muted);
+}
+
+/* The chart is the view; the table is the receipt. */
+.bench-details {
+  margin-top: 1rem;
+}
+
+.bench-details > summary {
+  cursor: pointer;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  padding: 0.3rem 0;
+}
+
+.bench-details > summary:hover {
+  color: var(--text-main);
+}
+
+.bench-details[open] > summary {
+  margin-bottom: 0.5rem;
+}
+
+.bench-takeaway {
+  margin: 1rem 0 0;
+  max-width: 68ch;
+  font-size: 0.9rem;
+  color: var(--text-muted);
+}
+
+/* Dark mode is selected, not flipped: the same four hues stepped for the
+   dark surface and validated against it. */
+@media (prefers-color-scheme: dark) {
+  :root .bench-chart-bar.s1,
+  :root .bench-swatch.s1 {
+    fill: #3987e5;
+    background: #3987e5;
+  }
+
+  :root .bench-chart-bar.s2,
+  :root .bench-swatch.s2 {
+    fill: #d95926;
+    background: #d95926;
+  }
+
+  :root .bench-chart-bar.s3,
+  :root .bench-swatch.s3 {
+    fill: #199e70;
+    background: #199e70;
+  }
+
+  :root .bench-chart-bar.s4,
+  :root .bench-swatch.s4 {
+    fill: #c98500;
+    background: #c98500;
+  }
+}
+
+.bench-bootstrap-row th {
+  text-align: left;
+  padding: 0.85rem 0 0.35rem;
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--border-color);
+}
+
+.bench-variant-start td {
+  border-top: 2px solid var(--border-color);
+}
+
+.bench-table-scroll .support-table td,
+.bench-table-scroll .support-table th {
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
 }
 
 /* Support matrix */

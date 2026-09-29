@@ -24,6 +24,8 @@ import { decodeHeadersFrame, encodeHeadersFrame } from "./headers-frame.js";
 export interface WebTransportSession {
   createBidirectionalStream(): Promise<WebTransportBidirectionalStream>;
   readonly ready: Promise<void>;
+  /** Closes the session; used to dispose one whose handshake stalled. */
+  close?(closeInfo?: { closeCode?: number; reason?: string }): void;
 }
 
 export interface WebTransportBidirectionalStream {
@@ -42,7 +44,18 @@ export async function runWebTransportCall(
   responseHeaders: Headers;
   responseMessages: AsyncIterable<EnvelopedMessage>;
 }> {
-  const stream = await session.createBidirectionalStream();
+  let stream: WebTransportBidirectionalStream;
+  try {
+    stream = await session.createBidirectionalStream();
+  } catch (err) {
+    // Opening a stream on an established session fails only when the
+    // session has died underneath us; classify it as the transport being
+    // unavailable so fallback arrangements can degrade.
+    throw new ConnectError(
+      `failed to open WebTransport stream: ${ConnectError.from(err).rawMessage}`,
+      Code.Unavailable,
+    );
+  }
   const writer = stream.writable.getWriter();
 
   // Write request headers

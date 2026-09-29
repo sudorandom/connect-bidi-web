@@ -37,12 +37,26 @@ import { fileURLToPath } from "node:url";
 import type { MessageInitShape } from "@bufbuild/protobuf";
 import type { Client, ServiceImpl } from "@connectrpc/connect";
 import { createClient, createConnectRouter } from "@connectrpc/connect";
+import { connectNodeAdapter } from "@connectrpc/connect-node";
 import { createConnectTransport } from "@connectrpc/connect-web";
-import { createBidiWebSocketHandler } from "@sudorandom/connect-bidi-node";
-import type { ConnectWebSocketTransport } from "@sudorandom/connect-bidi-web";
+import {
+  createBidiWebSocketDraft1Handler,
+  createBidiWebSocketDraft3Handler,
+  createBidiWebSocketDraft4Handler,
+  createBidiWebSocketDraft5Handler,
+  createBidiWebSocketDraft7Handler,
+} from "@sudorandom/connect-bidi-node";
+import type {
+  ConnectWebSocketDraft3Transport,
+  ConnectWebSocketDraft4Transport,
+} from "@sudorandom/connect-bidi-web";
 import {
   createCompositeTransport,
-  createConnectWebSocketTransport,
+  createConnectWebSocketDraft1Transport,
+  createConnectWebSocketDraft3Transport,
+  createConnectWebSocketDraft4Transport,
+  createConnectWebSocketDraft5Transport,
+  createConnectWebSocketDraft7Transport,
 } from "@sudorandom/connect-bidi-web";
 import type { ConverseRequestSchema } from "./gen/connectbidi/eliza/v1/eliza_pb.js";
 import { ElizaService } from "./gen/connectbidi/eliza/v1/eliza_pb.js";
@@ -145,9 +159,9 @@ const elizaImpl: ServiceImpl<typeof ElizaService> = {
   },
 };
 
-describe("TS WebSocket client <-> TS Node server", () => {
+describe("TS Draft3 WebSocket client <-> TS Node server", () => {
   let server: http.Server;
-  let transport: ConnectWebSocketTransport;
+  let transport: ConnectWebSocketDraft3Transport;
   let client: ElizaClient;
   let upgrades = 0;
 
@@ -161,14 +175,14 @@ describe("TS WebSocket client <-> TS Node server", () => {
     server.on("upgrade", () => {
       upgrades++;
     });
-    createBidiWebSocketHandler(router).upgrade(server);
+    createBidiWebSocketDraft3Handler(router).upgrade(server);
     await new Promise<void>((resolve) => {
       server.listen(0, "127.0.0.1", resolve);
     });
     const address = server.address();
     const port =
       typeof address === "object" && address !== null ? address.port : 0;
-    transport = createConnectWebSocketTransport({
+    transport = createConnectWebSocketDraft3Transport({
       baseUrl: `http://127.0.0.1:${port}`,
     });
     client = createClient(ElizaService, transport);
@@ -193,6 +207,70 @@ describe("TS WebSocket client <-> TS Node server", () => {
   );
 
   exerciseStreams(() => client);
+});
+
+describe("TS Draft3 WebSocket client <-> TS Node server", () => {
+  let server: http.Server;
+  let transport: ConnectWebSocketDraft3Transport;
+  let client: ElizaClient;
+  let upgrades = 0;
+
+  before(async () => {
+    const router = createConnectRouter();
+    router.service(ElizaService, elizaImpl);
+    server = http.createServer((_req, res) => {
+      res.writeHead(404);
+      res.end();
+    });
+    server.on("upgrade", () => {
+      upgrades++;
+    });
+    createBidiWebSocketDraft3Handler(router).upgrade(server);
+    await new Promise<void>((resolve) => {
+      server.listen(0, "127.0.0.1", resolve);
+    });
+    const address = server.address();
+    const port =
+      typeof address === "object" && address !== null ? address.port : 0;
+    transport = createConnectWebSocketDraft3Transport({
+      baseUrl: `http://127.0.0.1:${port}`,
+    });
+    client = createClient(ElizaService, transport);
+  });
+
+  after(
+    () =>
+      new Promise<void>((resolve, reject) => {
+        assert.strictEqual(
+          upgrades,
+          1,
+          `expected all RPCs to share one connection, saw ${upgrades} upgrades`,
+        );
+        transport.close();
+        server.close((err) => (err ? reject(err) : resolve()));
+      }),
+  );
+
+  exerciseStreams(() => client);
+
+  it("compresses large payloads through the negotiated subprotocol", async () => {
+    // 16 KiB of repetitive text: far above the 512-byte threshold, so it
+    // crosses the wire deflated in both directions and must round-trip.
+    const sentence = "all work and no play makes jack a dull boy. ".repeat(400);
+    const input =
+      createPushIterable<MessageInitShape<typeof ConverseRequestSchema>>();
+    const responses = client.converse(input)[Symbol.asyncIterator]();
+    input.push({ sentence });
+    const res = await responses.next();
+    assert.strictEqual(res.done, false);
+    assert.ok(
+      res.done === false && res.value.sentence.includes(sentence),
+      "large compressed payload did not round-trip",
+    );
+    input.end();
+    const end = await responses.next();
+    assert.strictEqual(end.done, true);
+  });
 });
 
 // -- TS client <-> Go server ---------------------------------------------------
@@ -230,7 +308,7 @@ function startGoServer(): Promise<GoServer> {
     proc.stdout.setEncoding("utf8");
     proc.stdout.on("data", (chunk: string) => {
       output += chunk;
-      const match = output.match(/READY ws:\/\/(\S+)\/websocket/);
+      const match = output.match(/READY ws:\/\/(\S+)\/websocket-draft3/);
       if (match !== null) {
         resolve({
           baseUrl: `http://${match[1]}`,
@@ -249,18 +327,65 @@ function startGoServer(): Promise<GoServer> {
   });
 }
 
+// Draft 4 client against the TS Node draft 4 server, both in-process: the
+// all-text default, where every frame on the wire is readable.
+describe("TS Draft4 WebSocket client <-> TS Node server", () => {
+  let server: http.Server;
+  let transport: ConnectWebSocketDraft4Transport;
+  let client: ElizaClient;
+  let upgrades = 0;
+
+  before(async () => {
+    const router = createConnectRouter();
+    router.service(ElizaService, elizaImpl);
+    server = http.createServer((_req, res) => {
+      res.writeHead(404);
+      res.end();
+    });
+    server.on("upgrade", () => {
+      upgrades++;
+    });
+    createBidiWebSocketDraft4Handler(router).upgrade(server);
+    await new Promise<void>((resolve) => {
+      server.listen(0, "127.0.0.1", resolve);
+    });
+    const address = server.address();
+    const port =
+      typeof address === "object" && address !== null ? address.port : 0;
+    transport = createConnectWebSocketDraft4Transport({
+      baseUrl: `http://127.0.0.1:${port}`,
+    });
+    client = createClient(ElizaService, transport);
+  });
+
+  after(
+    () =>
+      new Promise<void>((resolve, reject) => {
+        assert.strictEqual(
+          upgrades,
+          1,
+          `expected all RPCs to share one connection, saw ${upgrades} upgrades`,
+        );
+        transport.close();
+        server.close((err) => (err ? reject(err) : resolve()));
+      }),
+  );
+
+  exerciseStreams(() => client);
+});
+
 describe("TS composite client <-> Go server", {
   skip: goAvailable ? false : "go not found in PATH",
 }, () => {
   let goServer: GoServer;
-  let wsTransport: ConnectWebSocketTransport;
+  let wsTransport: ConnectWebSocketDraft3Transport;
   let client: ElizaClient;
 
   before(async () => {
     goServer = await startGoServer();
     // Unary over plain Connect HTTP, streams over WebSocket — the
     // recommended production setup from the README.
-    wsTransport = createConnectWebSocketTransport({
+    wsTransport = createConnectWebSocketDraft3Transport({
       baseUrl: goServer.baseUrl,
     });
     client = createClient(
@@ -278,6 +403,538 @@ describe("TS composite client <-> Go server", {
   });
 
   it("unary: say over plain Connect HTTP", async () => {
+    const res = await client.say({ sentence: "unary hello" });
+    assert.ok(
+      res.sentence.includes("unary hello"),
+      `response ${JSON.stringify(res.sentence)} does not echo the request`,
+    );
+  });
+
+  exerciseStreams(() => client);
+});
+
+describe("TS Draft3 WebSocket client <-> Go server", {
+  skip: goAvailable ? false : "go not found in PATH",
+}, () => {
+  let goServer: GoServer;
+  let wsTransport: ConnectWebSocketDraft3Transport;
+  let client: ElizaClient;
+
+  before(async () => {
+    goServer = await startGoServer();
+    wsTransport = createConnectWebSocketDraft3Transport({
+      baseUrl: goServer.baseUrl,
+    });
+    client = createClient(ElizaService, wsTransport);
+  });
+
+  after(async () => {
+    wsTransport.close();
+    await goServer.stop();
+  });
+
+  exerciseStreams(() => client);
+});
+
+// Draft 4 across languages: the ASCII frame head has to be parsed
+// identically by both sides, and each side has to accept whichever
+// WebSocket message type the other chose to send.
+describe("TS Draft4 WebSocket client <-> Go server", {
+  skip: goAvailable ? false : "go not found in PATH",
+}, () => {
+  let goServer: GoServer;
+  let wsTransport: ConnectWebSocketDraft4Transport;
+  let client: ElizaClient;
+
+  before(async () => {
+    goServer = await startGoServer();
+    wsTransport = createConnectWebSocketDraft4Transport({
+      baseUrl: goServer.baseUrl,
+    });
+    client = createClient(ElizaService, wsTransport);
+  });
+
+  after(async () => {
+    wsTransport.close();
+    await goServer.stop();
+  });
+
+  exerciseStreams(() => client);
+});
+
+// The same, with protobuf payloads: the client then sends binary data
+// frames and text control frames on one connection, so both sides have to
+// handle a mixed-opcode stream.
+describe("TS Draft4 proto WebSocket client <-> Go server", {
+  skip: goAvailable ? false : "go not found in PATH",
+}, () => {
+  let goServer: GoServer;
+  let wsTransport: ConnectWebSocketDraft4Transport;
+  let client: ElizaClient;
+
+  before(async () => {
+    goServer = await startGoServer();
+    wsTransport = createConnectWebSocketDraft4Transport({
+      baseUrl: goServer.baseUrl,
+      useBinaryFormat: true,
+    });
+    client = createClient(ElizaService, wsTransport);
+  });
+
+  after(async () => {
+    wsTransport.close();
+    await goServer.stop();
+  });
+
+  exerciseStreams(() => client);
+});
+
+// -- Draft 5 -------------------------------------------------------------------
+//
+// Draft 5 has no path of its own: the Connect procedure URL answers POST
+// with ordinary Connect and GET+Upgrade with the WebSocket protocol. So
+// these suites check two things the other drafts cannot get wrong — that
+// unary RPCs never upgrade, and that streaming RPCs open one socket each.
+
+// Draft 1 against the TS Node server, both in-process. Like draft 5 it
+// carries one RPC per socket and leaves unary on plain Connect HTTP; unlike
+// draft 5 every message is a Connect envelope, which is what these tests
+// exercise across the two implementations.
+describe("TS Draft1 WebSocket client <-> TS Node server", () => {
+  let server: http.Server;
+  let client: ElizaClient;
+  let upgrades = 0;
+
+  before(async () => {
+    const router = createConnectRouter();
+    router.service(ElizaService, elizaImpl);
+    // The very same server answers unary RPCs over plain Connect HTTP...
+    server = http.createServer(
+      connectNodeAdapter({
+        routes: (routes) => {
+          routes.service(ElizaService, elizaImpl);
+        },
+      }),
+    );
+    server.on("upgrade", () => {
+      upgrades++;
+    });
+    // ...and streaming RPCs by upgrading the same URLs.
+    createBidiWebSocketDraft1Handler(router).upgrade(server);
+    await new Promise<void>((resolve) => {
+      server.listen(0, "127.0.0.1", resolve);
+    });
+    const address = server.address();
+    const port =
+      typeof address === "object" && address !== null ? address.port : 0;
+    const baseUrl = `http://127.0.0.1:${port}`;
+    client = createClient(
+      ElizaService,
+      createConnectWebSocketDraft1Transport({
+        baseUrl,
+        unaryTransport: createConnectTransport({ baseUrl }),
+      }),
+    );
+  });
+
+  after(
+    () =>
+      new Promise<void>((resolve, reject) => {
+        server.close((err) => (err ? reject(err) : resolve()));
+      }),
+  );
+
+  it("unary: say never upgrades", async () => {
+    const before = upgrades;
+    const res = await client.say({ sentence: "unary hello" });
+    assert.ok(
+      res.sentence.includes("unary hello"),
+      `response ${JSON.stringify(res.sentence)} does not echo the request`,
+    );
+    assert.strictEqual(
+      upgrades,
+      before,
+      "a unary RPC opened a WebSocket; it must stay on plain Connect HTTP",
+    );
+  });
+
+  it("streaming: one socket per RPC", async () => {
+    const before = upgrades;
+    for await (const _ of client.introduce({ name: "counted" })) {
+      // Drain.
+    }
+    assert.strictEqual(
+      upgrades,
+      before + 1,
+      "expected exactly one upgrade for one streaming RPC",
+    );
+  });
+
+  exerciseStreams(() => client);
+});
+
+// Draft 1 across languages. The Go fixture already gives draft 5 the bare
+// procedure URLs, so draft 1 is mounted under a prefix there; the procedure
+// is the path's last two segments either way, which is exactly what a
+// prefixed base URL exercises.
+describe("TS Draft1 WebSocket client <-> Go server", {
+  skip: goAvailable ? false : "go not found in PATH",
+}, () => {
+  let goServer: GoServer;
+  let client: ElizaClient;
+
+  before(async () => {
+    goServer = await startGoServer();
+    client = createClient(
+      ElizaService,
+      createConnectWebSocketDraft1Transport({
+        baseUrl: `${goServer.baseUrl}/websocket-draft1`,
+        unaryTransport: createConnectTransport({ baseUrl: goServer.baseUrl }),
+      }),
+    );
+  });
+
+  after(async () => {
+    await goServer.stop();
+  });
+
+  it("unary: say over plain Connect HTTP", async () => {
+    const res = await client.say({ sentence: "unary hello" });
+    assert.ok(
+      res.sentence.includes("unary hello"),
+      `response ${JSON.stringify(res.sentence)} does not echo the request`,
+    );
+  });
+
+  exerciseStreams(() => client);
+});
+
+// The same, with JSON payloads. The envelope head stays binary whatever the
+// codec, which is the trade draft 1 makes and draft 5 refuses.
+describe("TS Draft1 JSON WebSocket client <-> Go server", {
+  skip: goAvailable ? false : "go not found in PATH",
+}, () => {
+  let goServer: GoServer;
+  let client: ElizaClient;
+
+  before(async () => {
+    goServer = await startGoServer();
+    client = createClient(
+      ElizaService,
+      createConnectWebSocketDraft1Transport({
+        baseUrl: `${goServer.baseUrl}/websocket-draft1`,
+        useBinaryFormat: false,
+        unaryTransport: createConnectTransport({ baseUrl: goServer.baseUrl }),
+      }),
+    );
+  });
+
+  after(async () => {
+    await goServer.stop();
+  });
+
+  exerciseStreams(() => client);
+});
+
+describe("TS Draft5 WebSocket client <-> TS Node server", () => {
+  let server: http.Server;
+  let client: ElizaClient;
+  let upgrades = 0;
+
+  before(async () => {
+    const router = createConnectRouter();
+    router.service(ElizaService, elizaImpl);
+    // The very same server answers unary RPCs over plain Connect HTTP...
+    server = http.createServer(
+      connectNodeAdapter({
+        routes: (routes) => {
+          routes.service(ElizaService, elizaImpl);
+        },
+      }),
+    );
+    server.on("upgrade", () => {
+      upgrades++;
+    });
+    // ...and streaming RPCs by upgrading the same URLs.
+    createBidiWebSocketDraft5Handler(router).upgrade(server);
+    await new Promise<void>((resolve) => {
+      server.listen(0, "127.0.0.1", resolve);
+    });
+    const address = server.address();
+    const port =
+      typeof address === "object" && address !== null ? address.port : 0;
+    const baseUrl = `http://127.0.0.1:${port}`;
+    client = createClient(
+      ElizaService,
+      createConnectWebSocketDraft5Transport({
+        baseUrl,
+        unaryTransport: createConnectTransport({ baseUrl }),
+      }),
+    );
+  });
+
+  after(
+    () =>
+      new Promise<void>((resolve, reject) => {
+        server.close((err) => (err ? reject(err) : resolve()));
+      }),
+  );
+
+  it("unary: say never upgrades", async () => {
+    const before = upgrades;
+    const res = await client.say({ sentence: "unary hello" });
+    assert.ok(
+      res.sentence.includes("unary hello"),
+      `response ${JSON.stringify(res.sentence)} does not echo the request`,
+    );
+    assert.strictEqual(
+      upgrades,
+      before,
+      "a unary RPC opened a WebSocket; it must stay on plain Connect HTTP",
+    );
+  });
+
+  it("streaming: one socket per RPC", async () => {
+    const before = upgrades;
+    for await (const _ of client.introduce({ name: "counted" })) {
+      // Drain.
+    }
+    assert.strictEqual(
+      upgrades,
+      before + 1,
+      "expected exactly one upgrade for one streaming RPC",
+    );
+  });
+
+  exerciseStreams(() => client);
+});
+
+// Draft 5 across languages. The Go fixture mounts draft5 in place of
+// connecthttp, so the same URLs serve both dispatch paths there too.
+describe("TS Draft5 WebSocket client <-> Go server", {
+  skip: goAvailable ? false : "go not found in PATH",
+}, () => {
+  let goServer: GoServer;
+  let client: ElizaClient;
+
+  before(async () => {
+    goServer = await startGoServer();
+    client = createClient(
+      ElizaService,
+      createConnectWebSocketDraft5Transport({
+        baseUrl: goServer.baseUrl,
+        unaryTransport: createConnectTransport({ baseUrl: goServer.baseUrl }),
+      }),
+    );
+  });
+
+  after(async () => {
+    await goServer.stop();
+  });
+
+  it("unary: say over plain Connect HTTP", async () => {
+    const res = await client.say({ sentence: "unary hello" });
+    assert.ok(
+      res.sentence.includes("unary hello"),
+      `response ${JSON.stringify(res.sentence)} does not echo the request`,
+    );
+  });
+
+  exerciseStreams(() => client);
+});
+
+// The same, with JSON payloads: data messages stay binary whatever the
+// codec, because the separator owns the empty text message.
+describe("TS Draft5 JSON WebSocket client <-> Go server", {
+  skip: goAvailable ? false : "go not found in PATH",
+}, () => {
+  let goServer: GoServer;
+  let client: ElizaClient;
+
+  before(async () => {
+    goServer = await startGoServer();
+    client = createClient(
+      ElizaService,
+      createConnectWebSocketDraft5Transport({
+        baseUrl: goServer.baseUrl,
+        useBinaryFormat: false,
+        unaryTransport: createConnectTransport({ baseUrl: goServer.baseUrl }),
+      }),
+    );
+  });
+
+  after(async () => {
+    await goServer.stop();
+  });
+
+  exerciseStreams(() => client);
+});
+
+// -- Draft 7: the Connect-over-WebSocket specification -------------------------
+
+describe("TS Draft7 WebSocket client <-> TS Node server", () => {
+  let server: http.Server;
+  let client: ElizaClient;
+  let overSocket: ElizaClient;
+  let upgrades = 0;
+
+  before(async () => {
+    const router = createConnectRouter();
+    router.service(ElizaService, elizaImpl);
+    // The very same server answers unary RPCs over plain Connect HTTP...
+    server = http.createServer(
+      connectNodeAdapter({
+        routes: (routes) => {
+          routes.service(ElizaService, elizaImpl);
+        },
+      }),
+    );
+    server.on("upgrade", () => {
+      upgrades++;
+    });
+    // ...and every RPC by upgrading the same URLs.
+    createBidiWebSocketDraft7Handler(router).upgrade(server);
+    await new Promise<void>((resolve) => {
+      server.listen(0, "127.0.0.1", resolve);
+    });
+    const address = server.address();
+    const port =
+      typeof address === "object" && address !== null ? address.port : 0;
+    const baseUrl = `http://127.0.0.1:${port}`;
+    client = createClient(
+      ElizaService,
+      createConnectWebSocketDraft7Transport({
+        baseUrl,
+        unaryTransport: createConnectTransport({ baseUrl }),
+      }),
+    );
+    overSocket = createClient(
+      ElizaService,
+      createConnectWebSocketDraft7Transport({ baseUrl }),
+    );
+  });
+
+  after(
+    () =>
+      new Promise<void>((resolve, reject) => {
+        server.close((err) => (err ? reject(err) : resolve()));
+      }),
+  );
+
+  it("unary: say stays on HTTP with a unary transport", async () => {
+    const before = upgrades;
+    const res = await client.say({ sentence: "unary hello" });
+    assert.ok(
+      res.sentence.includes("unary hello"),
+      `response ${JSON.stringify(res.sentence)} does not echo the request`,
+    );
+    assert.strictEqual(upgrades, before, "a unary RPC opened a WebSocket");
+  });
+
+  it("unary: say upgrades without one", async () => {
+    const before = upgrades;
+    const res = await overSocket.say({ sentence: "socket hello" });
+    assert.ok(
+      res.sentence.includes("socket hello"),
+      `response ${JSON.stringify(res.sentence)} does not echo the request`,
+    );
+    assert.strictEqual(
+      upgrades,
+      before + 1,
+      "expected exactly one upgrade for one unary RPC over the socket",
+    );
+  });
+
+  it("streaming: one socket per RPC", async () => {
+    const before = upgrades;
+    for await (const _ of client.introduce({ name: "counted" })) {
+      // Drain.
+    }
+    assert.strictEqual(
+      upgrades,
+      before + 1,
+      "expected exactly one upgrade for one streaming RPC",
+    );
+  });
+
+  it("deadline: a silent client is answered, not parked", async () => {
+    // A deadline shorter than the handler's work: the server ends the RPC
+    // with deadline_exceeded in S rather than holding the socket.
+    const input =
+      createPushIterable<MessageInitShape<typeof ConverseRequestSchema>>();
+    const responses = client
+      .converse(input, { timeoutMs: 200 })
+      [Symbol.asyncIterator]();
+    await assert.rejects(
+      () => responses.next(),
+      (err: unknown) => err instanceof Error && /deadline/i.test(err.message),
+    );
+  });
+
+  exerciseStreams(() => client);
+});
+
+// Draft 7 across languages. The Go fixture mounts draft 7's WebSocket side
+// under a prefix — the specification's own provision for sharing an origin
+// — so the client is told the prefix too.
+describe("TS Draft7 WebSocket client <-> Go server", {
+  skip: goAvailable ? false : "go not found in PATH",
+}, () => {
+  let goServer: GoServer;
+  let client: ElizaClient;
+
+  before(async () => {
+    goServer = await startGoServer();
+    client = createClient(
+      ElizaService,
+      createConnectWebSocketDraft7Transport({
+        baseUrl: goServer.baseUrl,
+        pathPrefix: "/websocket-draft7",
+        unaryTransport: createConnectTransport({ baseUrl: goServer.baseUrl }),
+      }),
+    );
+  });
+
+  after(async () => {
+    await goServer.stop();
+  });
+
+  it("unary: say over plain Connect HTTP", async () => {
+    const res = await client.say({ sentence: "unary hello" });
+    assert.ok(
+      res.sentence.includes("unary hello"),
+      `response ${JSON.stringify(res.sentence)} does not echo the request`,
+    );
+  });
+
+  exerciseStreams(() => client);
+});
+
+// The same with JSON — every message a text frame — and unary carried
+// over the socket as the specification's worked example has it.
+describe("TS Draft7 JSON WebSocket client <-> Go server", {
+  skip: goAvailable ? false : "go not found in PATH",
+}, () => {
+  let goServer: GoServer;
+  let client: ElizaClient;
+
+  before(async () => {
+    goServer = await startGoServer();
+    client = createClient(
+      ElizaService,
+      createConnectWebSocketDraft7Transport({
+        baseUrl: goServer.baseUrl,
+        pathPrefix: "/websocket-draft7",
+        useBinaryFormat: false,
+      }),
+    );
+  });
+
+  after(async () => {
+    await goServer.stop();
+  });
+
+  it("unary: say over the socket", async () => {
     const res = await client.say({ sentence: "unary hello" });
     assert.ok(
       res.sentence.includes("unary hello"),

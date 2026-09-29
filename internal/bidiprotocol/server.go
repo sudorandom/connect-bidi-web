@@ -104,7 +104,7 @@ func HandleRPC(
 
 	var endErr *connect.Error
 	if callErr != nil {
-		endErr = ErrorForWire(callErr)
+		endErr = connectprotocol.ErrorForWire(callErr)
 	}
 	trailers := make(http.Header)
 	maps.Insert(trailers, callInfo.ResponseTrailer().All())

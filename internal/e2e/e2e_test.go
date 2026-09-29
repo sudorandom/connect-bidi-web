@@ -16,17 +16,10 @@ package e2e_test
 
 import (
 	"context"
-	"crypto/ecdsa"
-	"crypto/elliptic"
-	"crypto/rand"
 	"crypto/tls"
-	"crypto/x509"
-	"crypto/x509/pkix"
-	"encoding/pem"
 	"errors"
 	"fmt"
 	"io"
-	"math/big"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -38,13 +31,19 @@ import (
 	"time"
 
 	connect "connectrpc.com/connect/v2"
+	"connectrpc.com/connect/v2/connecthttp"
 	"github.com/coder/websocket"
 	"github.com/quic-go/quic-go/http3"
 	"github.com/quic-go/webtransport-go"
 	"github.com/sudorandom/connect-bidi-web/connectwebsocket"
+	"github.com/sudorandom/connect-bidi-web/connectwebsocket/draft1"
+	"github.com/sudorandom/connect-bidi-web/connectwebsocket/draft3"
+	"github.com/sudorandom/connect-bidi-web/connectwebsocket/draft4"
+	"github.com/sudorandom/connect-bidi-web/connectwebsocket/draft7"
 	"github.com/sudorandom/connect-bidi-web/connectwebtransport"
 	elizav1 "github.com/sudorandom/connect-bidi-web/internal/gen/connectbidi/eliza/v1"
 	"github.com/sudorandom/connect-bidi-web/internal/gen/connectbidi/eliza/v1/elizav1connect"
+	"github.com/sudorandom/connect-bidi-web/internal/testcert"
 )
 
 // elizaServer is a minimal ElizaService implementation that echoes the
@@ -155,25 +154,38 @@ func exercise(ctx context.Context, t *testing.T, client elizav1connect.ElizaServ
 
 // startGoServer starts an in-process copy of the demo server stack: one
 // Connect server exposed over TLS on both a WebSocket endpoint (TCP) and a
-// WebTransport endpoint (UDP/HTTP3), on real localhost sockets.
-func startGoServer(t *testing.T) (wsURL, wtURL string) {
+// WebTransport endpoint (UDP/HTTP3), on real localhost sockets. wsBaseURL
+// has no path; each draft's test appends its own.
+func startGoServer(t *testing.T) (wsBaseURL, wtURL string) {
 	t.Helper()
 
 	connectServer := connect.NewServer()
 	elizav1connect.RegisterElizaServiceHandler(connectServer, elizaServer{})
-	websocketHandler := connectwebsocket.NewHandler(connectServer)
+	websocketDraft3Handler := draft3.NewHandler(connectServer)
+	websocketDraft4Handler := draft4.NewHandler(connectServer)
 	webtransportHandler := connectwebtransport.NewHandler(connectServer)
 
 	mux := http.NewServeMux()
-	mux.Handle("/websocket", websocketHandler)
+	mux.Handle("/websocket-draft3", websocketDraft3Handler)
+	mux.Handle("/websocket-draft4", websocketDraft4Handler)
+	// Draft 7 takes the procedure from the URL too. On this shared server
+	// it gets a path prefix, which the specification provides for, and
+	// only its WebSocket side is mounted: the Connect HTTP handlers below
+	// already answer the bare procedure URLs.
+	draft7.MountWebSocket(mux, connectServer, draft7.WithPathPrefix(draft7PathPrefix))
+	// Draft 1 has no path of its own: it upgrades the Connect procedure
+	// URLs, which also have to answer POST for the unary half of its
+	// design. Intercept passes everything that is not a draft 1 upgrade
+	// through, so the draft 3 and 4 endpoints above are untouched.
+	connecthttp.Mount(mux, connectServer)
 
 	// WebSocket over TLS on TCP.
-	httpServer := httptest.NewTLSServer(mux)
+	httpServer := httptest.NewTLSServer(draft1.Intercept(mux, connectServer))
 	t.Cleanup(httpServer.Close)
-	wsURL = strings.Replace(httpServer.URL, "https://", "wss://", 1) + "/websocket"
+	wsBaseURL = strings.Replace(httpServer.URL, "https://", "wss://", 1)
 
 	// WebTransport over HTTP/3 on UDP.
-	cert, err := generateSelfSignedCert()
+	cert, err := testcert.GenerateSelfSignedCert()
 	if err != nil {
 		t.Fatalf("failed to generate cert: %v", err)
 	}
@@ -202,19 +214,147 @@ func startGoServer(t *testing.T) (wsURL, wtURL string) {
 
 	// Wait for the WebTransport server to start serving.
 	time.Sleep(100 * time.Millisecond)
-	return wsURL, wtURL
+	return wsBaseURL, wtURL
 }
 
-func TestGoClientGoServerWebSocket(t *testing.T) {
+// draft7PathPrefix is where the Go fixtures serve draft 7 upgrades, so the
+// bare procedure URLs stay with the drafts that need them.
+const draft7PathPrefix = "/websocket-draft7"
+
+// Draft 7 dispatches unary RPCs over HTTP itself, so its transport is
+// used on its own, pointed at the HTTP base URL with the prefix the
+// server was mounted under.
+func TestGoClientGoServerWebSocketDraft7(t *testing.T) {
 	t.Parallel()
-	wsURL, _ := startGoServer(t)
+	wsBaseURL, _ := startGoServer(t)
+	httpBaseURL := strings.Replace(wsBaseURL, "wss://", "https://", 1)
 
 	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
 	defer cancel()
 
-	transport := connectwebsocket.NewTransport(
-		wsURL,
-		connectwebsocket.WithDialOptions(&websocket.DialOptions{
+	insecure := &http.Client{
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+		},
+	}
+	transport := draft7.NewTransport(insecure, httpBaseURL,
+		draft7.WithPathPrefix(draft7PathPrefix),
+		draft7.WithWebSocketDialOptions(&websocket.DialOptions{HTTPClient: insecure}),
+	)
+	client := elizav1connect.NewElizaServiceClient(connect.NewClient(transport))
+	exercise(ctx, t, client)
+}
+
+// The JSON codec, selected by the connectrpc.1+json subprotocol, with
+// every message a text frame; and unary carried over the socket too.
+func TestGoClientGoServerWebSocketDraft7JSON(t *testing.T) {
+	t.Parallel()
+	wsBaseURL, _ := startGoServer(t)
+	httpBaseURL := strings.Replace(wsBaseURL, "wss://", "https://", 1)
+
+	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
+	defer cancel()
+
+	insecure := &http.Client{
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+		},
+	}
+	transport := draft7.NewTransport(insecure, httpBaseURL,
+		draft7.WithPathPrefix(draft7PathPrefix),
+		draft7.WithProtoJSON(),
+		draft7.WithUnaryOverWebSocket(),
+		draft7.WithWebSocketDialOptions(&websocket.DialOptions{HTTPClient: insecure}),
+	)
+	client := elizav1connect.NewElizaServiceClient(connect.NewClient(transport))
+	exercise(ctx, t, client)
+}
+
+// Draft 1 is exercised through a composite transport, because that is its
+// design: streaming RPCs upgrade, unary RPCs stay on plain Connect over
+// HTTP, and both use the same procedure URL.
+func TestGoClientGoServerWebSocketDraft1(t *testing.T) {
+	t.Parallel()
+	wsBaseURL, _ := startGoServer(t)
+	httpBaseURL := strings.Replace(wsBaseURL, "wss://", "https://", 1)
+
+	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
+	defer cancel()
+
+	insecure := &http.Client{
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+		},
+	}
+	transport := connectwebsocket.NewCompositeTransport(
+		connecthttp.NewTransport(insecure, httpBaseURL),
+		draft1.NewTransport(wsBaseURL, draft1.WithDialOptions(&websocket.DialOptions{
+			HTTPClient: insecure,
+		})),
+	)
+	client := elizav1connect.NewElizaServiceClient(connect.NewClient(transport))
+	exercise(ctx, t, client)
+}
+
+func TestGoClientGoServerWebSocketDraft3(t *testing.T) {
+	t.Parallel()
+	wsBaseURL, _ := startGoServer(t)
+	wsDraft3URL := wsBaseURL + "/websocket-draft3"
+
+	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
+	defer cancel()
+
+	transport := draft3.NewTransport(
+		wsDraft3URL,
+		draft3.WithDialOptions(&websocket.DialOptions{
+			HTTPClient: &http.Client{
+				Transport: &http.Transport{
+					TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+				},
+			},
+		}),
+	)
+	client := elizav1connect.NewElizaServiceClient(connect.NewClient(transport))
+	exercise(ctx, t, client)
+}
+
+func TestGoClientGoServerWebSocketDraft4(t *testing.T) {
+	t.Parallel()
+	wsBaseURL, _ := startGoServer(t)
+	wsDraft4URL := wsBaseURL + "/websocket-draft4"
+
+	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
+	defer cancel()
+
+	transport := draft4.NewTransport(
+		wsDraft4URL,
+		draft4.WithDialOptions(&websocket.DialOptions{
+			HTTPClient: &http.Client{
+				Transport: &http.Transport{
+					TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+				},
+			},
+		}),
+	)
+	client := elizav1connect.NewElizaServiceClient(connect.NewClient(transport))
+	exercise(ctx, t, client)
+}
+
+// The all-text configuration draft 4 is designed around: JSON payloads, so
+// every frame on the connection is a text WebSocket message.
+func TestGoClientGoServerWebSocketDraft4JSON(t *testing.T) {
+	t.Parallel()
+	wsBaseURL, _ := startGoServer(t)
+	wsDraft4URL := wsBaseURL + "/websocket-draft4"
+
+	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
+	defer cancel()
+
+	transport := draft4.NewTransport(
+		wsDraft4URL,
+		draft4.WithSendCodec(connect.CodecNameJSON),
+		draft4.WithoutCompression(),
+		draft4.WithDialOptions(&websocket.DialOptions{
 			HTTPClient: &http.Client{
 				Transport: &http.Transport{
 					TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
@@ -297,9 +437,54 @@ func TestGoClientNodeServerInterop(t *testing.T) {
 		t.Fatalf("interop server did not become ready: %v", err)
 	}
 
-	transport := connectwebsocket.NewTransport(wsURL)
-	client := elizav1connect.NewElizaServiceClient(connect.NewClient(transport))
-	exercise(ctx, t, client)
+	// Go draft 3 client against the TS draft 3 server: exercises the
+	// subprotocol negotiation and per-frame deflate across languages.
+	t.Run("Draft3", func(t *testing.T) {
+		transport := draft3.NewTransport(wsURL)
+		client := elizav1connect.NewElizaServiceClient(connect.NewClient(transport))
+		exercise(ctx, t, client)
+	})
+
+	// Go draft 4 client against the TS draft 4 server: the ASCII frame head
+	// has to be parsed identically by both languages, and each side has to
+	// accept whichever message type the other chose.
+	t.Run("Draft4", func(t *testing.T) {
+		wsDraft4URL := strings.TrimSuffix(wsURL, "/websocket-draft3") + "/websocket-draft4"
+		transport := draft4.NewTransport(wsDraft4URL)
+		client := elizav1connect.NewElizaServiceClient(connect.NewClient(transport))
+		exercise(ctx, t, client)
+	})
+
+	t.Run("Draft4JSON", func(t *testing.T) {
+		wsDraft4URL := strings.TrimSuffix(wsURL, "/websocket-draft3") + "/websocket-draft4"
+		transport := draft4.NewTransport(wsDraft4URL, draft4.WithSendCodec(connect.CodecNameJSON))
+		client := elizav1connect.NewElizaServiceClient(connect.NewClient(transport))
+		exercise(ctx, t, client)
+	})
+
+	// Go draft 7 client against the TS draft 7 server: the marker framing,
+	// the subprotocol codec selection, and the flat metadata object have
+	// to agree across languages. The TS fixture serves unary over the
+	// socket as well, so unary rides the WebSocket here.
+	baseURL := strings.TrimSuffix(wsURL, "/websocket-draft3")
+	t.Run("Draft7", func(t *testing.T) {
+		transport := draft7.NewTransport(http.DefaultClient, baseURL,
+			draft7.WithPathPrefix("/websocket-draft7"),
+			draft7.WithUnaryOverWebSocket(),
+		)
+		client := elizav1connect.NewElizaServiceClient(connect.NewClient(transport))
+		exercise(ctx, t, client)
+	})
+
+	t.Run("Draft7JSON", func(t *testing.T) {
+		transport := draft7.NewTransport(http.DefaultClient, baseURL,
+			draft7.WithPathPrefix("/websocket-draft7"),
+			draft7.WithProtoJSON(),
+			draft7.WithUnaryOverWebSocket(),
+		)
+		client := elizav1connect.NewElizaServiceClient(connect.NewClient(transport))
+		exercise(ctx, t, client)
+	})
 }
 
 // awaitReady reads lines from the fixture server's stdout until it prints
@@ -330,33 +515,4 @@ func skipOrFail(t *testing.T, msg string) {
 		t.Fatalf("%s (E2E_REQUIRE_INTEROP is set)", msg)
 	}
 	t.Skip(msg)
-}
-
-func generateSelfSignedCert() (tls.Certificate, error) {
-	priv, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	if err != nil {
-		return tls.Certificate{}, err
-	}
-	template := x509.Certificate{
-		SerialNumber:          big.NewInt(1),
-		Subject:               pkix.Name{CommonName: "localhost"},
-		NotBefore:             time.Now().Add(-time.Hour),
-		NotAfter:              time.Now().Add(time.Hour),
-		KeyUsage:              x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature,
-		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
-		BasicConstraintsValid: true,
-		DNSNames:              []string{"localhost"},
-		IPAddresses:           []net.IP{net.ParseIP("127.0.0.1")},
-	}
-	derBytes, err := x509.CreateCertificate(rand.Reader, &template, &template, &priv.PublicKey, priv)
-	if err != nil {
-		return tls.Certificate{}, err
-	}
-	privBytes, err := x509.MarshalPKCS8PrivateKey(priv)
-	if err != nil {
-		return tls.Certificate{}, err
-	}
-	keyPEM := pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: privBytes})
-	certPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: derBytes})
-	return tls.X509KeyPair(certPEM, keyPEM)
 }

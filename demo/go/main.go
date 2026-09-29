@@ -29,11 +29,14 @@ import (
 	"time"
 
 	connect "connectrpc.com/connect/v2"
-	"connectrpc.com/connect/v2/connecthttp"
 	"github.com/coder/websocket"
 	"github.com/quic-go/quic-go/http3"
 	"github.com/quic-go/webtransport-go"
-	"github.com/sudorandom/connect-bidi-web/connectwebsocket"
+	"github.com/sudorandom/connect-bidi-web/connectwebsocket/draft1"
+	"github.com/sudorandom/connect-bidi-web/connectwebsocket/draft3"
+	"github.com/sudorandom/connect-bidi-web/connectwebsocket/draft4"
+	"github.com/sudorandom/connect-bidi-web/connectwebsocket/draft5"
+	"github.com/sudorandom/connect-bidi-web/connectwebsocket/draft7"
 	"github.com/sudorandom/connect-bidi-web/connectwebtransport"
 	elizav1 "github.com/sudorandom/connect-bidi-web/internal/gen/connectbidi/eliza/v1"
 	"github.com/sudorandom/connect-bidi-web/internal/gen/connectbidi/eliza/v1/elizav1connect"
@@ -88,6 +91,19 @@ func (elizaServer) Introduce(ctx context.Context, req *elizav1.IntroduceRequest,
 	return nil
 }
 
+// displayURL renders a listen address as a clickable https URL,
+// substituting localhost for wildcard or empty hosts.
+func displayURL(addr string) string {
+	host, port, err := net.SplitHostPort(addr)
+	if err != nil {
+		return "https://localhost" + addr
+	}
+	if host == "" || host == "0.0.0.0" || host == "::" {
+		host = "localhost"
+	}
+	return "https://" + net.JoinHostPort(host, port)
+}
+
 func main() {
 	certFile := flag.String("cert", "localhost.pem", "TLS certificate file (create with mkcert localhost)")
 	keyFile := flag.String("key", "localhost-key.pem", "TLS key file")
@@ -104,15 +120,58 @@ func main() {
 	connectServer := connect.NewServer()
 	elizav1connect.RegisterElizaServiceHandler(connectServer, elizaServer{})
 	webtransportHandler := connectwebtransport.NewHandler(connectServer)
-	websocketHandler := connectwebsocket.NewHandler(connectServer, connectwebsocket.WithAcceptOptions(&websocket.AcceptOptions{
+	// Draft 3 negotiates compression through its subprotocols; the handler
+	// overrides Subprotocols and CompressionMode itself.
+	websocketDraft3Handler := draft3.NewHandler(connectServer, draft3.WithAcceptOptions(&websocket.AcceptOptions{
 		InsecureSkipVerify: true,
 	}))
+	// Draft 4's ASCII frame head is meant to be read, so this endpoint
+	// declines permessage-deflate: the browser's Network tab shows the
+	// frames as text rather than as compressed blobs.
+	websocketDraft4Handler := draft4.NewHandler(connectServer,
+		draft4.WithoutCompression(),
+		draft4.WithAcceptOptions(&websocket.AcceptOptions{
+			InsecureSkipVerify: true,
+		}),
+	)
 
-	// 2. One mux serves Connect over HTTP, the WebSocket endpoint, and the
+	// 2. One mux serves Connect over HTTP, the WebSocket endpoints, and the
 	// static demo site.
+	//
+	// draft5.Mount stands in for connecthttp.Mount: draft 5 has no path of
+	// its own, so it registers the procedure URLs themselves, each serving
+	// POST as ordinary Connect and GET+Upgrade as draft 5. Drafts 1, 3, and
+	// 4 keep a path each below.
+	//
+	// Draft 1 also takes the procedure from the URL, so in a deployment of
+	// its own it would mount on those same procedure URLs — draft1.Mount
+	// with an empty prefix. Here draft 5 already has them, so draft 1 gets
+	// a prefix; the procedure is the path's last two segments either way,
+	// and neither the protocol nor the client cares which.
 	mux := http.NewServeMux()
-	connecthttp.Mount(mux, connectServer)
-	mux.Handle("/websocket", websocketHandler)
+	draft5.Mount(mux, connectServer,
+		draft5.WithWebSocketAcceptOptions(&websocket.AcceptOptions{
+			InsecureSkipVerify: true,
+		}),
+	)
+	draft1.Mount(mux, connectServer, draft1.DefaultPathPrefix,
+		draft1.WithAcceptOptions(&websocket.AcceptOptions{
+			InsecureSkipVerify: true,
+		}),
+	)
+	// Draft 7 — the Connect-over-WebSocket specification — also names the
+	// procedure in the URL. Its specification provides for a path prefix,
+	// which is what lets it share this origin with draft 5: only its
+	// WebSocket side is mounted here, under the prefix, and the bare
+	// procedure URLs stay draft 5's.
+	draft7.MountWebSocket(mux, connectServer,
+		draft7.WithPathPrefix("/websocket-draft7"),
+		draft7.WithWebSocketAcceptOptions(&websocket.AcceptOptions{
+			InsecureSkipVerify: true,
+		}),
+	)
+	mux.Handle("/websocket-draft3", websocketDraft3Handler)
+	mux.Handle("/websocket-draft4", websocketDraft4Handler)
 	// The demo UI probes this endpoint to decide whether to offer the
 	// WebTransport option; this server terminates HTTP/3, so it does.
 	mux.HandleFunc("/capabilities.json", func(w http.ResponseWriter, _ *http.Request) {
@@ -152,7 +211,6 @@ func main() {
 	mux.Handle("/webtransport", webtransportHandler.UpgradeHandler(wtServer))
 
 	go func() {
-		log.Printf("UDP WebTransport/H3 server listening on https://localhost%s/webtransport", *addr)
 		udpAddr, err := net.ResolveUDPAddr("udp", *addr)
 		if err != nil {
 			log.Fatalf("failed to resolve UDP: %v", err)
@@ -161,6 +219,7 @@ func main() {
 		if err != nil {
 			log.Fatalf("failed to listen UDP: %v", err)
 		}
+		log.Printf("HTTP/3 (UDP) server listening on %s; WebTransport sessions at %s/webtransport", conn.LocalAddr(), displayURL(*addr))
 		if err := wtServer.Serve(conn); err != nil {
 			log.Fatalf("WebTransport server failed: %v", err)
 		}
@@ -174,7 +233,7 @@ func main() {
 		})
 	}
 
-	log.Printf("TCP HTTP/2 frontend server listening on https://localhost%s", *addr)
+	log.Printf("TCP HTTP/1.1+HTTP/2 frontend server listening on %s", displayURL(*addr))
 	server := &http.Server{
 		Addr:              *addr,
 		Handler:           withH3Headers(corsHandler),

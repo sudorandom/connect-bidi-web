@@ -12,9 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// These tests exercise `wrapWebSocket()` bridged to `handleMuxedBidiSocket()`
+// These tests exercise `wrapWebSocket()` bridged to `handleMuxedBidiSocketDraft3()`
 // end-to-end against a mock WebSocket-like object, proving the
-// DuplexMessageStream adapter itself is correct. `createBidiWebSocketHandler()`
+// DuplexMessageStream adapter itself is correct. `createBidiWebSocketDraft3Handler()`
 // additionally relies on the real Workers `WebSocketPair`/`Response.webSocket`
 // globals, which don't exist under plain Node -- that integration is
 // verified against `wrangler dev` instead (see the worker demo).
@@ -28,15 +28,13 @@ import type {
   EnvelopedMessage,
   UniversalHandler,
 } from "@connectrpc/connect/protocol";
-import { encodeEnvelope } from "@connectrpc/connect/protocol";
 import {
   contentTypeStreamProto,
   contentTypeUnaryProto,
-  endStreamFlag,
   endStreamFromJson,
   type EndStreamResponse,
 } from "@connectrpc/connect/protocol-connect";
-import { handleMuxedBidiSocket } from "@sudorandom/connect-bidi-core";
+import { handleMuxedBidiSocketDraft3 } from "@sudorandom/connect-bidi-core";
 import {
   CountUpRequestSchema,
   CountUpResponseSchema,
@@ -48,16 +46,17 @@ import {
 } from "./gen/connectbidi/ping/v1/ping_pb.js";
 import { wrapWebSocket } from "./websocket-like.js";
 
-// Wire-level constants for the bidi-web envelope protocol. These must match
-// @sudorandom/connect-bidi-core's wire.ts (and
-// @sudorandom/connect-bidi-web's client transports) -- they are not part of
-// connect-es's own protocol-connect flags, so they are redefined here rather
-// than imported, the same way each implementation of the wire protocol keeps
-// its own copy in sync by hand. Every WebSocket message is a 4-byte
-// big-endian stream ID followed by one Connect envelope.
-const flagEnvelopeHeaders = 0x06;
-const flagEnvelopeReset = 0x07;
-const flagEnvelopeData = 0x00;
+// Wire-level constants for draft 3 of the WebSocket protocol. They are
+// redefined here rather than imported, the same way each implementation of
+// the wire protocol keeps its own copy in sync by hand. Every WebSocket
+// message is a 4-byte big-endian stream ID, a descriptor byte carrying the
+// frame type in bits 0-6 and a compressed flag in bit 7, and the payload --
+// which the message boundary delimits, so there is no length field.
+const draft3TypeData = 0x00;
+const draft3TypeHeaders = 0x01;
+const draft3TypeEndStream = 0x02;
+const draft3TypeReset = 0x03;
+const draft3Compressed = 0x80;
 const streamIdLength = 4;
 
 // -- Test service implementation ---------------------------------------------
@@ -207,10 +206,16 @@ function toBytes(message: ArrayBuffer | ArrayBufferView | string): Uint8Array {
 
 // -- Wire-level test helpers --------------------------------------------------
 
-function prefixStreamId(streamId: number, envelope: Uint8Array): Uint8Array {
-  const frame = new Uint8Array(streamIdLength + envelope.byteLength);
+/** One draft 3 frame: stream ID, descriptor byte, payload. */
+function encodeFrame(
+  streamId: number,
+  type: number,
+  payload: Uint8Array,
+): Uint8Array {
+  const frame = new Uint8Array(streamIdLength + 1 + payload.byteLength);
   new DataView(frame.buffer).setUint32(0, streamId);
-  frame.set(envelope, streamIdLength);
+  frame[streamIdLength] = type;
+  frame.set(payload, streamIdLength + 1);
   return frame;
 }
 
@@ -221,30 +226,28 @@ function encodeHeadersFrame(
 ): Uint8Array {
   const metadata = { ":path": [path], "content-type": [contentType] };
   const payload = new TextEncoder().encode(JSON.stringify({ metadata }));
-  return prefixStreamId(streamId, encodeEnvelope(flagEnvelopeHeaders, payload));
+  return encodeFrame(streamId, draft3TypeHeaders, payload);
 }
 
 function encodeDataFrame(streamId: number, payload: Uint8Array): Uint8Array {
-  return prefixStreamId(streamId, encodeEnvelope(flagEnvelopeData, payload));
+  return encodeFrame(streamId, draft3TypeData, payload);
 }
 
 function encodeEndStreamFrame(streamId: number): Uint8Array {
-  return prefixStreamId(streamId, encodeEnvelope(endStreamFlag, new Uint8Array()));
+  return encodeFrame(streamId, draft3TypeEndStream, new Uint8Array());
 }
 
 function encodeResetFrame(streamId: number): Uint8Array {
-  return prefixStreamId(
-    streamId,
-    encodeEnvelope(flagEnvelopeReset, new Uint8Array()),
-  );
+  return encodeFrame(streamId, draft3TypeReset, new Uint8Array());
 }
 
 /**
- * Splits a `MockWebSocket`'s captured `send()` calls back into the
- * envelopes belonging to one stream. Each `send()` call here always carries
- * exactly one stream ID plus one complete envelope -- `wrapWebSocket`'s
- * writable forwards `handleMuxedBidiSocket`'s writes verbatim, and the
- * muxed handler only ever writes one complete frame per `write()` call.
+ * Splits a `MockWebSocket`'s captured `send()` calls back into the frames
+ * belonging to one stream, reported in the `EnvelopedMessage` shape the
+ * assertions below use: `flags` is the frame type. Each `send()` call here
+ * always carries exactly one frame -- `wrapWebSocket`'s writable forwards
+ * `handleMuxedBidiSocketDraft3`'s writes verbatim, and the muxed handler
+ * only ever writes one complete frame per `write()` call.
  */
 function parseSentEnvelopes(
   frames: readonly Uint8Array[],
@@ -253,18 +256,24 @@ function parseSentEnvelopes(
   const envelopes: EnvelopedMessage[] = [];
   for (const frame of frames) {
     assert.ok(
-      frame.byteLength >= streamIdLength + 5,
+      frame.byteLength >= streamIdLength + 1,
       `frame too short: ${frame.byteLength} bytes`,
     );
     const view = new DataView(frame.buffer, frame.byteOffset, frame.byteLength);
     if (view.getUint32(0) !== streamId) {
       continue;
     }
-    const flags = view.getUint8(streamIdLength);
-    const length = view.getUint32(streamIdLength + 1, false);
+    const descriptor = view.getUint8(streamIdLength);
+    assert.strictEqual(
+      descriptor & draft3Compressed,
+      0,
+      "these tests negotiate no compression, so no frame may set the deflate bit",
+    );
     envelopes.push({
-      flags,
-      data: frame.subarray(streamIdLength + 5, streamIdLength + 5 + length),
+      flags: descriptor & ~draft3Compressed,
+      // Draft 3 has no length field: the message boundary delimits the
+      // payload.
+      data: frame.subarray(streamIdLength + 1),
     });
   }
   return envelopes;
@@ -282,7 +291,7 @@ async function waitForEndStream(
 ): Promise<void> {
   const hasEndStream = (): boolean =>
     parseSentEnvelopes(socket.sentFrames, streamId).some(
-      (env) => env.flags === endStreamFlag,
+      (env) => env.flags === draft3TypeEndStream,
     );
   for (let i = 0; i < 1000 && !hasEndStream(); i++) {
     await new Promise((resolve) => setTimeout(resolve, 1));
@@ -301,9 +310,13 @@ function parseResponse(
   const envelopes = parseSentEnvelopes(frames, streamId);
   assert.ok(envelopes.length >= 2, "expected at least headers + end-stream");
   const [headers, ...rest] = envelopes;
-  assert.strictEqual(headers.flags, flagEnvelopeHeaders);
+  assert.strictEqual(headers.flags, draft3TypeHeaders);
   const last = rest[rest.length - 1];
-  assert.strictEqual(last.flags, endStreamFlag, "expected a trailing end-stream envelope");
+  assert.strictEqual(
+    last.flags,
+    draft3TypeEndStream,
+    "expected a trailing end-stream frame",
+  );
   return {
     headers,
     dataEnvelopes: rest.slice(0, -1),
@@ -313,7 +326,7 @@ function parseResponse(
 
 // -- Tests ---------------------------------------------------------------------
 
-describe("wrapWebSocket() + handleMuxedBidiSocket()", () => {
+describe("wrapWebSocket() + handleMuxedBidiSocketDraft3()", () => {
   it("unary success", async () => {
     const handlers = createTestHandlers();
     const handler = findHandler(handlers, "Ping");
@@ -334,7 +347,9 @@ describe("wrapWebSocket() + handleMuxedBidiSocket()", () => {
     );
     socket.emit(encodeEndStreamFrame(1));
 
-    const done = handleMuxedBidiSocket(duplex, handlers);
+    const done = handleMuxedBidiSocketDraft3(duplex, handlers, {
+      compression: false,
+    });
     await waitForEndStream(socket, 1);
     socket.close();
     await done;
@@ -368,14 +383,19 @@ describe("wrapWebSocket() + handleMuxedBidiSocket()", () => {
     );
     socket.emit(encodeEndStreamFrame(1));
 
-    const done = handleMuxedBidiSocket(duplex, handlers);
+    const done = handleMuxedBidiSocketDraft3(duplex, handlers, {
+      compression: false,
+    });
     await waitForEndStream(socket, 1);
     socket.close();
     await done;
 
     const response = parseResponse(socket.sentFrames, 1);
     assert.strictEqual(response.dataEnvelopes.length, 0);
-    assert.ok(response.end.error, "expected an error in the end-stream envelope");
+    assert.ok(
+      response.end.error,
+      "expected an error in the end-stream envelope",
+    );
     assert.strictEqual(response.end.error?.code, Code.InvalidArgument);
   });
 
@@ -399,7 +419,9 @@ describe("wrapWebSocket() + handleMuxedBidiSocket()", () => {
     );
     socket.emit(encodeEndStreamFrame(1));
 
-    const done = handleMuxedBidiSocket(duplex, handlers);
+    const done = handleMuxedBidiSocketDraft3(duplex, handlers, {
+      compression: false,
+    });
     await waitForEndStream(socket, 1);
     socket.close();
     await done;
@@ -423,9 +445,7 @@ describe("wrapWebSocket() + handleMuxedBidiSocket()", () => {
     socket.emit(
       encodeHeadersFrame(1, countUp.requestPath, contentTypeStreamProto),
     );
-    socket.emit(
-      encodeHeadersFrame(2, ping.requestPath, contentTypeUnaryProto),
-    );
+    socket.emit(encodeHeadersFrame(2, ping.requestPath, contentTypeUnaryProto));
     socket.emit(
       encodeDataFrame(
         2,
@@ -447,7 +467,9 @@ describe("wrapWebSocket() + handleMuxedBidiSocket()", () => {
     socket.emit(encodeEndStreamFrame(2));
     socket.emit(encodeEndStreamFrame(1));
 
-    const done = handleMuxedBidiSocket(duplex, handlers);
+    const done = handleMuxedBidiSocketDraft3(duplex, handlers, {
+      compression: false,
+    });
     await waitForEndStream(socket, 1);
     await waitForEndStream(socket, 2);
     socket.close();
@@ -491,9 +513,7 @@ describe("wrapWebSocket() + handleMuxedBidiSocket()", () => {
       ),
     );
     socket.emit(encodeResetFrame(1));
-    socket.emit(
-      encodeHeadersFrame(2, ping.requestPath, contentTypeUnaryProto),
-    );
+    socket.emit(encodeHeadersFrame(2, ping.requestPath, contentTypeUnaryProto));
     socket.emit(
       encodeDataFrame(
         2,
@@ -505,7 +525,9 @@ describe("wrapWebSocket() + handleMuxedBidiSocket()", () => {
     );
     socket.emit(encodeEndStreamFrame(2));
 
-    const done = handleMuxedBidiSocket(duplex, handlers);
+    const done = handleMuxedBidiSocketDraft3(duplex, handlers, {
+      compression: false,
+    });
     await waitForEndStream(socket, 2);
     socket.close();
     await done;
@@ -535,7 +557,7 @@ describe("wrapWebSocket() + handleMuxedBidiSocket()", () => {
 
     // Must resolve promptly (the aborted handler ends) rather than waiting
     // forever for request messages that can never arrive.
-    await handleMuxedBidiSocket(duplex, handlers);
+    await handleMuxedBidiSocketDraft3(duplex, handlers, { compression: false });
   });
 
   it("unknown :path yields an unimplemented error", async () => {
@@ -552,14 +574,19 @@ describe("wrapWebSocket() + handleMuxedBidiSocket()", () => {
     );
     socket.emit(encodeEndStreamFrame(1));
 
-    const done = handleMuxedBidiSocket(duplex, handlers);
+    const done = handleMuxedBidiSocketDraft3(duplex, handlers, {
+      compression: false,
+    });
     await waitForEndStream(socket, 1);
     socket.close();
     await done;
 
     const response = parseResponse(socket.sentFrames, 1);
     assert.strictEqual(response.dataEnvelopes.length, 0);
-    assert.ok(response.end.error, "expected an error in the end-stream envelope");
+    assert.ok(
+      response.end.error,
+      "expected an error in the end-stream envelope",
+    );
     assert.strictEqual(response.end.error?.code, Code.Unimplemented);
   });
 
@@ -576,7 +603,10 @@ describe("wrapWebSocket() + handleMuxedBidiSocket()", () => {
       encodeHeadersFrame(1, handler.requestPath, contentTypeStreamProto),
     );
 
-    await handleMuxedBidiSocket(duplex, handlers, { idleTimeoutMs: 20 });
+    await handleMuxedBidiSocketDraft3(duplex, handlers, {
+      compression: false,
+      idleTimeoutMs: 20,
+    });
 
     assert.ok(socket.closed, "expected the idle connection to be closed");
     assert.strictEqual(
@@ -622,7 +652,7 @@ describe("wrapWebSocket() + handleMuxedBidiSocket()", () => {
     // every subsequent send() throws, like on real workerd.
     socket.close();
 
-    await handleMuxedBidiSocket(duplex, handlers);
+    await handleMuxedBidiSocketDraft3(duplex, handlers, { compression: false });
 
     assert.strictEqual(
       socket.sentFrames.length,

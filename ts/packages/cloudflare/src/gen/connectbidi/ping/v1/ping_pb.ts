@@ -22,15 +22,26 @@
 // The connectbidi.ping.v1 package contains an echo service designed to test
 // the connect-bidi-web transports across every RPC shape.
 
-import type { GenFile, GenMessage, GenService } from "@bufbuild/protobuf/codegenv2";
-import { fileDesc, messageDesc, serviceDesc } from "@bufbuild/protobuf/codegenv2";
+import type {
+  GenFile,
+  GenMessage,
+  GenService,
+} from "@bufbuild/protobuf/codegenv2";
+import {
+  fileDesc,
+  messageDesc,
+  serviceDesc,
+} from "@bufbuild/protobuf/codegenv2";
 import type { Message } from "@bufbuild/protobuf";
 
 /**
  * Describes the file connectbidi/ping/v1/ping.proto.
  */
-export const file_connectbidi_ping_v1_ping: GenFile = /*@__PURE__*/
-  fileDesc("Ch5jb25uZWN0YmlkaS9waW5nL3YxL3BpbmcucHJvdG8SE2Nvbm5lY3RiaWRpLnBpbmcudjEiKwoLUGluZ1JlcXVlc3QSDgoGbnVtYmVyGAEgASgDEgwKBHRleHQYAiABKAkiLAoMUGluZ1Jlc3BvbnNlEg4KBm51bWJlchgBIAEoAxIMCgR0ZXh0GAIgASgJIhsKC0ZhaWxSZXF1ZXN0EgwKBGNvZGUYASABKAUiDgoMRmFpbFJlc3BvbnNlIhwKClN1bVJlcXVlc3QSDgoGbnVtYmVyGAEgASgDIhoKC1N1bVJlc3BvbnNlEgsKA3N1bRgBIAEoAyIgCg5Db3VudFVwUmVxdWVzdBIOCgZudW1iZXIYASABKAMiIQoPQ291bnRVcFJlc3BvbnNlEg4KBm51bWJlchgBIAEoAyIfCg1DdW1TdW1SZXF1ZXN0Eg4KBm51bWJlchgBIAEoAyIdCg5DdW1TdW1SZXNwb25zZRILCgNzdW0YASABKAMyrwMKC1BpbmdTZXJ2aWNlElAKBFBpbmcSIC5jb25uZWN0YmlkaS5waW5nLnYxLlBpbmdSZXF1ZXN0GiEuY29ubmVjdGJpZGkucGluZy52MS5QaW5nUmVzcG9uc2UiA5ACARJNCgRGYWlsEiAuY29ubmVjdGJpZGkucGluZy52MS5GYWlsUmVxdWVzdBohLmNvbm5lY3RiaWRpLnBpbmcudjEuRmFpbFJlc3BvbnNlIgASTAoDU3VtEh8uY29ubmVjdGJpZGkucGluZy52MS5TdW1SZXF1ZXN0GiAuY29ubmVjdGJpZGkucGluZy52MS5TdW1SZXNwb25zZSIAKAESWAoHQ291bnRVcBIjLmNvbm5lY3RiaWRpLnBpbmcudjEuQ291bnRVcFJlcXVlc3QaJC5jb25uZWN0YmlkaS5waW5nLnYxLkNvdW50VXBSZXNwb25zZSIAMAESVwoGQ3VtU3VtEiIuY29ubmVjdGJpZGkucGluZy52MS5DdW1TdW1SZXF1ZXN0GiMuY29ubmVjdGJpZGkucGluZy52MS5DdW1TdW1SZXNwb25zZSIAKAEwAWIGcHJvdG8z");
+export const file_connectbidi_ping_v1_ping: GenFile =
+  /*@__PURE__*/
+  fileDesc(
+    "Ch5jb25uZWN0YmlkaS9waW5nL3YxL3BpbmcucHJvdG8SE2Nvbm5lY3RiaWRpLnBpbmcudjEiKwoLUGluZ1JlcXVlc3QSDgoGbnVtYmVyGAEgASgDEgwKBHRleHQYAiABKAkiLAoMUGluZ1Jlc3BvbnNlEg4KBm51bWJlchgBIAEoAxIMCgR0ZXh0GAIgASgJIhsKC0ZhaWxSZXF1ZXN0EgwKBGNvZGUYASABKAUiDgoMRmFpbFJlc3BvbnNlIhwKClN1bVJlcXVlc3QSDgoGbnVtYmVyGAEgASgDIhoKC1N1bVJlc3BvbnNlEgsKA3N1bRgBIAEoAyIgCg5Db3VudFVwUmVxdWVzdBIOCgZudW1iZXIYASABKAMiIQoPQ291bnRVcFJlc3BvbnNlEg4KBm51bWJlchgBIAEoAyIfCg1DdW1TdW1SZXF1ZXN0Eg4KBm51bWJlchgBIAEoAyIdCg5DdW1TdW1SZXNwb25zZRILCgNzdW0YASABKAMyrwMKC1BpbmdTZXJ2aWNlElAKBFBpbmcSIC5jb25uZWN0YmlkaS5waW5nLnYxLlBpbmdSZXF1ZXN0GiEuY29ubmVjdGJpZGkucGluZy52MS5QaW5nUmVzcG9uc2UiA5ACARJNCgRGYWlsEiAuY29ubmVjdGJpZGkucGluZy52MS5GYWlsUmVxdWVzdBohLmNvbm5lY3RiaWRpLnBpbmcudjEuRmFpbFJlc3BvbnNlIgASTAoDU3VtEh8uY29ubmVjdGJpZGkucGluZy52MS5TdW1SZXF1ZXN0GiAuY29ubmVjdGJpZGkucGluZy52MS5TdW1SZXNwb25zZSIAKAESWAoHQ291bnRVcBIjLmNvbm5lY3RiaWRpLnBpbmcudjEuQ291bnRVcFJlcXVlc3QaJC5jb25uZWN0YmlkaS5waW5nLnYxLkNvdW50VXBSZXNwb25zZSIAMAESVwoGQ3VtU3VtEiIuY29ubmVjdGJpZGkucGluZy52MS5DdW1TdW1SZXF1ZXN0GiMuY29ubmVjdGJpZGkucGluZy52MS5DdW1TdW1SZXNwb25zZSIAKAEwAWIGcHJvdG8z",
+  );
 
 /**
  * @generated from message connectbidi.ping.v1.PingRequest
@@ -55,7 +66,8 @@ export type PingRequest = Message<"connectbidi.ping.v1.PingRequest"> & {
  * Describes the message connectbidi.ping.v1.PingRequest.
  * Use `create(PingRequestSchema)` to create a new message.
  */
-export const PingRequestSchema: GenMessage<PingRequest> = /*@__PURE__*/
+export const PingRequestSchema: GenMessage<PingRequest> =
+  /*@__PURE__*/
   messageDesc(file_connectbidi_ping_v1_ping, 0);
 
 /**
@@ -81,7 +93,8 @@ export type PingResponse = Message<"connectbidi.ping.v1.PingResponse"> & {
  * Describes the message connectbidi.ping.v1.PingResponse.
  * Use `create(PingResponseSchema)` to create a new message.
  */
-export const PingResponseSchema: GenMessage<PingResponse> = /*@__PURE__*/
+export const PingResponseSchema: GenMessage<PingResponse> =
+  /*@__PURE__*/
   messageDesc(file_connectbidi_ping_v1_ping, 1);
 
 /**
@@ -100,20 +113,21 @@ export type FailRequest = Message<"connectbidi.ping.v1.FailRequest"> & {
  * Describes the message connectbidi.ping.v1.FailRequest.
  * Use `create(FailRequestSchema)` to create a new message.
  */
-export const FailRequestSchema: GenMessage<FailRequest> = /*@__PURE__*/
+export const FailRequestSchema: GenMessage<FailRequest> =
+  /*@__PURE__*/
   messageDesc(file_connectbidi_ping_v1_ping, 2);
 
 /**
  * @generated from message connectbidi.ping.v1.FailResponse
  */
-export type FailResponse = Message<"connectbidi.ping.v1.FailResponse"> & {
-};
+export type FailResponse = Message<"connectbidi.ping.v1.FailResponse"> & {};
 
 /**
  * Describes the message connectbidi.ping.v1.FailResponse.
  * Use `create(FailResponseSchema)` to create a new message.
  */
-export const FailResponseSchema: GenMessage<FailResponse> = /*@__PURE__*/
+export const FailResponseSchema: GenMessage<FailResponse> =
+  /*@__PURE__*/
   messageDesc(file_connectbidi_ping_v1_ping, 3);
 
 /**
@@ -132,7 +146,8 @@ export type SumRequest = Message<"connectbidi.ping.v1.SumRequest"> & {
  * Describes the message connectbidi.ping.v1.SumRequest.
  * Use `create(SumRequestSchema)` to create a new message.
  */
-export const SumRequestSchema: GenMessage<SumRequest> = /*@__PURE__*/
+export const SumRequestSchema: GenMessage<SumRequest> =
+  /*@__PURE__*/
   messageDesc(file_connectbidi_ping_v1_ping, 4);
 
 /**
@@ -151,7 +166,8 @@ export type SumResponse = Message<"connectbidi.ping.v1.SumResponse"> & {
  * Describes the message connectbidi.ping.v1.SumResponse.
  * Use `create(SumResponseSchema)` to create a new message.
  */
-export const SumResponseSchema: GenMessage<SumResponse> = /*@__PURE__*/
+export const SumResponseSchema: GenMessage<SumResponse> =
+  /*@__PURE__*/
   messageDesc(file_connectbidi_ping_v1_ping, 5);
 
 /**
@@ -170,7 +186,8 @@ export type CountUpRequest = Message<"connectbidi.ping.v1.CountUpRequest"> & {
  * Describes the message connectbidi.ping.v1.CountUpRequest.
  * Use `create(CountUpRequestSchema)` to create a new message.
  */
-export const CountUpRequestSchema: GenMessage<CountUpRequest> = /*@__PURE__*/
+export const CountUpRequestSchema: GenMessage<CountUpRequest> =
+  /*@__PURE__*/
   messageDesc(file_connectbidi_ping_v1_ping, 6);
 
 /**
@@ -189,7 +206,8 @@ export type CountUpResponse = Message<"connectbidi.ping.v1.CountUpResponse"> & {
  * Describes the message connectbidi.ping.v1.CountUpResponse.
  * Use `create(CountUpResponseSchema)` to create a new message.
  */
-export const CountUpResponseSchema: GenMessage<CountUpResponse> = /*@__PURE__*/
+export const CountUpResponseSchema: GenMessage<CountUpResponse> =
+  /*@__PURE__*/
   messageDesc(file_connectbidi_ping_v1_ping, 7);
 
 /**
@@ -208,7 +226,8 @@ export type CumSumRequest = Message<"connectbidi.ping.v1.CumSumRequest"> & {
  * Describes the message connectbidi.ping.v1.CumSumRequest.
  * Use `create(CumSumRequestSchema)` to create a new message.
  */
-export const CumSumRequestSchema: GenMessage<CumSumRequest> = /*@__PURE__*/
+export const CumSumRequestSchema: GenMessage<CumSumRequest> =
+  /*@__PURE__*/
   messageDesc(file_connectbidi_ping_v1_ping, 8);
 
 /**
@@ -227,7 +246,8 @@ export type CumSumResponse = Message<"connectbidi.ping.v1.CumSumResponse"> & {
  * Describes the message connectbidi.ping.v1.CumSumResponse.
  * Use `create(CumSumResponseSchema)` to create a new message.
  */
-export const CumSumResponseSchema: GenMessage<CumSumResponse> = /*@__PURE__*/
+export const CumSumResponseSchema: GenMessage<CumSumResponse> =
+  /*@__PURE__*/
   messageDesc(file_connectbidi_ping_v1_ping, 9);
 
 /**
@@ -243,7 +263,7 @@ export const PingService: GenService<{
     methodKind: "unary";
     input: typeof PingRequestSchema;
     output: typeof PingResponseSchema;
-  },
+  };
   /**
    * Fail always fails.
    *
@@ -253,7 +273,7 @@ export const PingService: GenService<{
     methodKind: "unary";
     input: typeof FailRequestSchema;
     output: typeof FailResponseSchema;
-  },
+  };
   /**
    * Sum calculates the sum of the numbers sent on the stream.
    *
@@ -263,7 +283,7 @@ export const PingService: GenService<{
     methodKind: "client_streaming";
     input: typeof SumRequestSchema;
     output: typeof SumResponseSchema;
-  },
+  };
   /**
    * CountUp returns a stream of the numbers up to the given request.
    *
@@ -273,7 +293,7 @@ export const PingService: GenService<{
     methodKind: "server_streaming";
     input: typeof CountUpRequestSchema;
     output: typeof CountUpResponseSchema;
-  },
+  };
   /**
    * CumSum determines the cumulative sum of all the numbers sent on the stream.
    *
@@ -283,7 +303,5 @@ export const PingService: GenService<{
     methodKind: "bidi_streaming";
     input: typeof CumSumRequestSchema;
     output: typeof CumSumResponseSchema;
-  },
-}> = /*@__PURE__*/
-  serviceDesc(file_connectbidi_ping_v1_ping, 0);
-
+  };
+}> = /*@__PURE__*/ serviceDesc(file_connectbidi_ping_v1_ping, 0);

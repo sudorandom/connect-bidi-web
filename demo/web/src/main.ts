@@ -13,6 +13,7 @@
 // limitations under the License.
 
 import { createClient } from "@connectrpc/connect";
+import { renderBenchmarks } from "./demo/benchmarks.js";
 import { createChatView } from "./demo/chat-view.js";
 import { requireElement } from "./demo/dom.js";
 import { highlightCodeExamples } from "./demo/highlight.js";
@@ -31,23 +32,76 @@ function transportLabel(
   choice: StreamingTransportChoice,
   connectionPerStream: boolean,
 ): string {
+  if (choice === "auto") {
+    return "Auto (degrading)";
+  }
   if (choice === "webtransport") {
     return "WebTransport";
   }
+  if (
+    choice === "websocket-draft1" ||
+    choice === "websocket-draft5" ||
+    choice === "websocket-draft7"
+  ) {
+    // Drafts 1, 5, and 7 are always one connection per RPC; the toggle
+    // does not apply.
+    const draft = choice.slice("websocket-draft".length);
+    return `WebSocket Draft ${draft} (connection per RPC)`;
+  }
+  const draft =
+    choice === "websocket-draft4" ? "WebSocket Draft 4" : "WebSocket Draft 3";
+  // Only drafts 3 and 4 reach here; every other WebSocket choice returned
+  // above.
   return connectionPerStream
-    ? "WebSocket (connection per RPC)"
-    : "WebSocket (multiplexed)";
+    ? `${draft} (connection per RPC)`
+    : `${draft} (multiplexed)`;
+}
+
+/**
+ * Most of the page's detail sits behind <details>. A link into one of them
+ * — the README's #benchmarks, a draft card's id — would otherwise land on
+ * a closed fold, so the fold containing the fragment target is opened on
+ * load and whenever the hash changes.
+ */
+function openDetailsForHash(): void {
+  const hash = window.location.hash;
+  if (hash.length < 2) {
+    return;
+  }
+  let target: Element | null;
+  try {
+    target = document.querySelector(hash);
+  } catch {
+    return;
+  }
+  for (let node = target; node !== null; node = node.parentElement) {
+    if (node instanceof HTMLDetailsElement) {
+      node.open = true;
+    }
+  }
+  target?.scrollIntoView();
 }
 
 /** Wires up the live demo: transport/server controls, tabs, and RPC views. */
 function main(): void {
   highlightCodeExamples();
+  renderBenchmarks();
+  openDetailsForHash();
+  window.addEventListener("hashchange", openDetailsForHash);
 
-  // Transport tabs on the code example sections (WebSocket is the default).
+  // Transport tabs on the code example sections (draft 7 is the default).
   initTabs([
+    {
+      buttonId: "code-tab-btn-ts-websocket-draft7",
+      panelId: "code-panel-ts-websocket-draft7",
+    },
     {
       buttonId: "code-tab-btn-ts-websocket",
       panelId: "code-panel-ts-websocket",
+    },
+    {
+      buttonId: "code-tab-btn-ts-websocket-draft4",
+      panelId: "code-panel-ts-websocket-draft4",
     },
     {
       buttonId: "code-tab-btn-ts-webtransport",
@@ -56,8 +110,16 @@ function main(): void {
   ]);
   initTabs([
     {
+      buttonId: "code-tab-btn-go-websocket-draft7",
+      panelId: "code-panel-go-websocket-draft7",
+    },
+    {
       buttonId: "code-tab-btn-go-websocket",
       panelId: "code-panel-go-websocket",
+    },
+    {
+      buttonId: "code-tab-btn-go-websocket-draft4",
+      panelId: "code-panel-go-websocket-draft4",
     },
     {
       buttonId: "code-tab-btn-go-webtransport",
@@ -82,7 +144,11 @@ function main(): void {
   const webTransportLabel = webTransportOption?.innerText ?? "WebTransport";
   const realitySection = requireElement<HTMLElement>("#webtransport-reality");
 
+  // The /capabilities.json probe's answer; undefined until it lands.
+  let serverWebTransport: boolean | undefined;
+
   function setWebTransportAvailable(available: boolean): void {
+    serverWebTransport = available;
     if (webTransportOption !== null) {
       webTransportOption.disabled = !available;
       webTransportOption.innerText = available
@@ -95,7 +161,12 @@ function main(): void {
     // the Cloudflare Workers deployment.
     realitySection.classList.toggle("hidden", available);
     if (!available && transportSelect.value === "webtransport") {
-      transportSelect.value = "websocket";
+      transportSelect.value = "websocket-draft7";
+      applyTransportChange();
+    } else if (transportSelect.value === "auto") {
+      // The Auto ladder was built before the probe answered; rebuild it so
+      // a server without WebTransport doesn't cost every RPC a handshake
+      // timeout on a rung that can never work.
       applyTransportChange();
     }
   }
@@ -125,29 +196,57 @@ function main(): void {
   }
 
   function currentChoice(): StreamingTransportChoice {
-    return transportSelect.value === "webtransport"
-      ? "webtransport"
-      : "websocket";
+    switch (transportSelect.value) {
+      case "auto":
+        return "auto";
+      case "webtransport":
+        return "webtransport";
+      case "websocket-draft1":
+        return "websocket-draft1";
+      case "websocket-draft4":
+        return "websocket-draft4";
+      case "websocket-draft5":
+        return "websocket-draft5";
+      case "websocket-draft3":
+        return "websocket-draft3";
+      default:
+        // Draft 7 is the default: the specification, and where the drafts
+        // converged.
+        return "websocket-draft7";
+    }
   }
 
-  // The third dropdown option is still the WebSocket transport, just with
-  // a dedicated connection per streaming RPC instead of multiplexing.
+  // Connection-per-RPC is a separate toggle that applies to whichever
+  // WebSocket draft is selected; WebTransport and Auto ignore it (QUIC
+  // streams make the question moot).
+  const perStreamCheckbox = requireElement<HTMLInputElement>(
+    "#connection-per-stream",
+  );
+
   function connectionPerStream(): boolean {
-    return transportSelect.value === "websocket-per-rpc";
+    return perStreamCheckbox.checked;
+  }
+
+  function refreshPerStreamCheckbox(): void {
+    const choice = currentChoice();
+    perStreamCheckbox.disabled =
+      choice === "auto" || choice === "webtransport";
   }
 
   // Pick a safe initial choice before building any transport: the select
   // may default to WebTransport, and constructing an impossible transport
   // throws synchronously, which would take the whole demo down with it.
-  // The badge and dropdown state are reconciled by the
-  // refreshWebTransportAvailability() call further down, once the swap
-  // machinery it pokes actually exists.
-  if (!webTransportPossible()) {
-    transportSelect.value = "websocket";
+  // "auto" needs no such guard — the degrading ladder simply starts at
+  // WebSocket when WebTransport is impossible. The badge and dropdown
+  // state are reconciled by the refreshWebTransportAvailability() call
+  // further down, once the swap machinery it pokes actually exists.
+  if (!webTransportPossible() && transportSelect.value === "webtransport") {
+    transportSelect.value = "websocket-draft7";
   }
 
   const initial = createDemoTransport(currentChoice(), serverUrl, {
     connectionPerStream: connectionPerStream(),
+    serverWebTransport,
   });
   const swappable = new SwappableTransport(initial.transport);
   const client = createClient(ElizaService, swappable);
@@ -172,6 +271,7 @@ function main(): void {
     try {
       const next = createDemoTransport(choice, serverUrl, {
         connectionPerStream: connectionPerStream(),
+        serverWebTransport,
       });
       // Running lanes hold streams on the old transport; stop them rather
       // than leaving them running against a transport that is no longer
@@ -185,9 +285,12 @@ function main(): void {
     } catch (err) {
       console.error("failed to switch transport:", err);
     }
+    refreshPerStreamCheckbox();
   }
 
   transportSelect.addEventListener("change", applyTransportChange);
+  perStreamCheckbox.addEventListener("change", applyTransportChange);
+  refreshPerStreamCheckbox();
 
   // The only request the page makes on load. It never invokes the deployed
   // Worker: /capabilities.json is served from static assets (it isn't in

@@ -22,7 +22,13 @@
 import type { ServiceImpl } from "@connectrpc/connect";
 import { createConnectRouter } from "@connectrpc/connect";
 import { createFetchHandler } from "@connectrpc/connect/protocol";
-import { createBidiWebSocketHandler } from "@sudorandom/connect-bidi-cloudflare";
+import {
+  createBidiWebSocketDraft1Handler,
+  createBidiWebSocketDraft3Handler,
+  createBidiWebSocketDraft4Handler,
+  createBidiWebSocketDraft5Handler,
+  createBidiWebSocketDraft7Handler,
+} from "@sudorandom/connect-bidi-cloudflare";
 import { ElizaService } from "./gen/connectbidi/eliza/v1/eliza_pb.js";
 
 const elizaImpl: ServiceImpl<typeof ElizaService> = {
@@ -59,13 +65,57 @@ const rpcHandlers = new Map(
   ]),
 );
 
-const handleWebSocketUpgrade = createBidiWebSocketHandler(router.handlers, {
+const bidiSocketOptions = {
   // Cost control: a connection that sends nothing for a minute is torn
   // down instead of pinning this invocation until the platform reaps it
   // (which shows up as a "hung request" error). The demo client re-dials
   // transparently on the next message.
   idleTimeoutMs: 60_000,
-  onError: (error) => console.error("bidi websocket error:", error),
+  onError: (error: unknown) => console.error("bidi websocket error:", error),
+};
+// The WebSocket wire-protocol drafts are incompatible, so each path is
+// served by the handler that speaks its draft.
+const webSocketUpgradeHandlers: Record<
+  string,
+  (request: Request) => Response | null
+> = {
+  "/websocket-draft3": createBidiWebSocketDraft3Handler(
+    router.handlers,
+    bidiSocketOptions,
+  ),
+  "/websocket-draft4": createBidiWebSocketDraft4Handler(
+    router.handlers,
+    bidiSocketOptions,
+  ),
+};
+
+// Drafts 1, 5, and 7 all take the procedure from the URL, so none is looked
+// up by an exact path: each is consulted for every request and returns null
+// for anything that is not an upgrade addressed to a streaming procedure,
+// which is how unary RPCs fall through to the Connect fetch handler on the
+// very same URL.
+//
+// Draft 5 gets the procedure URLs themselves. Draft 1 would want them too,
+// so on this one origin it takes a prefix instead — the procedure is the
+// path's last two segments either way, and neither the protocol nor the
+// client cares what precedes them.
+const draft5Upgrade = createBidiWebSocketDraft5Handler(router.handlers, {
+  onError: bidiSocketOptions.onError,
+});
+const draft1Upgrade = createBidiWebSocketDraft1Handler(router.handlers, {
+  pathPrefix: "/websocket-draft1",
+  onError: bidiSocketOptions.onError,
+});
+// Draft 7 — the Connect-over-WebSocket specification — likewise takes a
+// prefix, which its specification provides for exactly this reason. The
+// demo site may be served from another origin than the Worker, so the
+// same-host origin rule is relaxed here; a deployment of its own would
+// list the origins it serves.
+const draft7Upgrade = createBidiWebSocketDraft7Handler(router.handlers, {
+  pathPrefix: "/websocket-draft7",
+  allowedOrigins: () => true,
+  serverTimeoutMs: 60_000,
+  onError: bidiSocketOptions.onError,
 });
 
 // WebTransport is not available on Cloudflare Workers; the demo UI probes
@@ -94,10 +144,30 @@ function withCors(res: Response): Response {
 
 export default {
   async fetch(request: Request): Promise<Response> {
-    // Bidi streaming: one WebSocket connection, RPCs multiplexed by stream ID.
-    const upgraded = handleWebSocketUpgrade(request);
+    // Bidi streaming for drafts 1, 3, and 4: one WebSocket connection,
+    // RPCs multiplexed by stream ID, with the path selecting the draft.
+    const upgradePath = new URL(request.url).pathname;
+    const upgraded =
+      webSocketUpgradeHandlers[upgradePath]?.(request) ?? null;
     if (upgraded !== null) {
       return upgraded;
+    }
+    // ...and for drafts 1 and 5, one WebSocket per streaming RPC, on the
+    // RPC's own URL.
+    const upgradedDraft1 = draft1Upgrade(request);
+    if (upgradedDraft1 !== null) {
+      return upgradedDraft1;
+    }
+    const upgradedDraft5 = draft5Upgrade(request);
+    if (upgradedDraft5 !== null) {
+      return upgradedDraft5;
+    }
+    // Draft 7 comes after draft 5 on purpose: with a prefix configured it
+    // answers an upgrade at a bare procedure URL with 400, and on this
+    // origin those URLs are draft 5's.
+    const upgradedDraft7 = draft7Upgrade(request);
+    if (upgradedDraft7 !== null) {
+      return upgradedDraft7;
     }
 
     if (request.method === "OPTIONS") {

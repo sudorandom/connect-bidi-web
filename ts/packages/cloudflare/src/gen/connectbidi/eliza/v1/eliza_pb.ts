@@ -22,15 +22,26 @@
 // The connectbidi.eliza.v1 package contains the demo chat service used by the
 // connect-bidi-web demo application.
 
-import type { GenFile, GenMessage, GenService } from "@bufbuild/protobuf/codegenv2";
-import { fileDesc, messageDesc, serviceDesc } from "@bufbuild/protobuf/codegenv2";
+import type {
+  GenFile,
+  GenMessage,
+  GenService,
+} from "@bufbuild/protobuf/codegenv2";
+import {
+  fileDesc,
+  messageDesc,
+  serviceDesc,
+} from "@bufbuild/protobuf/codegenv2";
 import type { Message } from "@bufbuild/protobuf";
 
 /**
  * Describes the file connectbidi/eliza/v1/eliza.proto.
  */
-export const file_connectbidi_eliza_v1_eliza: GenFile = /*@__PURE__*/
-  fileDesc("CiBjb25uZWN0YmlkaS9lbGl6YS92MS9lbGl6YS5wcm90bxIUY29ubmVjdGJpZGkuZWxpemEudjEiHgoKU2F5UmVxdWVzdBIQCghzZW50ZW5jZRgBIAEoCSIfCgtTYXlSZXNwb25zZRIQCghzZW50ZW5jZRgBIAEoCSIjCg9Db252ZXJzZVJlcXVlc3QSEAoIc2VudGVuY2UYASABKAkiJAoQQ29udmVyc2VSZXNwb25zZRIQCghzZW50ZW5jZRgBIAEoCSIgChBJbnRyb2R1Y2VSZXF1ZXN0EgwKBG5hbWUYASABKAkiJQoRSW50cm9kdWNlUmVzcG9uc2USEAoIc2VudGVuY2UYASABKAkynwIKDEVsaXphU2VydmljZRJMCgNTYXkSIC5jb25uZWN0YmlkaS5lbGl6YS52MS5TYXlSZXF1ZXN0GiEuY29ubmVjdGJpZGkuZWxpemEudjEuU2F5UmVzcG9uc2UiABJfCghDb252ZXJzZRIlLmNvbm5lY3RiaWRpLmVsaXphLnYxLkNvbnZlcnNlUmVxdWVzdBomLmNvbm5lY3RiaWRpLmVsaXphLnYxLkNvbnZlcnNlUmVzcG9uc2UiACgBMAESYAoJSW50cm9kdWNlEiYuY29ubmVjdGJpZGkuZWxpemEudjEuSW50cm9kdWNlUmVxdWVzdBonLmNvbm5lY3RiaWRpLmVsaXphLnYxLkludHJvZHVjZVJlc3BvbnNlIgAwAWIGcHJvdG8z");
+export const file_connectbidi_eliza_v1_eliza: GenFile =
+  /*@__PURE__*/
+  fileDesc(
+    "CiBjb25uZWN0YmlkaS9lbGl6YS92MS9lbGl6YS5wcm90bxIUY29ubmVjdGJpZGkuZWxpemEudjEiHgoKU2F5UmVxdWVzdBIQCghzZW50ZW5jZRgBIAEoCSIfCgtTYXlSZXNwb25zZRIQCghzZW50ZW5jZRgBIAEoCSIjCg9Db252ZXJzZVJlcXVlc3QSEAoIc2VudGVuY2UYASABKAkiJAoQQ29udmVyc2VSZXNwb25zZRIQCghzZW50ZW5jZRgBIAEoCSIgChBJbnRyb2R1Y2VSZXF1ZXN0EgwKBG5hbWUYASABKAkiJQoRSW50cm9kdWNlUmVzcG9uc2USEAoIc2VudGVuY2UYASABKAkynwIKDEVsaXphU2VydmljZRJMCgNTYXkSIC5jb25uZWN0YmlkaS5lbGl6YS52MS5TYXlSZXF1ZXN0GiEuY29ubmVjdGJpZGkuZWxpemEudjEuU2F5UmVzcG9uc2UiABJfCghDb252ZXJzZRIlLmNvbm5lY3RiaWRpLmVsaXphLnYxLkNvbnZlcnNlUmVxdWVzdBomLmNvbm5lY3RiaWRpLmVsaXphLnYxLkNvbnZlcnNlUmVzcG9uc2UiACgBMAESYAoJSW50cm9kdWNlEiYuY29ubmVjdGJpZGkuZWxpemEudjEuSW50cm9kdWNlUmVxdWVzdBonLmNvbm5lY3RiaWRpLmVsaXphLnYxLkludHJvZHVjZVJlc3BvbnNlIgAwAWIGcHJvdG8z",
+  );
 
 /**
  * @generated from message connectbidi.eliza.v1.SayRequest
@@ -48,7 +59,8 @@ export type SayRequest = Message<"connectbidi.eliza.v1.SayRequest"> & {
  * Describes the message connectbidi.eliza.v1.SayRequest.
  * Use `create(SayRequestSchema)` to create a new message.
  */
-export const SayRequestSchema: GenMessage<SayRequest> = /*@__PURE__*/
+export const SayRequestSchema: GenMessage<SayRequest> =
+  /*@__PURE__*/
   messageDesc(file_connectbidi_eliza_v1_eliza, 0);
 
 /**
@@ -67,83 +79,92 @@ export type SayResponse = Message<"connectbidi.eliza.v1.SayResponse"> & {
  * Describes the message connectbidi.eliza.v1.SayResponse.
  * Use `create(SayResponseSchema)` to create a new message.
  */
-export const SayResponseSchema: GenMessage<SayResponse> = /*@__PURE__*/
+export const SayResponseSchema: GenMessage<SayResponse> =
+  /*@__PURE__*/
   messageDesc(file_connectbidi_eliza_v1_eliza, 1);
 
 /**
  * @generated from message connectbidi.eliza.v1.ConverseRequest
  */
-export type ConverseRequest = Message<"connectbidi.eliza.v1.ConverseRequest"> & {
-  /**
-   * The sentence said to Eliza.
-   *
-   * @generated from field: string sentence = 1;
-   */
-  sentence: string;
-};
+export type ConverseRequest =
+  Message<"connectbidi.eliza.v1.ConverseRequest"> & {
+    /**
+     * The sentence said to Eliza.
+     *
+     * @generated from field: string sentence = 1;
+     */
+    sentence: string;
+  };
 
 /**
  * Describes the message connectbidi.eliza.v1.ConverseRequest.
  * Use `create(ConverseRequestSchema)` to create a new message.
  */
-export const ConverseRequestSchema: GenMessage<ConverseRequest> = /*@__PURE__*/
+export const ConverseRequestSchema: GenMessage<ConverseRequest> =
+  /*@__PURE__*/
   messageDesc(file_connectbidi_eliza_v1_eliza, 2);
 
 /**
  * @generated from message connectbidi.eliza.v1.ConverseResponse
  */
-export type ConverseResponse = Message<"connectbidi.eliza.v1.ConverseResponse"> & {
-  /**
-   * Eliza's reply.
-   *
-   * @generated from field: string sentence = 1;
-   */
-  sentence: string;
-};
+export type ConverseResponse =
+  Message<"connectbidi.eliza.v1.ConverseResponse"> & {
+    /**
+     * Eliza's reply.
+     *
+     * @generated from field: string sentence = 1;
+     */
+    sentence: string;
+  };
 
 /**
  * Describes the message connectbidi.eliza.v1.ConverseResponse.
  * Use `create(ConverseResponseSchema)` to create a new message.
  */
-export const ConverseResponseSchema: GenMessage<ConverseResponse> = /*@__PURE__*/
+export const ConverseResponseSchema: GenMessage<ConverseResponse> =
+  /*@__PURE__*/
   messageDesc(file_connectbidi_eliza_v1_eliza, 3);
 
 /**
  * @generated from message connectbidi.eliza.v1.IntroduceRequest
  */
-export type IntroduceRequest = Message<"connectbidi.eliza.v1.IntroduceRequest"> & {
-  /**
-   * The name of the person Eliza introduces itself to.
-   *
-   * @generated from field: string name = 1;
-   */
-  name: string;
-};
+export type IntroduceRequest =
+  Message<"connectbidi.eliza.v1.IntroduceRequest"> & {
+    /**
+     * The name of the person Eliza introduces itself to.
+     *
+     * @generated from field: string name = 1;
+     */
+    name: string;
+  };
 
 /**
  * Describes the message connectbidi.eliza.v1.IntroduceRequest.
  * Use `create(IntroduceRequestSchema)` to create a new message.
  */
-export const IntroduceRequestSchema: GenMessage<IntroduceRequest> = /*@__PURE__*/
+export const IntroduceRequestSchema: GenMessage<IntroduceRequest> =
+  /*@__PURE__*/
   messageDesc(file_connectbidi_eliza_v1_eliza, 4);
 
 /**
  * @generated from message connectbidi.eliza.v1.IntroduceResponse
  */
-export type IntroduceResponse = Message<"connectbidi.eliza.v1.IntroduceResponse"> & {
-  /**
-   * One sentence of Eliza's introduction.
-   *
-   * @generated from field: string sentence = 1;
-   */
-  sentence: string;
-};
+export type IntroduceResponse =
+  Message<"connectbidi.eliza.v1.IntroduceResponse"> & {
+    /**
+     * One sentence of Eliza's introduction.
+     *
+     * @generated from field: string sentence = 1;
+     */
+    sentence: string;
+  };
 
 /**
  * Describes the message connectbidi.eliza.v1.IntroduceResponse.
  * Use `create(IntroduceResponseSchema)` to create a new message.
  */
-export const IntroduceResponseSchema: GenMessage<IntroduceResponse> = /*@__PURE__*/
+export const IntroduceResponseSchema: GenMessage<IntroduceResponse> =
+  /*@__PURE__*/
   messageDesc(file_connectbidi_eliza_v1_eliza, 5);
 
 /**
@@ -159,7 +180,7 @@ export const ElizaService: GenService<{
     methodKind: "unary";
     input: typeof SayRequestSchema;
     output: typeof SayResponseSchema;
-  },
+  };
   /**
    * Converse is a bidirectional RPC. The caller may exchange multiple
    * back-and-forth messages with Eliza over a long-lived connection.
@@ -170,7 +191,7 @@ export const ElizaService: GenService<{
     methodKind: "bidi_streaming";
     input: typeof ConverseRequestSchema;
     output: typeof ConverseResponseSchema;
-  },
+  };
   /**
    * Introduce is a server streaming RPC. Given the caller's name, Eliza
    * returns a stream of sentences to introduce itself.
@@ -181,7 +202,5 @@ export const ElizaService: GenService<{
     methodKind: "server_streaming";
     input: typeof IntroduceRequestSchema;
     output: typeof IntroduceResponseSchema;
-  },
-}> = /*@__PURE__*/
-  serviceDesc(file_connectbidi_eliza_v1_eliza, 0);
-
+  };
+}> = /*@__PURE__*/ serviceDesc(file_connectbidi_eliza_v1_eliza, 0);

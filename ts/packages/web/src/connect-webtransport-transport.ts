@@ -71,6 +71,65 @@ export interface ConnectWebTransportTransportOptions {
 }
 
 /**
+ * Bounds the session handshake when it neither succeeds nor fails. A
+ * server that speaks HTTP/3 but not WebTransport — a CDN edge such as
+ * Cloudflare's, say — accepts the QUIC connection and then leaves `ready`
+ * pending indefinitely, and so would any RPC waiting on it. Mirrors the
+ * Go NewDialTransport's dial timeout: fallback arrangements need a prompt
+ * failure to degrade on.
+ */
+const sessionReadyTimeoutMs = 10_000;
+
+/**
+ * Resolves the configured session and waits for its handshake. Failures —
+ * a throwing session factory (e.g. the WebTransport constructor on an
+ * unsupported host), a rejected handshake, a dead session, a handshake
+ * that stalls past the timeout — surface as Code.Unavailable: the
+ * transport could not be established, which is the signal
+ * createFallbackTransport degrades on.
+ */
+async function resolveReadySession(
+  session: ConnectWebTransportTransportOptions["session"],
+): Promise<WebTransportSession> {
+  let resolved: WebTransportSession | undefined;
+  try {
+    resolved = typeof session === "function" ? await session() : await session;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      await Promise.race([
+        resolved.ready,
+        new Promise<never>((_, reject) => {
+          timer = setTimeout(
+            () =>
+              reject(
+                new Error(
+                  `handshake timed out after ${sessionReadyTimeoutMs}ms`,
+                ),
+              ),
+            sessionReadyTimeoutMs,
+          );
+        }),
+      ]);
+    } finally {
+      clearTimeout(timer);
+    }
+    return resolved;
+  } catch (error) {
+    // Dispose the session so a stalled handshake isn't left dangling (and
+    // cached session factories see it as closed).
+    try {
+      resolved?.close?.();
+    } catch {
+      // Closing an already-failed session may throw; it is already dead.
+    }
+    throw new ConnectError(
+      `failed to establish WebTransport session: ${ConnectError.from(error).rawMessage}`,
+      Code.Unavailable,
+    );
+  }
+}
+
+/**
  * Create a Transport for the Connect protocol running over WebTransport.
  */
 export function createConnectWebTransportTransport(
@@ -120,13 +179,8 @@ export function createConnectWebTransportTransport(
           message,
         },
         next: async (req: UnaryRequest<I, O>): Promise<UnaryResponse<I, O>> => {
-          const resolvedSession =
-            typeof options.session === "function"
-              ? await options.session()
-              : await options.session;
+          const resolvedSession = await resolveReadySession(options.session);
           const path = `/${method.parent.typeName}/${method.name}`;
-
-          await resolvedSession.ready;
 
           const requestMessageBytes = serialize(req.message);
 
@@ -247,13 +301,8 @@ export function createConnectWebTransportTransport(
         next: async (
           req: StreamRequest<I, O>,
         ): Promise<StreamResponse<I, O>> => {
-          const resolvedSession =
-            typeof options.session === "function"
-              ? await options.session()
-              : await options.session;
+          const resolvedSession = await resolveReadySession(options.session);
           const path = `/${method.parent.typeName}/${method.name}`;
-
-          await resolvedSession.ready;
 
           async function* serializeRequestMessages() {
             for await (const msg of req.message) {

@@ -12,7 +12,15 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import type { DuplexMessageStream } from "@sudorandom/connect-bidi-core";
+import type {
+  Draft4DuplexMessageStream,
+  Draft4OutgoingFrame,
+  Draft5Message,
+  Draft5MessageStream,
+  Draft7Message,
+  Draft7MessageStream,
+  DuplexMessageStream,
+} from "@sudorandom/connect-bidi-core";
 
 /**
  * The subset of the Workers `WebSocket` interface that `wrapWebSocket`
@@ -41,7 +49,7 @@ export interface BidiWebSocketLike {
 /**
  * Adapts a `BidiWebSocketLike` (an accepted Workers `WebSocket`, or a mock
  * of one in tests) into the `DuplexMessageStream` that
- * `@sudorandom/connect-bidi-core`'s `handleMuxedBidiSocket` bridges to
+ * `@sudorandom/connect-bidi-core`'s `handleMuxedBidiSocketDraft3` bridges to
  * Connect `UniversalHandler`s. Message boundaries are preserved, as the
  * muxed protocol requires: each message becomes exactly one readable
  * chunk, and each written chunk is sent as one WebSocket message.
@@ -51,9 +59,7 @@ export interface BidiWebSocketLike {
  * browser transports, which always send binary frames but whose peer could
  * in principle be any WebSocket client.
  */
-export function wrapWebSocket(
-  socket: BidiWebSocketLike,
-): DuplexMessageStream {
+export function wrapWebSocket(socket: BidiWebSocketLike): DuplexMessageStream {
   // Receive binary frames as ArrayBuffer, not the spec-default Blob.
   socket.binaryType = "arraybuffer";
   // The socket keeps firing events after the consumer cancels the stream
@@ -117,6 +123,181 @@ export function wrapWebSocket(
     },
   };
 }
+
+/**
+ * The draft 4 counterpart of `wrapWebSocket`, for
+ * `handleMuxedBidiSocketDraft4`. Reading is identical -- both adapters
+ * already accept text and binary messages alike -- but writing carries the
+ * message type: draft 4 sends a frame as a text message whenever its
+ * payload is UTF-8, which is what makes the wire readable in devtools.
+ */
+export function wrapDraft4WebSocket(
+  socket: BidiWebSocketLike,
+): Draft4DuplexMessageStream {
+  const { readable, close } = wrapWebSocket(socket);
+  const writable = new WritableStream<Draft4OutgoingFrame>({
+    write(frame) {
+      // A text message must be sent as a string; Workers infers the opcode
+      // from the argument type, with no separate flag.
+      socket.send(frame.text ? decoder.decode(frame.data) : frame.data);
+    },
+    close() {
+      closeQuietly(socket);
+    },
+    abort() {
+      closeQuietly(socket);
+    },
+  });
+  return { readable, writable, close };
+}
+
+/**
+ * The draft 5 counterpart of `wrapWebSocket`, for `handleBidiSocketDraft5`.
+ * This one carries the message type in *both* directions, where the other
+ * adapters discard it on the way in: in draft 5 the opcode is the
+ * protocol's only framing, so a zero-length binary message is an empty
+ * protobuf message while a zero-length text message is the separator.
+ */
+export function wrapDraft5WebSocket(
+  socket: BidiWebSocketLike,
+): Draft5MessageStream {
+  socket.binaryType = "arraybuffer";
+  // As in wrapWebSocket: every listener must become a no-op once the stream
+  // has ended, because touching a closed controller throws and an exception
+  // escaping a Workers listener tears the connection down.
+  let ended = false;
+  const readable = new ReadableStream<Draft5Message>({
+    start(controller) {
+      socket.addEventListener("message", (event) => {
+        if (ended) {
+          return;
+        }
+        try {
+          controller.enqueue({
+            text: typeof event.data === "string",
+            data: toBytes(event.data),
+          });
+        } catch (err) {
+          ended = true;
+          controller.error(err);
+        }
+      });
+      socket.addEventListener("close", () => {
+        if (ended) {
+          return;
+        }
+        ended = true;
+        controller.close();
+      });
+      socket.addEventListener("error", () => {
+        if (ended) {
+          return;
+        }
+        ended = true;
+        controller.error(new Error("WebSocket error"));
+      });
+    },
+    cancel() {
+      ended = true;
+      closeQuietly(socket);
+    },
+  });
+
+  const writable = new WritableStream<Draft5Message>({
+    write(message) {
+      // Workers infers the opcode from the argument type: a string is a
+      // text message, bytes are a binary one.
+      socket.send(message.text ? decoder.decode(message.data) : message.data);
+    },
+    close() {
+      closeQuietly(socket);
+    },
+    abort() {
+      closeQuietly(socket);
+    },
+  });
+
+  return {
+    readable,
+    writable,
+    close: (code?: number, reason?: string) => {
+      closeQuietly(socket, code, reason);
+    },
+  };
+}
+
+/**
+ * The draft 7 counterpart of `wrapWebSocket`, for `handleBidiSocketDraft7`.
+ * Like draft 5's, it carries the frame type in both directions: in draft 7
+ * the frame type names the payload encoding, text for JSON and binary for
+ * Protobuf, and a receiver checks it against the negotiated codec.
+ */
+export function wrapDraft7WebSocket(
+  socket: BidiWebSocketLike,
+): Draft7MessageStream {
+  socket.binaryType = "arraybuffer";
+  let ended = false;
+  const readable = new ReadableStream<Draft7Message>({
+    start(controller) {
+      socket.addEventListener("message", (event) => {
+        if (ended) {
+          return;
+        }
+        try {
+          controller.enqueue({
+            text: typeof event.data === "string",
+            data: toBytes(event.data),
+          });
+        } catch (err) {
+          ended = true;
+          controller.error(err);
+        }
+      });
+      socket.addEventListener("close", () => {
+        if (ended) {
+          return;
+        }
+        ended = true;
+        controller.close();
+      });
+      socket.addEventListener("error", () => {
+        if (ended) {
+          return;
+        }
+        ended = true;
+        controller.error(new Error("WebSocket error"));
+      });
+    },
+    cancel() {
+      ended = true;
+      closeQuietly(socket);
+    },
+  });
+
+  const writable = new WritableStream<Draft7Message>({
+    write(message) {
+      // Workers infers the frame type from the argument type: a string is
+      // a text message, bytes are a binary one.
+      socket.send(message.text ? decoder.decode(message.data) : message.data);
+    },
+    close() {
+      closeQuietly(socket);
+    },
+    abort() {
+      closeQuietly(socket);
+    },
+  });
+
+  return {
+    readable,
+    writable,
+    close: (code?: number, reason?: string) => {
+      closeQuietly(socket, code, reason);
+    },
+  };
+}
+
+const decoder = new TextDecoder();
 
 /**
  * Closes the socket, tolerating a socket that is already closed: Workers

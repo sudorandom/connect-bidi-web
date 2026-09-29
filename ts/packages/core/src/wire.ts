@@ -36,64 +36,6 @@ export const flagEnvelopeReset = 0x07;
 export const flagEnvelopeData = 0x00;
 
 /**
- * Length of the prefix identifying the stream on every WebSocket message:
- * a 4-byte big-endian stream ID, followed by one Connect envelope (1 flag
- * byte, 4-byte big-endian payload length, payload).
- */
-export const streamIdLength = 4;
-
-/**
- * One WebSocket message, split into the stream it belongs to and the
- * Connect envelope it carries.
- */
-export interface StreamFrame {
-  streamId: number;
-  /** The envelope's flag byte (the first byte after the stream ID). */
-  flag: number;
-  /** The complete envelope: flag, length, and payload. */
-  envelope: Uint8Array;
-}
-
-/**
- * Encode one WebSocket message: the stream ID followed by one envelope.
- */
-export function encodeStreamFrame(
-  streamId: number,
-  envelope: Uint8Array,
-): Uint8Array {
-  const frame = new Uint8Array(streamIdLength + envelope.byteLength);
-  new DataView(frame.buffer).setUint32(0, streamId);
-  frame.set(envelope, streamIdLength);
-  return frame;
-}
-
-/**
- * Split one WebSocket message into stream ID and envelope. Throws on a
- * malformed frame: too short, or not exactly one complete envelope.
- */
-export function decodeStreamFrame(message: Uint8Array): StreamFrame {
-  const envelopeHeadLength = 5;
-  if (message.byteLength < streamIdLength + envelopeHeadLength) {
-    throw new Error(`frame too short: ${message.byteLength} bytes`);
-  }
-  const view = new DataView(
-    message.buffer,
-    message.byteOffset,
-    message.byteLength,
-  );
-  const streamId = view.getUint32(0);
-  const flag = view.getUint8(streamIdLength);
-  const declared = view.getUint32(streamIdLength + 1);
-  const actual = message.byteLength - streamIdLength - envelopeHeadLength;
-  if (declared !== actual) {
-    throw new Error(
-      `envelope declares ${declared} payload bytes but frame carries ${actual}`,
-    );
-  }
-  return { streamId, flag, envelope: message.subarray(streamIdLength) };
-}
-
-/**
  * Concatenate a list of byte chunks into a single Uint8Array, avoiding a
  * copy when there is only one chunk.
  */

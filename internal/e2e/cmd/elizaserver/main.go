@@ -14,8 +14,17 @@
 
 // Interop fixture for the TypeScript e2e tests in ts/packages/web/e2e.
 // Serves ElizaService over plain HTTP (standard Connect protocol) and over a
-// plain ws:// WebSocket (no TLS) using connectwebsocket. Prints
-// "READY ws://<host>:<port>/websocket" on stdout once listening.
+// plain ws:// WebSocket (no TLS) using every draft. Prints
+// "READY ws://<host>:<port>/websocket-draft3" on stdout once listening.
+//
+// Drafts 3 and 4 get a path each. Draft 5 has none: it mounts on the
+// Connect procedure URLs themselves, which is why draft5.Mount stands in
+// for connecthttp.Mount here rather than being registered alongside it —
+// the same handler serves POST as ordinary Connect and GET+Upgrade as
+// draft 5. Drafts 1 and 7 would want those URLs too, so on this one server
+// each takes a prefix instead; the procedure is the path's last two
+// segments either way, and draft 7's specification provides for exactly
+// this deployment shape.
 package main
 
 import (
@@ -30,8 +39,11 @@ import (
 	"time"
 
 	connect "connectrpc.com/connect/v2"
-	"connectrpc.com/connect/v2/connecthttp"
-	"github.com/sudorandom/connect-bidi-web/connectwebsocket"
+	"github.com/sudorandom/connect-bidi-web/connectwebsocket/draft1"
+	"github.com/sudorandom/connect-bidi-web/connectwebsocket/draft3"
+	"github.com/sudorandom/connect-bidi-web/connectwebsocket/draft4"
+	"github.com/sudorandom/connect-bidi-web/connectwebsocket/draft5"
+	"github.com/sudorandom/connect-bidi-web/connectwebsocket/draft7"
 	elizav1 "github.com/sudorandom/connect-bidi-web/internal/gen/connectbidi/eliza/v1"
 	"github.com/sudorandom/connect-bidi-web/internal/gen/connectbidi/eliza/v1/elizav1connect"
 )
@@ -80,14 +92,17 @@ func main() {
 	elizav1connect.RegisterElizaServiceHandler(connectServer, elizaServer{})
 
 	mux := http.NewServeMux()
-	connecthttp.Mount(mux, connectServer)
-	mux.Handle("/websocket", connectwebsocket.NewHandler(connectServer))
+	draft5.Mount(mux, connectServer)
+	draft1.Mount(mux, connectServer, draft1.DefaultPathPrefix)
+	draft7.MountWebSocket(mux, connectServer, draft7.WithPathPrefix("/websocket-draft7"))
+	mux.Handle("/websocket-draft3", draft3.NewHandler(connectServer))
+	mux.Handle("/websocket-draft4", draft4.NewHandler(connectServer))
 
 	listener, err := net.Listen("tcp", *addr)
 	if err != nil {
 		log.Fatalf("failed to listen: %v", err)
 	}
-	fmt.Printf("READY ws://%s/websocket\n", listener.Addr())
+	fmt.Printf("READY ws://%s/websocket-draft3\n", listener.Addr())
 
 	server := &http.Server{
 		Handler:           mux,

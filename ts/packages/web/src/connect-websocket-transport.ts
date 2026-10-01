@@ -163,10 +163,11 @@ class WebSocketMux {
 
   /**
    * Release a stream. If the server hasn't finished it, a reset frame tells
-   * it to stop work. With `closeWhenIdle`, the connection is closed once no
-   * streams remain.
+   * it to stop work. Given a `reason`, a read of the stream fails with it
+   * instead of seeing the stream end. With `closeWhenIdle`, the connection
+   * is closed once no streams remain.
    */
-  closeStream(streamId: number): void {
+  closeStream(streamId: number, reason?: unknown): void {
     const entry = this.entries.get(streamId);
     if (entry === undefined) {
       return;
@@ -185,7 +186,11 @@ class WebSocketMux {
       );
     }
     try {
-      entry.controller.close();
+      if (reason === undefined) {
+        entry.controller.close();
+      } else {
+        entry.controller.error(reason);
+      }
     } catch {
       // The stream may already be closed or errored.
     }
@@ -381,6 +386,17 @@ export function createConnectWebSocketTransport(
             ? new WebSocketMux(wsUrl, true)
             : sharedMux;
           const { streamId, readable, writable } = await mux.openStream();
+
+          // Nothing else ends an RPC that is waiting for the server once its
+          // request side is done: without this, a canceled or timed-out
+          // server stream keeps running on the server, and keeps its
+          // connection open.
+          const release = () => mux.closeStream(streamId, req.signal.reason);
+          if (req.signal.aborted) {
+            release();
+            req.signal.throwIfAborted();
+          }
+          req.signal.addEventListener("abort", release, { once: true });
 
           const path = new URL(req.url).pathname;
 

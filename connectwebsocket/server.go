@@ -56,7 +56,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		return
 	}
-	conn.SetReadLimit(-1)
+	conn.SetReadLimit(readLimit(h.opts.ReadMaxBytes))
 
 	ctx := r.Context()
 	mc := newMuxConn(ctx, conn)

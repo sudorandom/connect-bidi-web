@@ -176,7 +176,7 @@ func (ss *ServerStream) Receive(msg any) error {
 		if compressor == nil {
 			return connect.Errorf(connect.CodeInternal, "protocol error: compressed message without Connect-Content-Encoding")
 		}
-		decompressed, err := decompress(compressor, payload)
+		decompressed, err := decompress(compressor, payload, ss.opts.ReadMaxBytes)
 		if err != nil {
 			return err
 		}

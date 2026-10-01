@@ -78,6 +78,22 @@ func writeFrame(ctx context.Context, conn *websocket.Conn, streamID uint32, flag
 	return writer.Close()
 }
 
+// readLimitSlack is the room readLimit leaves above ReadMaxBytes for the
+// frame head and for a headers or end-stream envelope, which ReadMaxBytes
+// does not bound.
+const readLimitSlack = 64 << 10
+
+// readLimit is the largest WebSocket message to accept when messages are
+// limited to readMaxBytes. A larger one closes the connection as soon as that
+// many bytes have arrived instead of being read whole into memory. Without
+// ReadMaxBytes there is no limit.
+func readLimit(readMaxBytes int) int64 {
+	if readMaxBytes <= 0 {
+		return -1
+	}
+	return int64(readMaxBytes) + readLimitSlack
+}
+
 // readFrame reads one WebSocket message and splits it into stream ID, flag,
 // and payload. A message must contain exactly one complete envelope.
 func readFrame(ctx context.Context, conn *websocket.Conn) (streamID uint32, flag uint8, payload []byte, err error) {

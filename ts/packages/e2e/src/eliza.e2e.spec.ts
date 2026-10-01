@@ -36,7 +36,12 @@ import { after, before, describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
 import type { MessageInitShape } from "@bufbuild/protobuf";
 import type { Client, ServiceImpl } from "@connectrpc/connect";
-import { createClient, createConnectRouter } from "@connectrpc/connect";
+import {
+  Code,
+  ConnectError,
+  createClient,
+  createConnectRouter,
+} from "@connectrpc/connect";
 import { createConnectTransport } from "@connectrpc/connect-web";
 import { createBidiWebSocketHandler } from "@sudorandom/connect-bidi-node";
 import type { ConnectWebSocketTransport } from "@sudorandom/connect-bidi-web";
@@ -132,6 +137,11 @@ function exerciseStreams(getClient: () => ElizaClient) {
 
 // -- TS client <-> TS server ---------------------------------------------------
 
+/** The name that makes the TS server's Introduce go silent after greeting. */
+const silentName = "silent";
+/** How many silent Introduce streams the TS server saw canceled. */
+let silentStreamsCanceled = 0;
+
 const elizaImpl: ServiceImpl<typeof ElizaService> = {
   say: (req) => ({ sentence: `TS Eliza says: ${req.sentence}` }),
   converse: async function* (reqs) {
@@ -139,8 +149,16 @@ const elizaImpl: ServiceImpl<typeof ElizaService> = {
       yield { sentence: `TS Eliza hears: ${req.sentence}` };
     }
   },
-  introduce: async function* (req) {
+  introduce: async function* (req, ctx) {
     yield { sentence: `Hello, ${req.name}. I am TS Eliza.` };
+    if (req.name === silentName) {
+      // Say nothing more until the client goes away.
+      await new Promise((resolve) => {
+        ctx.signal.addEventListener("abort", resolve);
+      });
+      silentStreamsCanceled++;
+      return;
+    }
     yield { sentence: "How are you feeling today?" };
   },
 };
@@ -193,6 +211,25 @@ describe("TS WebSocket client <-> TS Node server", () => {
   );
 
   exerciseStreams(() => client);
+
+  it("server-streaming: abort cancels the RPC on the server", async () => {
+    const controller = new AbortController();
+    const responses = client
+      .introduce({ name: silentName }, { signal: controller.signal })
+      [Symbol.asyncIterator]();
+    await responses.next();
+    const pending = responses.next();
+    controller.abort();
+    await assert.rejects(
+      pending,
+      (err) => ConnectError.from(err).code === Code.Canceled,
+    );
+    // The reset frame is on its way; give the server a moment to act on it.
+    for (let i = 0; i < 100 && silentStreamsCanceled === 0; i++) {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    assert.strictEqual(silentStreamsCanceled, 1);
+  });
 });
 
 // -- TS client <-> Go server ---------------------------------------------------

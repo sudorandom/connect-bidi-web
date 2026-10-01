@@ -226,13 +226,13 @@ func TestWebSocket(t *testing.T) {
 
 // newTestServer starts an httptest server that counts WebSocket upgrades and
 // serves the given ping service implementation.
-func newTestServer(t *testing.T, impl pingv1connect.PingServiceHandler) (wsURL string, connections *atomic.Int64) {
+func newTestServer(t *testing.T, impl pingv1connect.PingServiceHandler, opts ...connectwebsocket.Option) (wsURL string, connections *atomic.Int64) {
 	t.Helper()
 	connectServer := connect.NewServer()
 	pingv1connect.RegisterPingServiceHandler(connectServer, impl)
-	wsHandler := connectwebsocket.NewHandler(connectServer, connectwebsocket.WithAcceptOptions(&websocket.AcceptOptions{
+	wsHandler := connectwebsocket.NewHandler(connectServer, append(opts, connectwebsocket.WithAcceptOptions(&websocket.AcceptOptions{
 		InsecureSkipVerify: true,
-	}))
+	}))...)
 
 	connections = &atomic.Int64{}
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -386,6 +386,44 @@ func TestWebSocketClientCancelResetsStream(t *testing.T) {
 	if got, want := connections.Load(), int64(1); got != want {
 		t.Errorf("WebSocket connections = %d, want %d (reset must not tear down the connection)", got, want)
 	}
+}
+
+// TestWebSocketReadMaxBytes checks that WithReadMaxBytes bounds what the
+// server holds in memory, not only what it hands to the handler.
+func TestWebSocketReadMaxBytes(t *testing.T) {
+	const readMaxBytes = 64 << 10
+	wsURL, _ := newTestServer(t, testPingServer{}, connectwebsocket.WithReadMaxBytes(readMaxBytes))
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	// A megabyte of one letter gzips to about a kilobyte, well under the limit.
+	t.Run("a compressed message that inflates past the limit is refused", func(t *testing.T) {
+		wsTransport := connectwebsocket.NewTransport(wsURL, connectwebsocket.WithSendCompressor("gzip"))
+		client := pingv1connect.NewPingServiceClient(connect.NewClient(wsTransport))
+
+		_, err := client.Ping(ctx, &pingv1.PingRequest{Text: strings.Repeat("a", 1<<20)})
+		if got := connect.CodeOf(err); got != connect.CodeResourceExhausted {
+			t.Fatalf("Ping error = %v, want code %v", err, connect.CodeResourceExhausted)
+		}
+	})
+
+	t.Run("a frame far over the limit closes the connection", func(t *testing.T) {
+		conn, _, err := websocket.Dial(ctx, wsURL, nil) //nolint:bodyclose // coder/websocket closes the handshake response body itself
+		if err != nil {
+			t.Fatalf("dial failed: %v", err)
+		}
+		defer func() {
+			_ = conn.CloseNow()
+		}()
+
+		if err := conn.Write(ctx, websocket.MessageBinary, make([]byte, 1<<20)); err != nil {
+			t.Fatalf("write frame failed: %v", err)
+		}
+		_, _, err = conn.Read(ctx)
+		if got := websocket.CloseStatus(err); got != websocket.StatusMessageTooBig {
+			t.Fatalf("read error = %v, want close status %v", err, websocket.StatusMessageTooBig)
+		}
+	})
 }
 
 // TestWebSocketWireFormat exercises the wire protocol with hand-built

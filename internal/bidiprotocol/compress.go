@@ -37,15 +37,25 @@ func compress(compressor connect.Compressor, payload []byte) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-func decompress(compressor connect.Compressor, payload []byte) ([]byte, error) {
+// decompress inflates payload. With a positive readMaxBytes it stops at that
+// many bytes and reports CodeResourceExhausted, so a small compressed message
+// cannot inflate to an arbitrary size in memory.
+func decompress(compressor connect.Compressor, payload []byte, readMaxBytes int) ([]byte, error) {
 	reader, err := compressor.Decompress(bytes.NewReader(payload))
 	if err != nil {
 		return nil, connect.Errorf(connect.CodeInternal, "failed to decompress message: %v", err)
 	}
-	decompressed, err := io.ReadAll(reader)
+	var limited io.Reader = reader
+	if readMaxBytes > 0 {
+		limited = io.LimitReader(reader, int64(readMaxBytes)+1)
+	}
+	decompressed, err := io.ReadAll(limited)
 	_ = reader.Close()
 	if err != nil {
 		return nil, connect.Errorf(connect.CodeInternal, "failed to read decompressed message: %v", err)
+	}
+	if readMaxBytes > 0 && len(decompressed) > readMaxBytes {
+		return nil, connect.Errorf(connect.CodeResourceExhausted, "decompressed message exceeds read limit %d", readMaxBytes)
 	}
 	return decompressed, nil
 }

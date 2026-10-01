@@ -248,7 +248,7 @@ func (t *transport) dial(ctx context.Context) (*muxConn, error) {
 	if err != nil {
 		return nil, connect.Errorf(connect.CodeUnavailable, "failed to dial WebSocket: %v", err)
 	}
-	conn.SetReadLimit(-1)
+	conn.SetReadLimit(readLimit(t.opts.ReadMaxBytes))
 	// The connection outlives any single RPC, so neither the read loop nor
 	// writes use an RPC context; closing the connection ends them.
 	mc := newMuxConn(context.Background(), conn)

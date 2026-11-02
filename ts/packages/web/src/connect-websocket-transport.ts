@@ -66,6 +66,14 @@ export interface ConnectWebSocketTransport extends Transport {
 
 export interface ConnectWebSocketTransportOptions {
   baseUrl: string;
+  /**
+   * The WebSocket endpoint to dial. Defaults to `/websocket` at the origin
+   * of `baseUrl` (any path on `baseUrl` is ignored). Set this when the
+   * server is mounted elsewhere, for example behind a path prefix:
+   * `websocketUrl: new URL("connect", document.baseURI).href`.
+   * `http:`/`https:` schemes are rewritten to `ws:`/`wss:`.
+   */
+  websocketUrl?: string;
   useBinaryFormat?: boolean;
   interceptors?: Interceptor[];
   jsonOptions?: Partial<JsonReadOptions & JsonWriteOptions>;
@@ -305,7 +313,10 @@ export function createConnectWebSocketTransport(
   options: ConnectWebSocketTransportOptions,
 ): ConnectWebSocketTransport {
   const useBinaryFormat = options.useBinaryFormat ?? false;
-  const url = new URL("/websocket", options.baseUrl);
+  const url =
+    options.websocketUrl !== undefined
+      ? new URL(options.websocketUrl)
+      : new URL("/websocket", options.baseUrl);
   url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
   const wsUrl = url.toString();
   const connectionPerStream = options.connectionPerStream ?? false;
